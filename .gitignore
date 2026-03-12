@@ -1,0 +1,23 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+dist/
+.eslintcache
+
+# Environment & Secrets
+.env
+*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent & Helper files
+agent.md
+AGENT_GUIDELINES.md
+Gemini.md_old
