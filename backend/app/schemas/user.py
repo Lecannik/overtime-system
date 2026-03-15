@@ -9,7 +9,6 @@ from datetime import datetime
 
 
 class UserCreate(BaseModel):
-    username: str
     full_name: str
     email: EmailStr
     password: str
@@ -18,12 +17,11 @@ class UserCreate(BaseModel):
 
 
 class UserCreateByAdmin(UserCreate):
-    pass
+    is_active: bool = True
 
 
 class UserResponse(BaseModel):
     id: int
-    username: str
     full_name: str
     email: EmailStr
     role: UserRole
@@ -32,6 +30,7 @@ class UserResponse(BaseModel):
     notification_level: int = 2
     is_active: bool
     must_change_password: bool
+    is_2fa_enabled: bool
     created_at: datetime
     updated_at: datetime
     # Это говорит Pydantic: "Ты можешь брать данные прямо из атрибутов объекта базы данных"
@@ -49,11 +48,20 @@ class Token(BaseModel):
     user: UserResponse
 
 
+class LoginResponse(BaseModel):
+    status: str = "success"  # "success" or "2fa_required"
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional[UserResponse] = None
+    email: Optional[str] = None # For 2FA
+
+
 class UserUpdatePreferences(BaseModel):
     full_name: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     notification_level: Optional[int] = None
     department_id: Optional[int] = None
+    is_2fa_enabled: Optional[bool] = None
 
 
 class UserAdminUpdate (BaseModel):
@@ -64,6 +72,7 @@ class UserAdminUpdate (BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     department_id: Optional[int] = None
+    is_2fa_enabled: Optional[bool] = None
 
 class UserChangePassword(BaseModel):
     old_password: str

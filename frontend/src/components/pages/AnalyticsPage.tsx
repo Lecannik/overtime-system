@@ -6,10 +6,11 @@ import {
 } from 'recharts';
 import {
     Clock, FileCheck, Users, Briefcase, Activity,
-    Calendar, ArrowUpRight, ArrowDownRight, Search
+    Calendar, ArrowUpRight, ArrowDownRight, Search, Download, Filter, ChevronDown
 } from 'lucide-react';
 import Header from '../layout/Header';
-import api, { getAnalyticsSummary, getProjectAnalytics, getDepartmentAnalytics } from '../../services/api';
+import Skeleton from '../common/Skeleton';
+import api, { getAnalyticsSummary, getProjectAnalytics, getDepartmentAnalytics, exportAnalytics, getUserAnalytics } from '../../services/api';
 
 const COLORS = ['#1e40af', '#15803d', '#b91c1c', '#3b82f6', '#10b981', '#ef4444'];
 const STATUS_COLORS: Record<string, string> = {
@@ -22,15 +23,16 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
             <div style={{
-                background: 'rgba(255, 255, 255, 0.9)',
+                background: 'var(--bg-secondary)',
                 backdropFilter: 'blur(10px)',
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
                 padding: '12px 16px',
                 borderRadius: '12px',
-                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                boxShadow: 'var(--card-shadow)',
+                color: 'var(--text-primary)'
             }}>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{label}</p>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#1e40af', fontWeight: 600 }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem' }}>{label}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>
                     {payload[0].name}: {payload[0].value.toFixed(1)}
                 </p>
             </div>
@@ -46,51 +48,109 @@ const AnalyticsPage: React.FC = () => {
     const [projects, setProjects] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        const fetchAll = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    navigate('/login');
-                    return;
-                }
+    // Filtering states
+    const [period, setPeriod] = useState<string>('all');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
+    const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users'>('projects');
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+    const [userStats, setUserStats] = useState<any[]>([]);
 
-                const me = await api.get('/auth/me', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setUser(me.data);
+    const getFilterParams = () => {
+        const params: any = {};
+        const now = new Date();
 
-                if (me.data.must_change_password) {
-                    navigate('/profile');
-                    return;
-                }
+        if (period === 'week') {
+            const start = new Date();
+            start.setDate(now.getDate() - 7);
+            params.start_date = start.toISOString();
+        } else if (period === 'month') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+            params.start_date = start.toISOString();
+        } else if (period === 'prev_month') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0);
+            params.start_date = start.toISOString();
+            params.end_date = end.toISOString();
+        } else if (period === 'custom' && startDate) {
+            params.start_date = new Date(startDate).toISOString();
+            if (endDate) params.end_date = new Date(endDate).toISOString();
+        }
 
-                const [sum, proj, dept] = await Promise.all([
-                    getAnalyticsSummary(),
-                    getProjectAnalytics(),
-                    getDepartmentAnalytics().catch(() => [])
-                ]);
+        return params;
+    };
 
-                setSummary(sum);
-                setProjects(proj);
-                setDepartments(dept);
-            } catch (err) {
-                console.error(err);
+    const fetchAll = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
                 navigate('/login');
-            } finally {
-                setLoading(false);
+                return;
             }
-        };
-        fetchAll();
-    }, [navigate]);
 
-    if (loading) return (
-        <div className="page-container animate-pulse">
-            <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Загрузка аналитических данных...</p>
-        </div>
-    );
+            const me = await api.get('/auth/me', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setUser(me.data);
+
+            if (me.data.must_change_password) {
+                navigate('/profile');
+                return;
+            }
+
+            const params = getFilterParams();
+            const userParams = { ...params };
+            if (selectedProjectId) {
+                userParams.project_id = selectedProjectId;
+            }
+
+            const [sum, proj, dept, uStats] = await Promise.all([
+                getAnalyticsSummary(params),
+                getProjectAnalytics(params),
+                getDepartmentAnalytics(params).catch(() => []),
+                getUserAnalytics(userParams).catch(() => [])
+            ]);
+
+            setSummary(sum);
+            setProjects(proj);
+            setDepartments(dept);
+            setUserStats(uStats);
+        } catch (err) {
+            console.error(err);
+            navigate('/login');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAll();
+    }, [period, startDate, endDate, selectedProjectId]);
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const params = getFilterParams();
+            const blob = await exportAnalytics(params);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `overtime_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err) {
+            console.error('Export failed', err);
+            alert('Не удалось экспортировать данные за выбранный период');
+        } finally {
+            setExporting(false);
+        }
+    };
 
     const filteredProjects = projects.filter(p =>
         p.project_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -98,6 +158,10 @@ const AnalyticsPage: React.FC = () => {
 
     const filteredDepts = departments.filter(d =>
         d.department_name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const filteredUsers = userStats.filter(u =>
+        u.full_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const pieData = summary ? [
@@ -128,6 +192,25 @@ const AnalyticsPage: React.FC = () => {
         </div>
     );
 
+    if (loading && !summary) return (
+        <div className="page-container">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
+                <div style={{ width: '400px' }}><Skeleton height={60} /></div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    <Skeleton height={52} width={250} />
+                    <Skeleton height={52} width={180} />
+                    <Skeleton height={52} width={120} />
+                </div>
+            </div>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '40px' }}>
+                <div style={{ flex: 1 }}><Skeleton height={140} borderRadius={20} /></div>
+                <div style={{ flex: 1 }}><Skeleton height={140} borderRadius={20} /></div>
+                <div style={{ flex: 1 }}><Skeleton height={140} borderRadius={20} /></div>
+            </div>
+            <div style={{ height: '400px' }}><Skeleton height={400} borderRadius={20} /></div>
+        </div>
+    );
+
     return (
         <div className="page-container">
             <Header user={user} />
@@ -144,18 +227,58 @@ const AnalyticsPage: React.FC = () => {
                             placeholder="Поиск по графику..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{ padding: '10px 10px 10px 36px', borderRadius: '10px', fontSize: '0.85rem' }}
+                            style={{ padding: '10px 10px 10px 36px', borderRadius: '10px', fontSize: '0.85rem', background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
                         />
                     </div>
-                    <button style={{
-                        padding: '12px 20px', borderRadius: '12px', border: '1px solid var(--border)',
-                        background: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                        gap: '10px', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)',
-                        fontFamily: 'inherit'
-                    }}>
-                        <Calendar size={18} /> Последние 30 дней
+
+                    {/* Period Selector */}
+                    <div style={{ position: 'relative' }}>
+                        <select
+                            value={period}
+                            onChange={(e) => setPeriod(e.target.value)}
+                            style={{
+                                padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border)',
+                                background: 'var(--bg-primary)', cursor: 'pointer', appearance: 'none',
+                                paddingRight: '40px', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)',
+                                fontFamily: 'inherit'
+                            }}
+                        >
+                            <option value="all">За всё время</option>
+                            <option value="week">За неделю</option>
+                            <option value="month">С начала месяца</option>
+                            <option value="prev_month">Прошлый месяц</option>
+                            <option value="custom">Период...</option>
+                        </select>
+                        <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                    </div>
+
+                    {period === 'custom' && (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                            />
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                            />
+                        </div>
+                    )}
+
+                    <button
+                        className="primary"
+                        style={{ width: 'auto', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                        onClick={handleExport}
+                        disabled={exporting}
+                    >
+                        {exporting ? '...' : <Download size={18} />}
+                        Выгрузить
                     </button>
-                    <button className="primary" style={{ width: 'auto', padding: '12px 24px' }}>Экспорт</button>
                 </div>
             </div>
 
@@ -164,32 +287,30 @@ const AnalyticsPage: React.FC = () => {
                 <StatCard
                     title="Общие трудозатраты"
                     value={`${summary?.total_hours?.toFixed(1) || 0}ч`}
-                    sub="Суммарная переработка за период"
+                    sub={period === 'all' ? "Суммарная переработка" : "За выбранный период"}
                     icon={Clock}
                     color="#1e40af"
-                    trend={12}
                 />
                 <StatCard
-                    title="Активные заявки"
+                    title="Заявки за период"
                     value={summary?.total_requests || 0}
-                    sub="Всего создано в системе"
+                    sub="Всего создано заявок"
                     icon={FileCheck}
                     color="#15803d"
                 />
                 <StatCard
                     title="Ожидает решения"
                     value={summary?.pending_requests || 0}
-                    sub="Заявки, требующие внимания"
+                    sub="Требуют внимания сейчас"
                     icon={Activity}
                     color="#b45309"
-                    trend={-5}
                 />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px', marginBottom: '32px' }}>
                 {/* Distribution Chart */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                    <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '24px' }}>Распределение по статусам</h4>
+                    <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '24px' }}>Статусы за период</h4>
                     <div style={{ flex: 1, minHeight: '350px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -214,38 +335,99 @@ const AnalyticsPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Main Projects Chart */}
+                {/* Compare Dashboard */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-                        <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Переработки по проектам</h4>
-                        <Briefcase size={20} style={{ color: 'var(--text-muted)' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                        <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Сравнение показателей</h4>
+                        <div style={{ display: 'flex', background: 'var(--bg-primary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                            <button
+                                onClick={() => setCompareBy('projects')}
+                                style={{
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, border: 'none',
+                                    background: compareBy === 'projects' ? 'var(--accent)' : 'transparent',
+                                    color: compareBy === 'projects' ? 'white' : 'var(--text-muted)',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >Проекты</button>
+                            <button
+                                onClick={() => setCompareBy('departments')}
+                                style={{
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, border: 'none',
+                                    background: compareBy === 'departments' ? 'var(--accent)' : 'transparent',
+                                    color: compareBy === 'departments' ? 'white' : 'var(--text-muted)',
+                                    cursor: 'pointer', transition: 'all 0.2s', marginRight: '4px'
+                                }}
+                            >Отделы</button>
+                            <button
+                                onClick={() => setCompareBy('users')}
+                                style={{
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, border: 'none',
+                                    background: compareBy === 'users' ? 'var(--accent)' : 'transparent',
+                                    color: compareBy === 'users' ? 'white' : 'var(--text-muted)',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >Сотрудники</button>
+                        </div>
                     </div>
+
+                    {compareBy === 'users' && (
+                        <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Фильтр по проекту:</span>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                                <select
+                                    value={selectedProjectId || ''}
+                                    onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                                    style={{
+                                        width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)',
+                                        background: 'var(--bg-primary)', fontSize: '0.85rem', appearance: 'none'
+                                    }}
+                                >
+                                    <option value="">Все проекты</option>
+                                    {projects.map(p => (
+                                        <option key={p.project_id} value={p.project_id}>{p.project_name}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={14} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                            </div>
+                        </div>
+                    )}
+
                     <div style={{ flex: 1, minHeight: '350px' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={filteredProjects}>
-                                <defs>
-                                    <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} />
-                                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                                <XAxis dataKey="project_name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Area type="monotone" dataKey="total_hours" name="Часы" stroke="var(--accent)" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" />
-                            </AreaChart>
+                            {compareBy === 'users' ? (
+                                <BarChart data={filteredUsers} layout="vertical" margin={{ left: 20, right: 20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+                                    <YAxis type="category" dataKey="full_name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={120} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Bar dataKey="total_hours" name="Часы" fill="var(--accent)" radius={[0, 8, 8, 0]} />
+                                </BarChart>
+                            ) : (
+                                <AreaChart data={compareBy === 'projects' ? filteredProjects : filteredDepts}>
+                                    <defs>
+                                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                    <XAxis dataKey={compareBy === 'projects' ? "project_name" : "department_name"} axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Area type="monotone" dataKey="total_hours" name="Часы" stroke="var(--accent)" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                                </AreaChart>
+                            )}
                         </ResponsiveContainer>
                     </div>
                 </div>
             </div>
 
-            {/* Bottom Section - Full Width Bar Chart */}
+            {/* Detailed Load Distribution */}
             <div className="glass-card">
-                <div style={{ marginBottom: '32px' }}>
+                <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h4 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <Users size={22} style={{ color: 'var(--accent)' }} />
-                        Нагрузка на подразделения
+                        Трудозатраты по подразделениям
                     </h4>
                 </div>
                 <div style={{ height: '300px' }}>

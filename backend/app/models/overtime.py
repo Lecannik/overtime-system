@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.user import User
 from app.models.organization import Project
+from app.core.utils import calculate_overtime_hours
 
 
 class OvertimeStatus(str, PyEnum):
@@ -25,6 +26,19 @@ class OvertimeStatus(str, PyEnum):
     APPROVED = "APPROVED"                  # Полностью одобрено (оба Ок)
     REJECTED = "REJECTED"                  # Отклонено
     CANCELLED = "CANCELLED"                # Отменено пользователем или админом
+
+    @property
+    def russian_label(self) -> str:
+        """Возвращает название статуса на русском языке."""
+        labels = {
+            OvertimeStatus.PENDING: "Ожидает",
+            OvertimeStatus.MANAGER_APPROVED: "Одобрено менеджером",
+            OvertimeStatus.HEAD_APPROVED: "Одобрено нач. отдела",
+            OvertimeStatus.APPROVED: "Подтверждено",
+            OvertimeStatus.REJECTED: "Отклонено",
+            OvertimeStatus.CANCELLED: "Отменено"
+        }
+        return labels.get(self, str(self.value))
 
 
 class Overtime(Base):
@@ -70,6 +84,4 @@ class Overtime(Base):
     @property
     def hours(self) -> float:
         """Рассчитывает длительность переработки в часах (округляя в большую сторону до целого)."""
-        delta = self.end_time - self.start_time
-        # Делим секунды на 3600 и используем ceil, чтобы 1.1 превратилось в 2.0
-        return float(math.ceil(delta.total_seconds() / 3600))
+        return calculate_overtime_hours(self.start_time, self.end_time)

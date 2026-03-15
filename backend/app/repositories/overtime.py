@@ -75,3 +75,55 @@ async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_d
     await session.commit()
     await session.refresh(overtime_db)
     return overtime_db
+
+
+from datetime import datetime, date, timedelta
+from collections import defaultdict
+
+async def get_personal_stats(session: AsyncSession, user_id: int):
+    # Получаем все APPROVED заявки пользователя
+    query = (
+        select(Overtime)
+        .join(Project)
+        .where(Overtime.user_id == user_id)
+        .where(Overtime.status == OvertimeStatus.APPROVED)
+        .options(selectinload(Overtime.project))
+    )
+    result = await session.execute(query)
+    overtimes = result.scalars().all()
+
+    now = datetime.now()
+    this_month_start = date(now.year, now.month, 1)
+    
+    # Прошлый месяц
+    first_this_month = date(now.year, now.month, 1)
+    last_month_end = first_this_month - timedelta(days=1)
+    last_month_start = date(last_month_end.year, last_month_end.month, 1)
+
+    this_month_hours = 0.0
+    last_month_hours = 0.0
+    total_hours = 0.0
+    project_map = defaultdict(float)
+
+    for ot in overtimes:
+        h = ot.hours
+        total_hours += h
+        project_map[ot.project.name] += h
+        
+        ot_date = ot.start_time.date()
+        if ot_date >= this_month_start:
+            this_month_hours += h
+        elif last_month_start <= ot_date <= last_month_end:
+            last_month_hours += h
+
+    by_project = [
+        {"project_name": name, "hours": h} 
+        for name, h in project_map.items()
+    ]
+
+    return {
+        "current_month_hours": this_month_hours,
+        "last_month_hours": last_month_hours,
+        "total_hours": total_hours,
+        "by_project": by_project
+    }

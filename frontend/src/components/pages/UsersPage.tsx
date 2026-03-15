@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users as UsersIcon, Building2, FolderKanban,
-    Shield, Search, Filter, Edit2, Key, Trash2, Plus, CheckCircle2, XCircle, User as UserIcon, X
+    Shield, Search, Filter, Edit2, Key, Trash2, Plus, CheckCircle2, XCircle, User as UserIcon, X, Activity, Clock, ExternalLink, Globe, UserPlus, ShieldCheck
 } from 'lucide-react';
 import api, {
     getUsers,
@@ -17,9 +17,12 @@ import api, {
     deleteProject,
     createUser,
     createDepartment,
-    createProject
+    createProject,
+    getAuditLogs
 } from '../../services/api';
 import Header from '../layout/Header';
+import Skeleton from '../common/Skeleton';
+import ImportMSUsersModal from '../modals/ImportMSUsersModal';
 
 const ROLE_LABELS: Record<string, string> = {
     admin: 'Администратор',
@@ -28,17 +31,45 @@ const ROLE_LABELS: Record<string, string> = {
     employee: 'Сотрудник'
 };
 
+const ROLE_COLORS: Record<string, string> = {
+    admin: '#7c3aed', // Purple
+    head: '#2563eb',  // Blue
+    manager: '#0891b2', // Cyan
+    employee: '#64748b' // Slate
+};
+
+const ACTION_LABELS: Record<string, string> = {
+    'LOGIN': 'Вход в систему',
+    'REVIEW_ADMIN': 'Решение администратора',
+    'REVIEW_MANAGER': 'Решение менеджера',
+    'REVIEW_HEAD': 'Решение начальника',
+    'CANCEL_OVERTIME': 'Отмена заявки',
+    'CREATE_USER': 'Создание пользователя',
+    'UPDATE_USER': 'Изменение профиля',
+    'RESET_PASSWORD': 'Сброс пароля',
+    'CHANGE_PASSWORD': 'Смена пароля',
+    'CREATE_DEPT': 'Создание отдела',
+    'UPDATE_DEPT': 'Изменение отдела',
+    'CREATE_PROJECT': 'Создание проекта',
+    'UPDATE_PROJECT': 'Изменение проекта',
+    'IMPORT_USER_MS': 'Импорт из Office 365'
+};
+
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'projects'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'projects' | 'audit'>('users');
     const [searchQuery, setSearchQuery] = useState('');
+    const [isImportMSModalOpen, setIsImportMSModalOpen] = useState(false);
     const [roleFilter, setRoleFilter] = useState('ALL');
+    const [deptFilter, setDeptFilter] = useState('ALL');
+    const [sortConfig, setSortConfig] = useState<{ field: 'name' | 'dept', direction: 'asc' | 'desc' }>({ field: 'name', direction: 'asc' });
 
     const [users, setUsers] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
     const [projects, setProjects] = useState<any[]>([]);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,12 +78,16 @@ const UsersPage: React.FC = () => {
 
     const refreshData = async () => {
         try {
-            const [usersData, deptsData, projectsData] = await Promise.all([
-                getUsers(), getDepartments(), getProjects().catch(() => [])
+            const [usersData, deptsData, projectsData, auditData] = await Promise.all([
+                getUsers(),
+                getDepartments(),
+                getProjects().catch(() => []),
+                getAuditLogs().catch(() => [])
             ]);
             setUsers(usersData);
             setDepartments(deptsData);
             setProjects(projectsData);
+            setAuditLogs(auditData);
         } catch (err) {
             console.error('Failed to refresh data:', err);
         }
@@ -156,12 +191,21 @@ const UsersPage: React.FC = () => {
     };
 
     const handleResetPasswordAction = async (userId: number) => {
-        if (!confirm('Вы уверены, что хотите сбросить пароль этого пользователя?')) return;
+        if (!confirm('Вы уверены, что хотите сбросить пароль этого пользователя? Пароль будет установлен в "changeme123"')) return;
         try {
             const res = await resetUserPassword(userId);
             alert(res.detail || 'Пароль сброшен');
         } catch (err: any) {
             alert(err.response?.data?.detail || 'Ошибка при сбросе пароля');
+        }
+    };
+
+    const handleToggleStatus = async (user: any) => {
+        try {
+            await updateUser(user.id, { is_active: !user.is_active });
+            await refreshData();
+        } catch (err: any) {
+            alert(err.response?.data?.detail || 'Ошибка при изменении статуса');
         }
     };
 
@@ -181,17 +225,48 @@ const UsersPage: React.FC = () => {
     };
 
     if (loading) return (
-        <div className="page-container" style={{ display: 'flex', justifyContent: 'center', paddingTop: '100px' }}>
-            <div className="loading-bar" style={{ width: '40%' }}></div>
+        <div className="page-container">
+            <div style={{ height: '60px', marginBottom: '40px' }}><Skeleton height={60} /></div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '32px' }}>
+                <Skeleton height={48} width={120} /><Skeleton height={48} width={120} />
+                <Skeleton height={48} width={120} /><Skeleton height={48} width={120} />
+            </div>
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+                <Skeleton height={52} style={{ flex: 1 }} />
+                <Skeleton height={52} width={200} />
+                <Skeleton height={52} width={200} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+                {[1, 2, 3, 4, 5, 6].map(i => <Skeleton key={i} height={200} borderRadius={20} />)}
+            </div>
         </div>
     );
 
-    const filteredUsers = users.filter(u => {
-        const matchesSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            u.email.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
-        return matchesSearch && matchesRole;
-    });
+    const deptMap = Object.fromEntries(departments.map(d => [d.id, d.name]));
+
+    const filteredUsers = users
+        .filter(u => {
+            const matchesSearch = u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                u.email.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+            const matchesDept = deptFilter === 'ALL' || u.department_id === parseInt(deptFilter);
+            return matchesSearch && matchesRole && matchesDept;
+        })
+        .sort((a, b) => {
+            if (sortConfig.field === 'name') {
+                const nameA = a.full_name || '';
+                const nameB = b.full_name || '';
+                return sortConfig.direction === 'asc'
+                    ? nameA.localeCompare(nameB, 'ru')
+                    : nameB.localeCompare(nameA, 'ru');
+            } else {
+                const deptA = deptMap[a.department_id] || '';
+                const deptB = deptMap[b.department_id] || '';
+                return sortConfig.direction === 'asc'
+                    ? deptA.localeCompare(deptB, 'ru')
+                    : deptB.localeCompare(deptA, 'ru');
+            }
+        });
 
     const filteredDepts = departments.filter(d =>
         d.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -199,6 +274,12 @@ const UsersPage: React.FC = () => {
 
     const filteredProjects = projects.filter(p =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const filteredAuditLogs = auditLogs.filter(log =>
+        log.user_full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        log.target_type?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const TabButton = ({ id, label, icon: Icon }: any) => (
@@ -230,6 +311,47 @@ const UsersPage: React.FC = () => {
                     <TabButton id="users" label="Пользователи" icon={UsersIcon} />
                     <TabButton id="departments" label="Отделы" icon={Building2} />
                     <TabButton id="projects" label="Проекты" icon={FolderKanban} />
+                    <TabButton id="audit" label="История" icon={Activity} />
+                </div>
+            </div>
+
+            {/* Dashboard Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px', marginBottom: '40px' }}>
+                <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb', padding: '12px', borderRadius: '12px' }}>
+                        <UsersIcon size={24} />
+                    </div>
+                    <div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Всего пользователей</p>
+                        <h4 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{users.length}</h4>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '12px', borderRadius: '12px' }}>
+                        <CheckCircle2 size={24} />
+                    </div>
+                    <div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Активные аккаунты</p>
+                        <h4 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{users.filter(u => u.is_active).length}</h4>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', padding: '12px', borderRadius: '12px' }}>
+                        <Building2 size={24} />
+                    </div>
+                    <div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Отделы</p>
+                        <h4 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{departments.length}</h4>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ background: 'rgba(8, 145, 178, 0.1)', color: '#0891b2', padding: '12px', borderRadius: '12px' }}>
+                        <FolderKanban size={24} />
+                    </div>
+                    <div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Проекты</p>
+                        <h4 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{projects.length}</h4>
+                    </div>
                 </div>
             </div>
 
@@ -266,173 +388,361 @@ const UsersPage: React.FC = () => {
                     </div>
                 )}
 
-                <button onClick={handleAdd} className="primary" style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '10px', padding: '0 28px' }}>
+                {activeTab === 'users' && (
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Building2 size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <select
+                            value={deptFilter}
+                            onChange={(e) => setDeptFilter(e.target.value)}
+                            style={{
+                                padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                            }}
+                        >
+                            <option value="ALL">Все отделы</option>
+                            {departments.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {activeTab === 'users' && (
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Clock size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <select
+                            value={`${sortConfig.field}_${sortConfig.direction}`}
+                            onChange={(e) => {
+                                const [field, dir] = e.target.value.split('_');
+                                setSortConfig({ field: field as any, direction: dir as any });
+                            }}
+                            style={{
+                                padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                            }}
+                        >
+                            <option value="name_asc">Имя (А-Я)</option>
+                            <option value="name_desc">Имя (Я-А)</option>
+                            <option value="dept_asc">Отдел (А-Я)</option>
+                            <option value="dept_desc">Отдел (Я-А)</option>
+                        </select>
+                    </div>
+                )}
+
+                <button
+                    onClick={() => setIsImportMSModalOpen(true)}
+                    className="secondary"
+                    style={{
+                        width: 'auto', display: 'flex', alignItems: 'center', gap: '10px', padding: '0 24px',
+                        background: 'rgba(79, 70, 229, 0.1)', color: 'var(--accent)', border: '1px solid var(--accent)'
+                    }}
+                >
+                    <Globe size={18} /> Импорт MS
+                </button>
+
+                <button onClick={handleAdd} className="primary" style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '10px', padding: '0 24px' }}>
                     <Plus size={20} /> Добавить
                 </button>
             </div>
 
             {/* Content Table / Grid */}
-            <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+            <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: 'none', background: 'transparent' }}>
                 {activeTab === 'users' && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead style={{ background: 'var(--bg-tertiary)' }}>
-                            <tr>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Сотрудник</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Роль и Статус</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Подразделение</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredUsers.map((u: any) => (
-                                <tr key={u.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }}>
-                                    <td style={{ padding: '20px 32px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                            <div style={{
-                                                width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent)', color: 'white',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem'
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {filteredUsers.map((u: any) => (
+                            <div key={u.id} className="glass-card animate-scale-in" style={{
+                                padding: '24px 32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'transform 0.2s',
+                                border: '1px solid var(--border)'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 2 }}>
+                                    <div style={{
+                                        width: '56px', height: '56px', borderRadius: '16px',
+                                        background: `linear-gradient(135deg, ${ROLE_COLORS[u.role] || 'var(--accent)'}, #1e40af)`,
+                                        color: 'white',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontWeight: 800, fontSize: '1.25rem', boxShadow: '0 8px 16px -4px rgba(0,0,0,0.2)'
+                                    }}>
+                                        {u.full_name?.charAt(0) || u.email.charAt(0)}
+                                    </div>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center',
+                                            gap: '8px 12px',
+                                            marginBottom: '4px'
+                                        }}>
+                                            <h4 style={{
+                                                fontWeight: 800,
+                                                fontSize: '1.1rem',
+                                                lineHeight: 1.2,
+                                                wordBreak: 'break-word'
+                                            }}>{u.full_name}</h4>
+                                            <span style={{
+                                                fontSize: '0.7rem',
+                                                padding: '2px 10px',
+                                                borderRadius: '8px',
+                                                background: `${ROLE_COLORS[u.role]}15`,
+                                                color: ROLE_COLORS[u.role],
+                                                fontWeight: 700,
+                                                textTransform: 'uppercase',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                border: `1px solid ${ROLE_COLORS[u.role]}30`,
+                                                whiteSpace: 'nowrap',
+                                                flexShrink: 0
                                             }}>
-                                                {u.full_name?.charAt(0) || u.email.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <p style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '2px' }}>{u.full_name}</p>
-                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{u.email}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '20px 32px' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
-                                                <Shield size={14} style={{ color: 'var(--accent)' }} />
+                                                <Shield size={10} />
                                                 {ROLE_LABELS[u.role] || u.role}
-                                            </div>
-                                            <div style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 700,
-                                                color: u.is_active ? 'var(--success)' : 'var(--danger)'
-                                            }}>
-                                                {u.is_active ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                                                {u.is_active ? 'Активен' : 'Отключен'}
-                                            </div>
+                                            </span>
+                                            {u.is_2fa_enabled && (
+                                                <span title="2FA Включена" style={{
+                                                    fontSize: '0.65rem',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '6px',
+                                                    background: 'rgba(34, 197, 94, 0.1)',
+                                                    color: '#22c55e',
+                                                    fontWeight: 800,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    border: '1px solid rgba(34, 197, 94, 0.2)'
+                                                }}>
+                                                    <ShieldCheck size={10} /> 2FA
+                                                </span>
+                                            )}
                                         </div>
-                                    </td>
-                                    <td style={{ padding: '20px 32px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600 }}>
-                                            <Building2 size={16} />
-                                            {departments.find(d => d.id === u.department_id)?.name || 'Не назначен'}
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '20px 32px' }}>
-                                        <div style={{ display: 'flex', gap: '12px' }}>
-                                            <button onClick={() => handleEditUser(u)} style={{
-                                                padding: '8px', borderRadius: '10px', border: '1px solid var(--border)',
-                                                background: 'var(--bg-primary)', color: 'var(--text-secondary)', cursor: 'pointer'
-                                            }}>
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button onClick={() => handleResetPasswordAction(u.id)} style={{
-                                                padding: '8px', borderRadius: '10px', border: '1px solid var(--border)',
-                                                background: 'var(--bg-primary)', color: 'var(--text-secondary)', cursor: 'pointer'
-                                            }}>
-                                                <Key size={16} />
-                                            </button>
-                                            <button onClick={() => handleDeleteAction(u.id, 'user')} style={{
-                                                padding: '8px', borderRadius: '10px', border: '1px solid var(--border)',
-                                                background: 'var(--bg-primary)', color: 'var(--danger)', cursor: 'pointer'
-                                            }}>
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                        <p style={{
+                                            color: 'var(--text-secondary)',
+                                            fontSize: '0.9rem',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }}>{u.email}</p>
+                                    </div>
+                                </div>
+
+                                <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>
+                                        <Building2 size={16} style={{ color: 'var(--text-muted)' }} />
+                                        {departments.find(d => d.id === u.department_id)?.name || 'Без отдела'}
+                                    </div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                        Регистрация: {new Date(u.created_at).toLocaleDateString()}
+                                    </div>
+                                </div>
+
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'center' }}>
+                                    <div
+                                        onClick={() => handleToggleStatus(u)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            padding: '8px 16px', borderRadius: '12px',
+                                            cursor: 'pointer',
+                                            background: u.is_active ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                            color: u.is_active ? '#22c55e' : '#ef4444',
+                                            fontWeight: 700, fontSize: '0.85rem',
+                                            transition: 'all 0.2s',
+                                            border: `1px solid ${u.is_active ? '#22c55e40' : '#ef444440'}`
+                                        }}
+                                    >
+                                        {u.is_active ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                        {u.is_active ? 'Активен' : 'Отключен'}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flex: 1 }}>
+                                    <button onClick={() => handleEditUser(u)} className="action-button-modern">
+                                        <Edit2 size={18} />
+                                    </button>
+                                    <button onClick={() => handleResetPasswordAction(u.id)} className="action-button-modern">
+                                        <Key size={18} />
+                                    </button>
+                                    <button onClick={() => handleDeleteAction(u.id, 'user')} className="action-button-modern delete">
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 )}
 
                 {activeTab === 'departments' && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead style={{ background: 'var(--bg-tertiary)' }}>
-                            <tr>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Название отдела</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Руководитель</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredDepts.map((d: any) => {
-                                const head = users.find(u => u.id === d.head_id);
-                                return (
-                                    <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <Building2 size={20} style={{ color: 'var(--accent)' }} />
-                                                <span style={{ fontWeight: 700 }}>{d.name}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+                        {filteredDepts.map((d: any) => {
+                            const head = users.find(u => u.id === d.head_id);
+                            return (
+                                <div key={d.id} className="glass-card animate-scale-in" style={{ padding: '24px', border: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ padding: '10px', background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb', borderRadius: '10px' }}>
+                                                <Building2 size={20} />
                                             </div>
-                                        </td>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            {head ? (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <UserIcon size={16} style={{ color: 'var(--text-muted)' }} />
-                                                    <span style={{ fontWeight: 600 }}>{head.full_name}</span>
+                                            <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>{d.name}</h4>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button onClick={() => handleEditDept(d)} className="action-button-modern"><Edit2 size={16} /></button>
+                                            <button onClick={() => handleDeleteAction(d.id, 'dept')} className="action-button-modern delete"><Trash2 size={16} /></button>
+                                        </div>
+                                    </div>
+                                    <div style={{ background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '12px' }}>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Руководитель</p>
+                                        {head ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
+                                                    {head.full_name?.charAt(0)}
                                                 </div>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Не назначен</span>
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            <div style={{ display: 'flex', gap: '12px' }}>
-                                                <button onClick={() => handleEditDept(d)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', cursor: 'pointer' }}><Edit2 size={16} /></button>
-                                                <button onClick={() => handleDeleteAction(d.id, 'dept')} style={{ padding: '8px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                                                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{head.full_name}</span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                        ) : (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>Не назначен</span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
 
                 {activeTab === 'projects' && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead style={{ background: 'var(--bg-tertiary)' }}>
-                            <tr>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Название проекта</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Менеджер</th>
-                                <th style={{ padding: '20px 32px', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredProjects.map((p: any) => {
-                                const manager = users.find(u => u.id === p.manager_id);
-                                return (
-                                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <FolderKanban size={20} style={{ color: 'var(--accent)' }} />
-                                                <span style={{ fontWeight: 700 }}>{p.name}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+                        {filteredProjects.map((p: any) => {
+                            const manager = users.find(u => u.id === p.manager_id);
+                            return (
+                                <div key={p.id} className="glass-card animate-scale-in" style={{ padding: '24px', border: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ padding: '10px', background: 'rgba(8, 145, 178, 0.1)', color: '#0891b2', borderRadius: '10px' }}>
+                                                <FolderKanban size={20} />
                                             </div>
-                                        </td>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            {manager ? (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <UserIcon size={16} style={{ color: 'var(--text-muted)' }} />
-                                                    <span style={{ fontWeight: 600 }}>{manager.full_name}</span>
+                                            <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>{p.name}</h4>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button onClick={() => handleEditProject(p)} className="action-button-modern"><Edit2 size={16} /></button>
+                                            <button onClick={() => handleDeleteAction(p.id, 'project')} className="action-button-modern delete"><Trash2 size={16} /></button>
+                                        </div>
+                                    </div>
+                                    <div style={{ background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '12px' }}>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Менеджер проекта</p>
+                                        {manager ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
+                                                    {manager.full_name?.charAt(0)}
                                                 </div>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Не назначен</span>
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '20px 32px' }}>
-                                            <div style={{ display: 'flex', gap: '12px' }}>
-                                                <button onClick={() => handleEditProject(p)} style={{ padding: '8px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', cursor: 'pointer' }}><Edit2 size={16} /></button>
-                                                <button onClick={() => handleDeleteAction(p.id, 'project')} style={{ padding: '8px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                                                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{manager.full_name}</span>
                                             </div>
-                                        </td>
-                                    </tr>
+                                        ) : (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>Не назначен</span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {activeTab === 'audit' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {filteredAuditLogs.length === 0 ? (
+                            <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <Clock size={48} style={{ marginBottom: '16px', opacity: 0.2 }} />
+                                <p>История действий пуста</p>
+                            </div>
+                        ) : (
+                            filteredAuditLogs.map((log: any) => {
+                                const getTargetName = () => {
+                                    if (!log.details) return `ID: ${log.target_id}`;
+                                    return log.details.description || log.details.name || log.details.email || log.details.full_name || `ID: ${log.target_id}`;
+                                };
+
+                                const handleLink = () => {
+                                    if (log.target_type === 'overtime') {
+                                        navigate(`/review?search=${log.target_id}`);
+                                        return;
+                                    }
+                                    if (log.target_type === 'user') {
+                                        setActiveTab('users');
+                                        setSearchQuery(log.details?.email || log.target_id.toString());
+                                    } else if (log.target_type === 'department') {
+                                        setActiveTab('departments');
+                                        setSearchQuery(log.details?.name || log.target_id.toString());
+                                    } else if (log.target_type === 'project') {
+                                        setActiveTab('projects');
+                                        setSearchQuery(log.details?.name || log.target_id.toString());
+                                    }
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                };
+
+                                return (
+                                    <div key={log.id} className="glass-card animate-scale-in audit-row" style={{
+                                        padding: '16px 24px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        border: '1px solid var(--border)',
+                                        background: 'var(--bg-secondary)',
+                                        transition: 'all 0.2s'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 2 }}>
+                                            <div style={{
+                                                width: '40px', height: '40px', borderRadius: '10px',
+                                                background: 'rgba(30, 64, 175, 0.1)', color: 'var(--accent)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                <Activity size={20} />
+                                            </div>
+                                            <div>
+                                                <p style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', marginBottom: '2px' }}>
+                                                    {ACTION_LABELS[log.action] || log.action}
+                                                </p>
+                                                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                                                    Инициатор: <span style={{ color: 'var(--text-secondary)' }}>{log.user_full_name}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ flex: 1.5, display: 'flex', justifyContent: 'center' }}>
+                                            {log.target_type && (
+                                                <button
+                                                    onClick={handleLink}
+                                                    className="audit-link-btn"
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                                        fontSize: '0.85rem', padding: '8px 14px', borderRadius: '10px',
+                                                        background: 'var(--bg-tertiary)', color: 'var(--accent)',
+                                                        fontWeight: 700, border: '1px solid var(--border)',
+                                                        cursor: 'pointer', transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {getTargetName()}
+                                                    </span>
+                                                    <ExternalLink size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div style={{ flex: 1, textAlign: 'right' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 500 }}>
+                                                <Clock size={14} />
+                                                {new Date(log.created_at).toLocaleString('ru', {
+                                                    day: '2-digit', month: '2-digit', year: 'numeric',
+                                                    hour: '2-digit', minute: '2-digit'
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
                                 );
-                            })}
-                        </tbody>
-                    </table>
+                            })
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -606,6 +916,14 @@ const UsersPage: React.FC = () => {
                     <button style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', cursor: 'pointer' }}>Вперед</button>
                 </div>
             </div>
+            <ImportMSUsersModal
+                isOpen={isImportMSModalOpen}
+                onClose={() => setIsImportMSModalOpen(false)}
+                onSuccess={(count) => {
+                    alert(`Успешно импортировано пользователей: ${count}`);
+                    refreshData();
+                }}
+            />
         </div>
     );
 };

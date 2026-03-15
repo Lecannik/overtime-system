@@ -24,19 +24,19 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
     # 1. Ждем результат от БД (добавляем await)
     db_user = await get_user_by_email(session, user_in.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="User already exists")
+        raise HTTPException(status_code=400, detail="Пользователь с таким Email уже существует")
 
     # 2. Хешируем пароль
     hashed_pwd = hash_password(user_in.password)
 
     # 3. Создаем объект модели (переводим из Pydantic в SQLAlchemy)
     new_user = User(
-        username=user_in.username,
         email=user_in.email,
         full_name=user_in.full_name,
         hashed_password=hashed_pwd,
         role=user_in.role,
-        department_id=user_in.department_id
+        department_id=user_in.department_id,
+        is_active=getattr(user_in, "is_active", True)
     )
 
     # 4. Сохраняем (добавляем await)
@@ -61,9 +61,12 @@ async def authenticate_user(session: AsyncSession, email: str, password: str):
     user = await get_user_by_email(session, email)
 
     if user is None:
-        raise HTTPException(status_code=400, detail='Invalid email or password')
+        raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
 
     if not verify_password(password, user.hashed_password):
-        raise HTTPException(status_code=400, detail='Invalid email or password')
+        raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Ваша учетная запись отключена. Обратитесь к администратору.")
 
     return user

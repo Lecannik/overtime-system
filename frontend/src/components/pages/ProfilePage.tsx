@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Shield, Mail, Building, Bell, MessageSquare, Key, Save, X, Edit3, AlertTriangle } from 'lucide-react';
+import { User as UserIcon, Shield, Mail, Building, Bell, MessageSquare, Key, Save, X, Edit3, AlertTriangle, ShieldCheck } from 'lucide-react';
 import api, { updateMyProfile, getDepartments, changePassword } from '../../services/api';
 import Header from '../layout/Header';
 
@@ -11,7 +11,7 @@ const ProfilePage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
     const [form, setForm] = useState({
-        full_name: '', telegram_chat_id: '', notification_level: 2
+        full_name: '', telegram_chat_id: '', notification_level: 2, is_2fa_enabled: false
     });
     const [pwdForm, setPwdForm] = useState({
         old_password: '', new_password: '', confirm_password: ''
@@ -28,7 +28,8 @@ const ProfilePage: React.FC = () => {
                 setForm({
                     full_name: res.data.full_name || '',
                     telegram_chat_id: res.data.telegram_chat_id || '',
-                    notification_level: res.data.notification_level ?? 2
+                    notification_level: res.data.notification_level ?? 2,
+                    is_2fa_enabled: res.data.is_2fa_enabled || false
                 });
                 try {
                     const depts = await getDepartments();
@@ -49,18 +50,41 @@ const ProfilePage: React.FC = () => {
         return dept ? dept.name : `Отдел #${deptId}`;
     };
 
-    const handleSave = async () => {
+    const handleSave = async (overrides?: any) => {
+        console.log('ProfilePage: handleSave started', { currentForm: form, overrides });
         try {
-            const res = await updateMyProfile({
+            const updatePayload = {
                 full_name: form.full_name,
                 telegram_chat_id: form.telegram_chat_id || null,
-                notification_level: form.notification_level
-            });
+                notification_level: form.notification_level,
+                is_2fa_enabled: form.is_2fa_enabled,
+                ...overrides
+            };
+
+            console.log('ProfilePage: sending request', updatePayload);
+            const res = await updateMyProfile(updatePayload);
+            console.log('ProfilePage: request success', res);
+
             setUser(res);
             setEditing(false);
+            setForm({
+                full_name: res.full_name || '',
+                telegram_chat_id: res.telegram_chat_id || '',
+                notification_level: res.notification_level ?? 2,
+                is_2fa_enabled: res.is_2fa_enabled || false
+            });
         } catch (err: any) {
+            console.error('ProfilePage: save error', err);
             alert(err.response?.data?.detail || 'Ошибка при сохранении');
         }
+    };
+
+    const handleToggle2FA = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newValue = !form.is_2fa_enabled;
+        console.log('ProfilePage: handleToggle2FA', { oldValue: form.is_2fa_enabled, newValue });
+        setForm(prev => ({ ...prev, is_2fa_enabled: newValue }));
+        handleSave({ is_2fa_enabled: newValue });
     };
 
     const handlePasswordChange = async () => {
@@ -75,7 +99,17 @@ const ProfilePage: React.FC = () => {
         try {
             await changePassword(pwdForm.old_password, pwdForm.new_password);
             alert('Пароль успешно изменен');
-            setPwdForm({ old_password: '', new_password: '', confirm_password: '' });
+
+            // Если была принудительная смена пароля — перекидываем на главную
+            const wasForced = user?.must_change_password;
+
+            if (wasForced) {
+                // Обновляем состояние локально, чтобы убрать предупреждение до редиректа
+                setUser({ ...user, must_change_password: false });
+                navigate('/dashboard');
+            } else {
+                setPwdForm({ old_password: '', new_password: '', confirm_password: '' });
+            }
         } catch (err: any) {
             alert(err.response?.data?.detail || 'Ошибка при смене пароля');
         }
@@ -247,6 +281,36 @@ const ProfilePage: React.FC = () => {
                         <button onClick={handlePasswordChange} className="primary" style={{ marginTop: '12px' }}>
                             Обновить пароль
                         </button>
+                    </div>
+
+                    <div style={{ marginTop: '40px', padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <div style={{ padding: '8px', borderRadius: '10px', background: form.is_2fa_enabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(100, 116, 139, 0.1)', color: form.is_2fa_enabled ? '#22c55e' : '#64748b' }}>
+                                    <ShieldCheck size={20} />
+                                </div>
+                                <div>
+                                    <p style={{ fontWeight: 700, fontSize: '0.95rem' }}>Двухфакторная аутентификация</p>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Подтверждение входа через email</p>
+                                </div>
+                            </div>
+                            <div
+                                onClick={handleToggle2FA}
+                                style={{
+                                    width: '48px', height: '26px', borderRadius: '13px',
+                                    background: form.is_2fa_enabled ? 'var(--accent)' : '#cbd5e1',
+                                    position: 'relative', cursor: 'pointer', transition: 'all 0.3s',
+                                    border: 'none', padding: 0, outline: 'none'
+                                }}>
+                                <div style={{
+                                    width: '20px', height: '20px', borderRadius: '50%', background: 'white',
+                                    position: 'absolute', top: '3px',
+                                    left: form.is_2fa_enabled ? '25px' : '3px',
+                                    transition: 'all 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                    pointerEvents: 'none'
+                                }}></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -129,7 +129,8 @@ async def review_overtime(
             "approved": review.approved,
             "comment": review.comment,
             "new_status": overtime.status,
-            "as_role": review.as_role
+            "as_role": review.as_role,
+            "description": overtime.description
         }
     )
 
@@ -179,7 +180,8 @@ async def cancel_overtime(
         details={
             "cancelled_by": current_user.email,
             "previous_status": overtime.status,
-            "is_own": overtime.user_id == current_user.id
+            "is_own": overtime.user_id == current_user.id,
+            "description": overtime.description
         }
     )
 

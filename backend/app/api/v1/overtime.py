@@ -5,12 +5,23 @@ from typing import List
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User, UserRole
-from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate
+from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats
 from app.services import overtime as overtime_service
 from app.repositories import overtime as overtime_repo
 
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
+
+
+@router.get("/stats/me", response_model=PersonalStats)
+async def get_my_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить личную статистику переработок.
+    """
+    return await overtime_repo.get_personal_stats(db, current_user.id)
 
 
 @router.post("/", response_model=OvertimeResponse)

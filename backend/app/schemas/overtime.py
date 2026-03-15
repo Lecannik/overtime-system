@@ -63,3 +63,15 @@ class OvertimeReview(BaseModel):
     approved: bool
     comment: str | None = None
     as_role: UserRole | None = None
+
+
+class ProjectHours(BaseModel):
+    project_name: str
+    hours: float
+
+
+class PersonalStats(BaseModel):
+    current_month_hours: float
+    last_month_hours: float
+    total_hours: float
+    by_project: list[ProjectHours]

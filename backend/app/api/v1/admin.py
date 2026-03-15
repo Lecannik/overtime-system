@@ -24,6 +24,9 @@ from app.repositories import organization as org_repo
 
 from app.schemas.settings import SystemSettingSchema, SystemSettingUpdate
 from app.repositories import settings as settings_repo
+from app.repositories import audit as audit_repo
+from app.services.ms_graph import ms_graph
+from app.repositories.user import get_user_by_email
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -53,7 +56,13 @@ async def create_department(
     """
     require_admin(current_user)
     department = Department(**dept_in.model_dump())
-    return await org_repo.create_department(db, department)
+    new_dept = await org_repo.create_department(db, department)
+    
+    await audit_repo.create_audit_log(
+        db, current_user.id, "CREATE_DEPT", "department", new_dept.id, {"name": new_dept.name}
+    )
+    await db.commit()
+    return new_dept
 
 
 @router.get("/departments", response_model=List[DepartmentResponse])
@@ -102,7 +111,13 @@ async def update_department(
     dept = await org_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Отдел не найден")
-    return await org_repo.update_department(db, dept, dept_in.model_dump(exclude_unset=True))
+    
+    updated_dept = await org_repo.update_department(db, dept, dept_in.model_dump(exclude_unset=True))
+    await audit_repo.create_audit_log(
+        db, current_user.id, "UPDATE_DEPT", "department", dept_id, dept_in.model_dump(exclude_unset=True)
+    )
+    await db.commit()
+    return updated_dept
 
 
 @router.delete("/departments/{dept_id}", status_code=204)
@@ -138,7 +153,13 @@ async def create_project(
     """
     require_admin(current_user)
     project = Project(**project_in.model_dump())
-    return await org_repo.create_project(db, project)
+    new_project = await org_repo.create_project(db, project)
+    
+    await audit_repo.create_audit_log(
+        db, current_user.id, "CREATE_PROJECT", "project", new_project.id, {"name": new_project.name}
+    )
+    await db.commit()
+    return new_project
 
 
 @router.get("/projects", response_model=List[ProjectResponse])
@@ -188,7 +209,13 @@ async def update_project(
     project = await org_repo.get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Проект не найден")
-    return await org_repo.update_project(db, project, project_in.model_dump(exclude_unset=True))
+    
+    updated_project = await org_repo.update_project(db, project, project_in.model_dump(exclude_unset=True))
+    await audit_repo.create_audit_log(
+        db, current_user.id, "UPDATE_PROJECT", "project", project_id, project_in.model_dump(exclude_unset=True)
+    )
+    await db.commit()
+    return updated_project
 
 
 @router.delete("/projects/{project_id}", status_code=204)
@@ -227,6 +254,11 @@ async def create_user(
     
     # Сразу ставим флаг смены пароля, так как пароль задал админ
     await user_repo.update_user(db, new_user, {"must_change_password": True})
+    
+    await audit_repo.create_audit_log(
+        db, current_user.id, "CREATE_USER", "user", new_user.id, {"email": new_user.email, "role": new_user.role}
+    )
+    await db.commit()
     return new_user
 
 
@@ -272,7 +304,13 @@ async def admin_update_user(
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    return await user_repo.update_user(db, user, user_in.model_dump(exclude_unset=True))
+    
+    updated_user = await user_repo.update_user(db, user, user_in.model_dump(exclude_unset=True))
+    await audit_repo.create_audit_log(
+        db, current_user.id, "UPDATE_USER", "user", user_id, user_in.model_dump(exclude_unset=True)
+    )
+    await db.commit()
+    return updated_user
 
 
 @router.post("/users/{user_id}/reset-password")
@@ -291,6 +329,11 @@ async def reset_user_password(
         "hashed_password": hash_password(new_password),
         "must_change_password": True
     })
+    
+    await audit_repo.create_audit_log(
+        db, current_user.id, "RESET_PASSWORD", "user", user_id
+    )
+    await db.commit()
     return {"detail": f"Пароль сброшен на: {new_password}"}
  
  
@@ -342,3 +385,76 @@ async def set_admin_setting(
     """Установить значение системной настройки (только для админов)."""
     require_admin(current_user)
     return await settings_repo.set_setting(db, key, setting_in.value)
+
+# ==================== MICROSOFT INTEGRATION ====================
+
+@router.get("/ms-users")
+async def get_microsoft_users(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список пользователей из Microsoft Graph.
+    Доступно только администраторам.
+    """
+    require_admin(current_user)
+    return await ms_graph.get_users()
+
+@router.post("/ms-import")
+async def import_microsoft_users(
+    users_to_import: List[dict],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Импортировать выбранных пользователей из MS в локальную БД.
+    Доступно только администраторам.
+    """
+    require_admin(current_user)
+    imported_count = 0
+    
+    import secrets
+    
+    for user_data in users_to_import:
+        email = user_data.get("mail") or user_data.get("userPrincipalName")
+        if not email:
+            continue
+            
+        # Проверяем, нет ли уже такого пользователя
+        existing = await get_user_by_email(db, email)
+        if existing:
+            continue
+            
+        # Создаем нового пользователя с временным случайным паролем
+        new_user = User(
+            email=email,
+            full_name=user_data.get("displayName", "Сотрудник MS"),
+            hashed_password=hash_password(secrets.token_urlsafe(16)),
+            role=UserRole.employee,
+            is_active=True,
+            must_change_password=True
+        )
+        db.add(new_user)
+        
+        # Логируем действие импорта
+        await audit_repo.create_audit_log(
+            db, current_user.id, "IMPORT_USER_MS", "user", 0, {"email": email}
+        )
+        imported_count += 1
+        
+    await db.commit()
+    return {"status": "success", "imported": imported_count}
+
+@router.post("/test-email")
+async def test_microsoft_email(
+    current_user: User = Depends(get_current_user)
+):
+    """Тестовая отправка письма через MS Graph."""
+    require_admin(current_user)
+    success = await ms_graph.send_email(
+        recipient=current_user.email,
+        subject="Тест системы Overtime Pro",
+        body_content="<h1>Привет!</h1><p>Если ты видишь это письмо, значит интеграция с почтой MS Graph работает корректно.</p>"
+    )
+    if success:
+        return {"status": "success", "message": f"Письмо отправлено на {current_user.email}"}
+    raise HTTPException(status_code=500, detail="Ошибка при отправке письма через MS Graph")

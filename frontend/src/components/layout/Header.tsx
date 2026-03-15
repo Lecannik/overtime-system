@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Sun, Moon, BarChart2, CheckSquare, Settings, LayoutDashboard } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
     user: any;
@@ -92,8 +93,14 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                 {!user.must_change_password && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <NavButton icon={LayoutDashboard} path="/dashboard" onClick={() => navigate('/dashboard')}>Главная</NavButton>
-                        <NavButton icon={BarChart2} path="/analytics" onClick={() => navigate('/analytics')}>Аналитика</NavButton>
-                        <NavButton icon={CheckSquare} path="/review" onClick={() => navigate('/review')}>Согласование</NavButton>
+
+                        {(user.role === 'admin' || user.role === 'head' || user.role === 'manager') && (
+                            <>
+                                <NavButton icon={BarChart2} path="/analytics" onClick={() => navigate('/analytics')}>Аналитика</NavButton>
+                                <NavButton icon={CheckSquare} path="/review" onClick={() => navigate('/review')}>Согласование</NavButton>
+                            </>
+                        )}
+
                         {user.role === 'admin' && (
                             <NavButton icon={Settings} path="/users" onClick={() => navigate('/users')}>Управление</NavButton>
                         )}
@@ -111,6 +118,8 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-secondary)', padding: '6px', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                    <NotificationBell />
+
                     <button onClick={toggleTheme} style={{
                         width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                         border: 'none', background: 'var(--bg-primary)',

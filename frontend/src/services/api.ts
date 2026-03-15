@@ -5,6 +5,15 @@ const api = axios.create({
   baseURL: '/api/v1',  // Vite-прокси перенаправит это на localhost:8000
 });
 
+// Автоматически добавляем токен в заголовок Authorization для всех запросов
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Функция входа — отправляет email и пароль на бэкенд
 export const login = async (email: string, password: string) => {
   // FastAPI ожидает данные формы (не JSON!), поэтому используем FormData
@@ -13,7 +22,25 @@ export const login = async (email: string, password: string) => {
   formData.append('password', password);
 
   const response = await api.post('/auth/login', formData);
-  return response.data; // Здесь будет наш JWT-токен
+  return response.data;
+};
+
+// Верификация 2FA кода
+export const verify2FA = async (email: string, code: string) => {
+  const response = await api.post('/auth/verify-2fa', { email, code });
+  return response.data;
+};
+
+// Запрос сброса пароля
+export const requestPasswordReset = async (email: string) => {
+  const response = await api.post('/auth/password-reset/request', { email });
+  return response.data;
+};
+
+// Подтверждение сброса пароля
+export const confirmPasswordReset = async (data: any) => {
+  const response = await api.post('/auth/password-reset/confirm', data);
+  return response.data;
 };
 
 // Получить список заявок текущего пользователя
@@ -57,13 +84,46 @@ export const cancelOvertime = async (overtimeId: number) => {
   return response.data;
 };
 
-// Получить список проектов
-export const getProjects = async () => {
+// Получить личную статистику
+export const getMyStats = async () => {
   const token = localStorage.getItem('token');
-  const response = await api.get('/admin/projects', {
+  const response = await api.get('/overtimes/stats/me', {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
+};
+
+// Получить список проектов
+export const getProjects = async () => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/projects/', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+// ==================== УВЕДОМЛЕНИЯ ====================
+
+export const getNotifications = async () => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/notifications/', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const markNotificationRead = async (id: number) => {
+  const token = localStorage.getItem('token');
+  await api.post(`/notifications/${id}/read`, null, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+};
+
+export const markAllNotificationsRead = async () => {
+  const token = localStorage.getItem('token');
+  await api.post('/notifications/read-all', null, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
 };
 
 // Согласовать или отклонить заявку
@@ -199,26 +259,56 @@ export const updateProject = async (projectId: number, data: any) => {
 
 // ==================== АНАЛИТИКА ====================
 
-export const getAnalyticsSummary = async () => {
+export const getAnalyticsSummary = async (params?: any) => {
   const token = localStorage.getItem('token');
   const response = await api.get('/analytics/summary', {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: { Authorization: `Bearer ${token}` },
+    params
   });
   return response.data;
 };
 
-export const getProjectAnalytics = async () => {
+export const getProjectAnalytics = async (params?: any) => {
   const token = localStorage.getItem('token');
   const response = await api.get('/analytics/projects', {
+    headers: { Authorization: `Bearer ${token}` },
+    params
+  });
+  return response.data;
+};
+
+export const getDepartmentAnalytics = async (params?: any) => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/analytics/departments', {
+    headers: { Authorization: `Bearer ${token}` },
+    params
+  });
+  return response.data;
+};
+
+export const getUserAnalytics = async (params?: any) => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/analytics/users', {
+    headers: { Authorization: `Bearer ${token}` },
+    params
+  });
+  return response.data;
+};
+
+export const getWeeklyStats = async () => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/analytics/weekly', {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
 };
 
-export const getDepartmentAnalytics = async () => {
+export const exportAnalytics = async (params?: any) => {
   const token = localStorage.getItem('token');
-  const response = await api.get('/analytics/departments', {
-    headers: { Authorization: `Bearer ${token}` }
+  const response = await api.get('/analytics/export', {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+    responseType: 'blob'
   });
   return response.data;
 };
@@ -228,6 +318,16 @@ export const deleteProject = async (projectId: number) => {
   await api.delete(`/admin/projects/${projectId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
+};
+
+// ==================== АУДИТ ====================
+export const getAuditLogs = async (limit = 100, offset = 0) => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/audit/', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { limit, offset }
+  });
+  return response.data;
 };
 
 export default api;
