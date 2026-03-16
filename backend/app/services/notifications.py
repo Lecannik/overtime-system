@@ -96,3 +96,32 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
             f"{comment_block}"
         )
         await send_telegram_message(session, employee.telegram_chat_id, msg_html)
+async def notify_limit_exceeded(
+    session: AsyncSession,
+    overtime: Overtime,
+    manager: User,
+    current_hours: float,
+    limit: int
+):
+    """Уведомляет менеджера о превышении лимита часов за неделю."""
+    msg_plain = (
+        f"⚠️ ПРЕВЫШЕНИЕ ЛИМИТА\n"
+        f"Сотрудник: {overtime.user.full_name}\n"
+        f"Проект: {overtime.project.name}\n"
+        f"Часов за неделю: {current_hours} из {limit}\n"
+        f"Заявка #{overtime.id} создана с превышением."
+    )
+    
+    msg_html = (
+        f"⚠️ <b>ПРЕВЫШЕНИЕ ЛИМИТА</b>\n\n"
+        f"👤 <b>Сотрудник</b>: {overtime.user.full_name}\n"
+        f"📁 <b>Проект</b>: {overtime.project.name}\n"
+        f"⏳ <b>Недельная норма</b>: {limit}ч\n"
+        f"📉 <b>Факт (с учетом новой)</b>: <b>{current_hours}ч</b>\n\n"
+        f"Заявка #{overtime.id} требует особого внимания."
+    )
+
+    if manager:
+        await notif_repo.create_notification(session, manager.id, "Превышение лимита", msg_plain)
+        if manager.telegram_chat_id and manager.notification_level > 0:
+            await send_telegram_message(session, manager.telegram_chat_id, msg_html)

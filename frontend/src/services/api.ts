@@ -241,7 +241,11 @@ export const deleteDepartment = async (deptId: number) => {
 
 // ==================== ПРОЕКТЫ ====================
 
-export const createProject = async (data: { name: string; manager_id?: number | null }) => {
+export const createProject = async (data: {
+  name: string;
+  manager_id?: number | null;
+  weekly_limit?: number;
+}) => {
   const token = localStorage.getItem('token');
   const response = await api.post('/admin/projects', data, {
     headers: { Authorization: `Bearer ${token}` }
@@ -249,7 +253,11 @@ export const createProject = async (data: { name: string; manager_id?: number | 
   return response.data;
 };
 
-export const updateProject = async (projectId: number, data: any) => {
+export const updateProject = async (projectId: number, data: {
+  name?: string;
+  manager_id?: number | null;
+  weekly_limit?: number;
+}) => {
   const token = localStorage.getItem('token');
   const response = await api.patch(`/admin/projects/${projectId}`, data, {
     headers: { Authorization: `Bearer ${token}` }

@@ -172,8 +172,15 @@ async def list_projects(
 
     Доступно только администраторам.
     """
-    require_admin(current_user)
-    return await org_repo.get_projects(db)
+    if current_user.role == UserRole.admin:
+        return await org_repo.get_projects(db)
+    
+    if current_user.role == UserRole.manager:
+        # Менеджер видит только свои проекты
+        return await org_repo.get_projects_by_manager(db, current_user.id)
+    
+    # Для остальных ролей (employee) в админ-панели ничего не показываем
+    return []
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
@@ -205,14 +212,23 @@ async def update_project(
     Доступно только администраторам. Передайте только те поля, которые хотите изменить.
     """
 
-    require_admin(current_user)
     project = await org_repo.get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Проект не найден")
     
-    updated_project = await org_repo.update_project(db, project, project_in.model_dump(exclude_unset=True))
+    # ПРАВА: Админ или менеджер ЭТОГО проекта
+    if current_user.role != UserRole.admin and project.manager_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Только менеджер этого проекта или администратор могут вносить изменения.")
+
+    update_data = project_in.model_dump(exclude_unset=True)
+
+    # Менеджер не может менять самого менеджера проекта (только админ)
+    if current_user.role != UserRole.admin and "manager_id" in update_data:
+        del update_data["manager_id"]
+
+    updated_project = await org_repo.update_project(db, project, update_data)
     await audit_repo.create_audit_log(
-        db, current_user.id, "UPDATE_PROJECT", "project", project_id, project_in.model_dump(exclude_unset=True)
+        db, current_user.id, "UPDATE_PROJECT", "project", project_id, update_data
     )
     await db.commit()
     return updated_project

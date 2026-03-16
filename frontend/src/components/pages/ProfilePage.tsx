@@ -31,10 +31,10 @@ const ProfilePage: React.FC = () => {
                     notification_level: res.data.notification_level ?? 2,
                     is_2fa_enabled: res.data.is_2fa_enabled || false
                 });
-                try {
+                if (res.data.role === 'admin') {
                     const depts = await getDepartments();
                     setDepartments(depts);
-                } catch { /* Not an admin */ }
+                }
             } catch {
                 navigate('/login');
             } finally {
@@ -53,12 +53,14 @@ const ProfilePage: React.FC = () => {
     const handleSave = async (overrides?: any) => {
         console.log('ProfilePage: handleSave started', { currentForm: form, overrides });
         try {
+            const cleanOverrides = (overrides && !(overrides instanceof Object && 'nativeEvent' in overrides)) ? overrides : {};
+
             const updatePayload = {
                 full_name: form.full_name,
                 telegram_chat_id: form.telegram_chat_id || null,
                 notification_level: form.notification_level,
                 is_2fa_enabled: form.is_2fa_enabled,
-                ...overrides
+                ...cleanOverrides
             };
 
             console.log('ProfilePage: sending request', updatePayload);
@@ -193,7 +195,7 @@ const ProfilePage: React.FC = () => {
                                 </select>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                                <button onClick={handleSave} className="primary" style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button onClick={() => handleSave()} className="primary" style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Save size={18} /> Сохранить изменения
                                 </button>
                                 <button onClick={() => setEditing(false)} style={{

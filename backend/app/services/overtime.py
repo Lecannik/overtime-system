@@ -11,20 +11,46 @@ from app.repositories import organization as org_repo
 from app.repositories import user as user_repo
 
 
+from datetime import datetime
+from app.core.utils import calculate_overtime_hours
+
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
-    Создает новую заявку на переработку.
-
     Args:
         session: Асинхронная сессия SQLAlchemy.
         overtime_in: Данные заявки (дата, часы, проект_id).
         user_id: ID сотрудника, подающего заявку.
 
-    Returns:
-        Созданная заявка с загруженными отношениями.
+    Создает новую заявку на переработку с проверкой бизнес-правил.
     """
-    data = overtime_in.model_dump()
+    start_time = overtime_in.start_time
+    end_time = overtime_in.end_time
+    
+    # Убираем таймзоны для корректного сравнения
+    if start_time.tzinfo:
+        start_time = start_time.replace(tzinfo=None)
+    if end_time.tzinfo:
+        end_time = end_time.replace(tzinfo=None)
 
+    # 1. Запрет на будущее время
+    if start_time > datetime.now():
+        raise HTTPException(
+            status_code=400, 
+            detail="Нельзя создавать заявку на будущее время."
+        )
+
+    # 2. Проверка на пересечение (Overlap)
+    has_overlap = await overtime_repo.check_overlapping_overtimes(
+        session, user_id, start_time, end_time
+    )
+    if has_overlap:
+        raise HTTPException(
+            status_code=400,
+            detail="У вас уже есть заявка на это (или перекрывающееся) время."
+        )
+
+    # 3. Базовое создание
+    data = overtime_in.model_dump()
     overtime_db = Overtime(
         **data,
         user_id=user_id,
@@ -32,11 +58,24 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     )
     overtime = await overtime_repo.create_overtime(session, overtime_db)
 
-    # Релоадим с релейшнами для уведомлений
+    # Релоадим с релейшнами
     overtime = await overtime_repo.get_overtime_by_id(session, overtime.id)
 
-    # Получаем менеджера и начальника для уведомления
+    # 4. Проверка недельных лимитов
+    weekly_hours = await overtime_repo.get_weekly_overtime_hours(
+        session, user_id, overtime.project_id
+    )
+    
+    # Получаем менеджера проекта
     manager = await user_repo.get_user_by_id(session, overtime.project.manager_id)
+    
+    # Если лимит превышен — уведомляем менеджера
+    if weekly_hours > overtime.project.weekly_limit:
+        await notifications.notify_limit_exceeded(
+            session, overtime, manager, weekly_hours, overtime.project.weekly_limit
+        )
+
+    # Получаем начальника для стандартного уведомления
     dept = await org_repo.get_department_by_id(session, overtime.user.department_id)
     head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
 

@@ -17,3 +17,5 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     # Менеджер проекта
     manager_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    # Лимит переработок в часах на неделю для этого проекта
+    weekly_limit: Mapped[int] = mapped_column(Integer, default=50)

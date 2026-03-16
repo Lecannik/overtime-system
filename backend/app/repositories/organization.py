@@ -57,6 +57,14 @@ async def get_projects(session: AsyncSession) -> list[Project]:
     return result.scalars().all()
 
 
+async def get_projects_by_manager(session: AsyncSession, manager_id: int) -> list[Project]:
+    """Получить проекты, где пользователь является менеджером."""
+    result = await session.execute(
+        select(Project).where(Project.manager_id == manager_id).order_by(Project.id)
+    )
+    return result.scalars().all()
+
+
 async def get_project_by_id(session: AsyncSession, project_id: int) -> Project | None:
     """Получить проект по ID."""
     result = await session.execute(select(Project).where(Project.id == project_id))

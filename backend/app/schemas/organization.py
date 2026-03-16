@@ -24,14 +24,17 @@ class DepartmentResponse(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     manager_id: int
+    weekly_limit: int = 50
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
     manager_id: int | None = None
+    weekly_limit: int | None = None
 
 class ProjectResponse(BaseModel):
     id: int
     name: str
     manager_id: int
+    weekly_limit: int
 
     model_config = ConfigDict(from_attributes=True)

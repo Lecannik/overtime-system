@@ -127,3 +127,53 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
         "total_hours": total_hours,
         "by_project": by_project
     }
+
+async def check_overlapping_overtimes(
+    session: AsyncSession, 
+    user_id: int, 
+    start_time: datetime, 
+    end_time: datetime,
+    exclude_id: int | None = None
+) -> bool:
+    """
+    Проверяет, нет ли у пользователя других заявок, перекрывающихся по времени.
+    Статусы CANCELLED и REJECTED не учитываются.
+    """
+    query = select(Overtime).where(
+        Overtime.user_id == user_id,
+        Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
+        or_(
+            # Новое начало внутри существующего периода
+            (Overtime.start_time <= start_time) & (Overtime.end_time > start_time),
+            # Новое окончание внутри существующего периода
+            (Overtime.start_time < end_time) & (Overtime.end_time >= end_time),
+            # Существующий период целиком внутри нового
+            (Overtime.start_time >= start_time) & (Overtime.end_time <= end_time)
+        )
+    )
+    if exclude_id:
+        query = query.where(Overtime.id != exclude_id)
+        
+    result = await session.execute(query)
+    return result.scalar_one_or_none() is not None
+
+async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project_id: int) -> float:
+    """
+    Рассчитывает суммарное количество часов переработки пользователя по проекту за текущую неделю.
+    Неделя считается с понедельника.
+    """
+    now = datetime.now()
+    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Мы берем все заявки, кроме отмененных и отклоненных
+    query = select(Overtime).where(
+        Overtime.user_id == user_id,
+        Overtime.project_id == project_id,
+        Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
+        Overtime.start_time >= monday
+    )
+    result = await session.execute(query)
+    overtimes = result.scalars().all()
+    
+    from app.core.utils import calculate_overtime_hours
+    return sum(calculate_overtime_hours(ot.start_time, ot.end_time) for ot in overtimes)

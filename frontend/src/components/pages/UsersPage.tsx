@@ -139,7 +139,7 @@ const UsersPage: React.FC = () => {
             setEditData({ name: '', head_id: null });
         } else if (activeTab === 'projects') {
             setModalType('project');
-            setEditData({ name: '', manager_id: currentUser?.id || null });
+            setEditData({ name: '', manager_id: currentUser?.id || null, weekly_limit: 50 });
         }
         setIsModalOpen(true);
     };
@@ -173,12 +173,14 @@ const UsersPage: React.FC = () => {
                 if (editData.id) {
                     await updateProject(editData.id, {
                         name: editData.name,
-                        manager_id: editData.manager_id ? parseInt(editData.manager_id) : null
+                        manager_id: editData.manager_id ? parseInt(editData.manager_id) : null,
+                        weekly_limit: editData.weekly_limit ? parseInt(editData.weekly_limit) : 50
                     });
                 } else {
                     await createProject({
                         name: editData.name,
-                        manager_id: editData.manager_id ? Number(editData.manager_id) : undefined
+                        manager_id: editData.manager_id ? Number(editData.manager_id) : undefined,
+                        weekly_limit: editData.weekly_limit ? parseInt(editData.weekly_limit) : 50
                     });
                 }
             }
@@ -642,6 +644,10 @@ const UsersPage: React.FC = () => {
                                             <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>Не назначен</span>
                                         )}
                                     </div>
+                                    <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                        <Clock size={14} />
+                                        Лимит: <b>{p.weekly_limit}ч / нед</b>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -879,6 +885,18 @@ const UsersPage: React.FC = () => {
                                             ))}
                                         </select>
                                     </div>
+                                    <div className="input-group">
+                                        <label>Недельный лимит часов</label>
+                                        <input
+                                            type="number"
+                                            value={editData.weekly_limit}
+                                            onChange={(e) => setEditData({ ...editData, weekly_limit: e.target.value })}
+                                            placeholder="Напр. 50"
+                                        />
+                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
+                                            Суммарная переработка по проекту за неделю.
+                                        </small>
+                                    </div>
                                 </>
                             )}
 
@@ -905,7 +923,8 @@ const UsersPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -924,7 +943,7 @@ const UsersPage: React.FC = () => {
                     refreshData();
                 }}
             />
-        </div>
+        </div >
     );
 };
 
