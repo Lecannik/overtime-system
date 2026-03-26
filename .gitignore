@@ -1,23 +1,36 @@
-# Python
-venv/
-__pycache__/
-*.pyc
-.pytest_cache/
+# --- ПАПКА АГЕНТА ---
+# agent.md скрыт по просьбе пользователя (не для Git)
+agent.md
+Gemini.md_old
+AGENT_GUIDELINES.md
 
-# Node / Frontend
+# --- PYTHON (БЭКЕНД) ---
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+.mypy_cache/
+
+# --- NODE / VITE (ФРОНТЕНД) ---
 node_modules/
 dist/
-.eslintcache
-
-# Environment & Secrets
-.env
+dist-ssr/
 *.local
+.eslintcache
+.vscode/
+.idea/
 
-# OS
+# --- ОКРУЖЕНИЕ И СЕКРЕТЫ ---
+.env
+.env.test
+
+# --- СИСТЕМНЫЕ ФАЙЛЫ ---
 .DS_Store
 Thumbs.db
-
-# Agent & Helper files
-agent.md
-AGENT_GUIDELINES.md
-Gemini.md_old
+*.swp
+*.bak

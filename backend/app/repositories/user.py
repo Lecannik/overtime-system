@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.user import User
+from app.models.user import User, UserCompany
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
@@ -24,6 +24,11 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     result = await session.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
 
+
+async def get_user_by_company(session: AsyncSession, company: UserCompany) -> list[User]:
+    """Получить всех пользователей по компании"""
+    result = await session.execute(select(User).where(User.company == company))
+    return result.scalars().all()
 
 async def update_user(session: AsyncSession, user: User, update_data: dict) -> User:
     """Обновить пользователя"""

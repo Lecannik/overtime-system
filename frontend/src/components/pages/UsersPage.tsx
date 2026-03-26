@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users as UsersIcon, Building2, FolderKanban,
-    Shield, Search, Filter, Edit2, Key, Trash2, Plus, CheckCircle2, XCircle, User as UserIcon, X, Activity, Clock, ExternalLink, Globe, UserPlus, ShieldCheck
+    Shield, Search, Filter, Edit2, Key, Trash2, Plus, CheckCircle2, XCircle, X, Activity, Clock, ExternalLink, Globe, ShieldCheck
 } from 'lucide-react';
 import api, {
     getUsers,
@@ -29,6 +29,11 @@ const ROLE_LABELS: Record<string, string> = {
     head: 'Начальник отдела',
     manager: 'Менеджер проектов',
     employee: 'Сотрудник'
+};
+
+const COMPANY_LABELS: Record<string, string> = {
+    Polymedia: 'Polymedia',
+    'AJ-techCom': 'AJ-techCom'
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -65,6 +70,7 @@ const UsersPage: React.FC = () => {
     const [roleFilter, setRoleFilter] = useState('ALL');
     const [deptFilter, setDeptFilter] = useState('ALL');
     const [sortConfig, setSortConfig] = useState<{ field: 'name' | 'dept', direction: 'asc' | 'desc' }>({ field: 'name', direction: 'asc' });
+    const [companyFilter, setCompanyFilter] = useState('ALL');
 
     const [users, setUsers] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
@@ -133,7 +139,7 @@ const UsersPage: React.FC = () => {
     const handleAdd = () => {
         if (activeTab === 'users') {
             setModalType('user');
-            setEditData({ email: '', full_name: '', role: 'employee', department_id: null, is_active: true });
+            setEditData({ email: '', full_name: '', role: 'employee', company: 'Polymedia', department_id: null, is_active: true });
         } else if (activeTab === 'departments') {
             setModalType('dept');
             setEditData({ name: '', head_id: null });
@@ -151,6 +157,7 @@ const UsersPage: React.FC = () => {
                     await updateUser(editData.id, {
                         full_name: editData.full_name,
                         role: editData.role,
+                        company: editData.company,
                         department_id: editData.department_id ? parseInt(editData.department_id) : null,
                         is_active: editData.is_active
                     });
@@ -252,7 +259,8 @@ const UsersPage: React.FC = () => {
                 u.email.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
             const matchesDept = deptFilter === 'ALL' || u.department_id === parseInt(deptFilter);
-            return matchesSearch && matchesRole && matchesDept;
+            const matchesCompany = companyFilter === 'ALL' || u.company === companyFilter;
+            return matchesSearch && matchesRole && matchesDept && matchesCompany;
         })
         .sort((a, b) => {
             if (sortConfig.field === 'name') {
@@ -370,67 +378,82 @@ const UsersPage: React.FC = () => {
                 </div>
 
                 {activeTab === 'users' && (
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Filter size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                        <select
-                            value={roleFilter}
-                            onChange={(e) => setRoleFilter(e.target.value)}
-                            style={{
-                                padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
-                                background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
-                                fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
-                            }}
-                        >
-                            <option value="ALL">Все роли</option>
-                            <option value="admin">Администраторы</option>
-                            <option value="head">Начальники</option>
-                            <option value="manager">Менеджеры</option>
-                            <option value="employee">Сотрудники</option>
-                        </select>
-                    </div>
-                )}
+                    <>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Filter size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <select
+                                value={roleFilter}
+                                onChange={(e) => setRoleFilter(e.target.value)}
+                                style={{
+                                    padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                    background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                    fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                                }}
+                            >
+                                <option value="ALL">Все роли</option>
+                                <option value="admin">Администраторы</option>
+                                <option value="head">Начальники</option>
+                                <option value="manager">Менеджеры</option>
+                                <option value="employee">Сотрудники</option>
+                            </select>
+                        </div>
 
-                {activeTab === 'users' && (
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Building2 size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                        <select
-                            value={deptFilter}
-                            onChange={(e) => setDeptFilter(e.target.value)}
-                            style={{
-                                padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
-                                background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
-                                fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
-                            }}
-                        >
-                            <option value="ALL">Все отделы</option>
-                            {departments.map(d => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Building2 size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <select
+                                value={deptFilter}
+                                onChange={(e) => setDeptFilter(e.target.value)}
+                                style={{
+                                    padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                    background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                    fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                                }}
+                            >
+                                <option value="ALL">Все отделы</option>
+                                {departments.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
 
-                {activeTab === 'users' && (
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Clock size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                        <select
-                            value={`${sortConfig.field}_${sortConfig.direction}`}
-                            onChange={(e) => {
-                                const [field, dir] = e.target.value.split('_');
-                                setSortConfig({ field: field as any, direction: dir as any });
-                            }}
-                            style={{
-                                padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
-                                background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
-                                fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
-                            }}
-                        >
-                            <option value="name_asc">Имя (А-Я)</option>
-                            <option value="name_desc">Имя (Я-А)</option>
-                            <option value="dept_asc">Отдел (А-Я)</option>
-                            <option value="dept_desc">Отдел (Я-А)</option>
-                        </select>
-                    </div>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Globe size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <select
+                                value={companyFilter}
+                                onChange={(e) => setCompanyFilter(e.target.value)}
+                                style={{
+                                    padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                    background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                    fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                                }}
+                            >
+                                <option value="ALL">Все компании</option>
+                                <option value="Polymedia">Polymedia</option>
+                                <option value="AJ-techCom">AJ-techCom</option>
+                            </select>
+                        </div>
+
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Clock size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <select
+                                value={`${sortConfig.field}_${sortConfig.direction}`}
+                                onChange={(e) => {
+                                    const [field, dir] = e.target.value.split('_');
+                                    setSortConfig({ field: field as any, direction: dir as any });
+                                }}
+                                style={{
+                                    padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
+                                    background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
+                                    fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
+                                }}
+                            >
+                                <option value="name_asc">Имя (А-Я)</option>
+                                <option value="name_desc">Имя (Я-А)</option>
+                                <option value="dept_asc">Отдел (А-Я)</option>
+                                <option value="dept_desc">Отдел (Я-А)</option>
+                            </select>
+                        </div>
+                    </>
                 )}
 
                 <button
@@ -504,6 +527,22 @@ const UsersPage: React.FC = () => {
                                                 <Shield size={10} />
                                                 {ROLE_LABELS[u.role] || u.role}
                                             </span>
+                                            <span style={{
+                                                fontSize: '0.7rem',
+                                                padding: '2px 10px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(234, 179, 8, 0.1)',
+                                                color: '#ca8a04',
+                                                fontWeight: 800,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                border: '1px solid rgba(234, 179, 8, 0.2)',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                <Globe size={10} />
+                                                {COMPANY_LABELS[u.company] || u.company}
+                                            </span>
                                             {u.is_2fa_enabled && (
                                                 <span title="2FA Включена" style={{
                                                     fontSize: '0.65rem',
@@ -535,6 +574,9 @@ const UsersPage: React.FC = () => {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>
                                         <Building2 size={16} style={{ color: 'var(--text-muted)' }} />
                                         {departments.find(d => d.id === u.department_id)?.name || 'Без отдела'}
+                                        <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.85rem' }}>
+                                            • {COMPANY_LABELS[u.company] || u.company}
+                                        </span>
                                     </div>
                                     <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                                         Регистрация: {new Date(u.created_at).toLocaleDateString()}
@@ -812,6 +854,16 @@ const UsersPage: React.FC = () => {
                                             <option value="manager">Менеджер проектов</option>
                                             <option value="head">Начальник отдела</option>
                                             <option value="admin">Администратор</option>
+                                        </select>
+                                    </div>
+                                    <div className="input-group">
+                                        <label>Компания</label>
+                                        <select
+                                            value={editData.company}
+                                            onChange={(e) => setEditData({ ...editData, company: e.target.value })}
+                                        >
+                                            <option value="Polymedia">Polymedia</option>
+                                            <option value="AJ-techCom">AJ-techCom</option>
                                         </select>
                                     </div>
                                     <div className="input-group">

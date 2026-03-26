@@ -1,11 +1,19 @@
+"""
+Репозиторий для работы с данными переработок.
+Инкапсулирует SQL-логику и правила выборки данных из базы.
+"""
+
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from datetime import datetime, date, timedelta
+from collections import defaultdict
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
 from app.models.user import User, UserRole
 
 async def create_overtime(session: AsyncSession, overtime_db: Overtime) -> Overtime:
+    """Сохраняет новую модель переработки в базу данных."""
     session.add(overtime_db)
     await session.commit()
     await session.refresh(overtime_db)
@@ -17,32 +25,34 @@ async def get_overtimes(
     status: OvertimeStatus | None = None,
     project_id: int | None = None
 ):
+    """
+    Получает список заявок с учетом прав доступа текущего пользователя.
+    
+    Логика прав:
+    - Админ: видит всё.
+    - Сотрудник: видит только свои заявки.
+    - Менеджер/Начальник: видят свои + заявки по своим проектам/отделам.
+    """
     query = select(Overtime).join(Project, Overtime.project_id == Project.id)
     query = query.join(User, Overtime.user_id == User.id)
 
-    # --- 1. ПРАВА ДОСТУПА (Access Control) ---
-    
+    # Ограничение видимости по ролям
     if current_user.role == UserRole.admin:
         pass 
-
     elif current_user.role == UserRole.employee:
         query = query.where(Overtime.user_id == current_user.id)
-
     else:
-        # Менеджер проекта OR Начальник отдела
-        
-        # Подзапрос: отделы, где юзер - начальник
+        # Для руководителей: свои + подчиненные
         my_depts = select(Department.id).where(Department.head_id == current_user.id)
-        
         query = query.where(
             or_(
-                Overtime.user_id == current_user.id,        # Свои заявки
-                Project.manager_id == current_user.id,     # Я менеджер этого ПРОЕКТА
-                User.department_id.in_(my_depts)           # Сотрудник из МОЕГО ОТДЕЛА
+                Overtime.user_id == current_user.id,        # Свои
+                Project.manager_id == current_user.id,     # Проекты, где я менеджер
+                User.department_id.in_(my_depts)           # Отделы, где я начальник
             )
         )
 
-    # --- 2. ПОЛЬЗОВАТЕЛЬСКИЕ ФИЛЬТРЫ ---
+    # Дополнительные фильтры
     if status:
         query = query.where(Overtime.status == status)
     if project_id:
@@ -58,17 +68,20 @@ async def get_overtimes(
 
 
 async def get_overtime_by_id(session: AsyncSession, overtime_id: int) -> Overtime | None:
+    """Получает одну заявку по ID с подгрузкой связанных данных проекта и пользователя."""
     query = (
         select(Overtime)
         .where(Overtime.id == overtime_id)
         .options(
-            selectinload(Overtime.project),    # для проверки manager_id
-            selectinload(Overtime.user),       # для проверки department_id
+            selectinload(Overtime.project),
+            selectinload(Overtime.user),
         )
     )
     result = await session.execute(query)
     return result.scalar_one_or_none()
+
 async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_data: dict) -> Overtime:
+    """Обновляет поля переработки на основе словаря данных."""
     for key, value in update_data.items():
         setattr(overtime_db, key, value)
     
@@ -76,12 +89,11 @@ async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_d
     await session.refresh(overtime_db)
     return overtime_db
 
-
-from datetime import datetime, date, timedelta
-from collections import defaultdict
-
 async def get_personal_stats(session: AsyncSession, user_id: int):
-    # Получаем все APPROVED заявки пользователя
+    """
+    Собирает статистику за текущий и прошлый месяцы 
+    для отображения на дашборде пользователя.
+    """
     query = (
         select(Overtime)
         .join(Project)
@@ -95,7 +107,6 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     now = datetime.now()
     this_month_start = date(now.year, now.month, 1)
     
-    # Прошлый месяц
     first_this_month = date(now.year, now.month, 1)
     last_month_end = first_this_month - timedelta(days=1)
     last_month_start = date(last_month_end.year, last_month_end.month, 1)
@@ -122,9 +133,9 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     ]
 
     return {
-        "current_month_hours": this_month_hours,
-        "last_month_hours": last_month_hours,
-        "total_hours": total_hours,
+        "current_month_hours": round(this_month_hours, 1),
+        "last_month_hours": round(last_month_hours, 1),
+        "total_hours": round(total_hours, 1),
         "by_project": by_project
     }
 
@@ -136,18 +147,15 @@ async def check_overlapping_overtimes(
     exclude_id: int | None = None
 ) -> bool:
     """
-    Проверяет, нет ли у пользователя других заявок, перекрывающихся по времени.
-    Статусы CANCELLED и REJECTED не учитываются.
+    Проверяет пересечение периодов. 
+    Алгоритм: если (Начало1 < Конец2) и (Конец1 > Начало2), то есть пересечение.
     """
     query = select(Overtime).where(
         Overtime.user_id == user_id,
         Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
         or_(
-            # Новое начало внутри существующего периода
             (Overtime.start_time <= start_time) & (Overtime.end_time > start_time),
-            # Новое окончание внутри существующего периода
             (Overtime.start_time < end_time) & (Overtime.end_time >= end_time),
-            # Существующий период целиком внутри нового
             (Overtime.start_time >= start_time) & (Overtime.end_time <= end_time)
         )
     )
@@ -159,13 +167,12 @@ async def check_overlapping_overtimes(
 
 async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project_id: int) -> float:
     """
-    Рассчитывает суммарное количество часов переработки пользователя по проекту за текущую неделю.
-    Неделя считается с понедельника.
+    Подсчет часов за текущую календарную неделю (с понедельника).
+    Нужно для проверки лимитов проекта.
     """
     now = datetime.now()
     monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Мы берем все заявки, кроме отмененных и отклоненных
     query = select(Overtime).where(
         Overtime.user_id == user_id,
         Overtime.project_id == project_id,

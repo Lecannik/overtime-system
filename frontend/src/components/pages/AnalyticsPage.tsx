@@ -5,14 +5,14 @@ import {
     Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import {
-    Clock, FileCheck, Users, Briefcase, Activity,
-    Calendar, ArrowUpRight, ArrowDownRight, Search, Download, Filter, ChevronDown
+    Clock, FileCheck, Users, Activity,
+    ArrowUpRight, ArrowDownRight, Search, Download, ChevronDown
 } from 'lucide-react';
 import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
-import api, { getAnalyticsSummary, getProjectAnalytics, getDepartmentAnalytics, exportAnalytics, getUserAnalytics } from '../../services/api';
+import api, { getAnalyticsSummary, getProjectAnalytics, getDepartmentAnalytics, exportAnalytics, getUserAnalytics, getReviewAnalytics } from '../../services/api';
 
-const COLORS = ['#1e40af', '#15803d', '#b91c1c', '#3b82f6', '#10b981', '#ef4444'];
+const COLORS = ['#1e40afff', '#15803d', '#b91c1c', '#3b82f6', '#10b981', '#ef4444'];
 const STATUS_COLORS: Record<string, string> = {
     'Approved': '#15803d',
     'Pending': '#b45309',
@@ -55,9 +55,12 @@ const AnalyticsPage: React.FC = () => {
     const [period, setPeriod] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
-    const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users'>('projects');
+    const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users' | 'companies'>('projects');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+    const [selectedCompany, setSelectedCompany] = useState<string>('all');
     const [userStats, setUserStats] = useState<any[]>([]);
+    const [reviewStats, setReviewStats] = useState<any>(null);
+    const [companyStats, setCompanyStats] = useState<any[]>([]);
 
     const getFilterParams = () => {
         const params: any = {};
@@ -78,6 +81,10 @@ const AnalyticsPage: React.FC = () => {
         } else if (period === 'custom' && startDate) {
             params.start_date = new Date(startDate).toISOString();
             if (endDate) params.end_date = new Date(endDate).toISOString();
+        }
+
+        if (selectedCompany !== 'all') {
+            params.company = selectedCompany;
         }
 
         return params;
@@ -108,17 +115,21 @@ const AnalyticsPage: React.FC = () => {
                 userParams.project_id = selectedProjectId;
             }
 
-            const [sum, proj, dept, uStats] = await Promise.all([
+            const [sum, proj, dept, uStats, revStats, cStats] = await Promise.all([
                 getAnalyticsSummary(params),
                 getProjectAnalytics(params),
                 getDepartmentAnalytics(params).catch(() => []),
-                getUserAnalytics(userParams).catch(() => [])
+                getUserAnalytics(userParams).catch(() => []),
+                getReviewAnalytics(params).catch(() => null),
+                me.data.role === 'admin' ? api.get('/analytics/companies', { params }).then(res => res.data).catch(() => []) : Promise.resolve([])
             ]);
 
             setSummary(sum);
             setProjects(proj);
             setDepartments(dept);
             setUserStats(uStats);
+            setReviewStats(revStats);
+            setCompanyStats(cStats);
         } catch (err) {
             console.error(err);
             navigate('/login');
@@ -129,7 +140,7 @@ const AnalyticsPage: React.FC = () => {
 
     useEffect(() => {
         fetchAll();
-    }, [period, startDate, endDate, selectedProjectId]);
+    }, [period, startDate, endDate, selectedProjectId, selectedCompany]);
 
     const handleExport = async () => {
         setExporting(true);
@@ -252,6 +263,27 @@ const AnalyticsPage: React.FC = () => {
                         <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                     </div>
 
+                    {/* Company Selector (Admin only) */}
+                    {user?.role === 'admin' && (
+                        <div style={{ position: 'relative' }}>
+                            <select
+                                value={selectedCompany}
+                                onChange={(e) => setSelectedCompany(e.target.value)}
+                                style={{
+                                    padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border)',
+                                    background: 'var(--bg-primary)', cursor: 'pointer', appearance: 'none',
+                                    paddingRight: '40px', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)',
+                                    fontFamily: 'inherit'
+                                }}
+                            >
+                                <option value="all">Все компании</option>
+                                <option value="Polymedia">Polymedia</option>
+                                <option value="AJ-techCom">AJ-techCom</option>
+                            </select>
+                            <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                        </div>
+                    )}
+
                     {period === 'custom' && (
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input
@@ -306,6 +338,44 @@ const AnalyticsPage: React.FC = () => {
                     color="#b45309"
                 />
             </div>
+
+            {/* Review Analytics Report */}
+            {reviewStats && (
+                <div className="glass-card animate-fade-in" style={{ marginBottom: '40px', background: 'var(--bg-primary)', border: '2px solid var(--accent)', borderStyle: 'dashed' }}>
+                    <div style={{ marginBottom: '24px' }}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <FileCheck size={24} style={{ color: 'var(--accent)' }} /> Отчет по качеству согласования
+                        </h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Сравнение запрошенных сотрудниками часов и фактически одобренных менеджерами.</p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                        <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Запрошено (план)</p>
+                            <p style={{ fontSize: '1.75rem', fontWeight: 900 }}>{reviewStats.total_requested_hours.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>ч</span></p>
+                        </div>
+                        <div style={{ padding: '20px', borderRadius: '16px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid var(--success)' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--success)', textTransform: 'uppercase', marginBottom: '8px' }}>Утверждено (факт)</p>
+                            <p style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--success)' }}>{reviewStats.total_approved_hours.toFixed(1)} <span style={{ fontSize: '1rem', opacity: 0.7 }}>ч</span></p>
+                        </div>
+                        <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Сверх запрошенного</p>
+                            <p style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--accent)' }}>{reviewStats.more_than_requested_count}</p>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>заявок</p>
+                        </div>
+                        <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>С понижением (частично)</p>
+                            <p style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--warning)' }}>{reviewStats.less_than_requested_count}</p>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>заявок</p>
+                        </div>
+                        <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)' }}>
+                            <p style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Полное соответствие</p>
+                            <p style={{ fontSize: '1.75rem', fontWeight: 900 }}>{reviewStats.exact_match_count}</p>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>заявок</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '32px', marginBottom: '32px' }}>
                 {/* Distribution Chart */}
@@ -364,9 +434,20 @@ const AnalyticsPage: React.FC = () => {
                                     padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, border: 'none',
                                     background: compareBy === 'users' ? 'var(--accent)' : 'transparent',
                                     color: compareBy === 'users' ? 'white' : 'var(--text-muted)',
-                                    cursor: 'pointer', transition: 'all 0.2s'
+                                    cursor: 'pointer', transition: 'all 0.2s', marginRight: '4px'
                                 }}
                             >Сотрудники</button>
+                            {user?.role === 'admin' && (
+                                <button
+                                    onClick={() => setCompareBy('companies')}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, border: 'none',
+                                        background: compareBy === 'companies' ? 'var(--accent)' : 'transparent',
+                                        color: compareBy === 'companies' ? 'white' : 'var(--text-muted)',
+                                        cursor: 'pointer', transition: 'all 0.2s'
+                                    }}
+                                >Компании</button>
+                            )}
                         </div>
                     </div>
 
@@ -401,6 +482,16 @@ const AnalyticsPage: React.FC = () => {
                                     <YAxis type="category" dataKey="full_name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={120} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <Bar dataKey="total_hours" name="Часы" fill="var(--accent)" radius={[0, 8, 8, 0]} />
+                                </BarChart>
+                            ) : compareBy === 'companies' ? (
+                                <BarChart data={companyStats} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                    <XAxis dataKey="company" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Legend verticalAlign="top" align="right" />
+                                    <Bar dataKey="hours" name="Часы" fill="var(--accent)" radius={[8, 8, 0, 0]} />
+                                    <Bar dataKey="requests" name="Кол-во заявок" fill="#14b8a6" radius={[8, 8, 0, 0]} />
                                 </BarChart>
                             ) : (
                                 <AreaChart data={compareBy === 'projects' ? filteredProjects : filteredDepts}>

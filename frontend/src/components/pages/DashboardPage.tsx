@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Clock, CheckCircle2, XCircle, Calendar, Briefcase, FileText,
-  Search, ChevronRight, User, Activity
+  Search, User, Activity, Edit2
 } from 'lucide-react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import api, { getOvertimes, cancelOvertime, getMyStats, getWeeklyStats } from '../../services/api';
 import CreateOvertimeModal from './CreateOvertimeModal';
+import OvertimeDetailModal from './OvertimeDetailModal';
 import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
 
@@ -23,6 +24,7 @@ const DashboardPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [editOvertimeData, setEditOvertimeData] = useState<any>(null);
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [selectedOvertime, setSelectedOvertime] = useState<any | null>(null);
 
   const fetchData = async () => {
     try {
@@ -283,8 +285,9 @@ const DashboardPage: React.FC = () => {
                         <StatusIcon size={12} /> {status.label}
                       </div>
                     </div>
-                    <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ot.description}</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <h4 className="line-clamp-3" style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '8px', overflow: 'hidden' }}>{ot.description}</h4>
+                    <div className="text-expand-btn" onClick={(e) => { e.stopPropagation(); setSelectedOvertime(ot); }}>Подробнее...</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)', fontWeight: 700, fontSize: '0.8rem' }}>
                         <Briefcase size={14} /> {ot.project?.name || 'Внутренний'}
                       </div>
@@ -325,8 +328,24 @@ const DashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 5. Действия */}
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    {ot.status === 'PENDING' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(ot); }}
+                        className="action-button-modern"
+                        style={{ width: '38px', height: '38px', padding: 0, background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                        title="Редактировать"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedOvertime(ot); }}
+                      className="action-button-modern"
+                      style={{ height: '38px', padding: '0 16px', fontSize: '0.85rem', fontWeight: 700, borderRadius: '12px', background: 'var(--accent)', color: 'white', border: 'none' }}
+                    >
+                      {ot.status === 'PENDING' ? 'Просмотр' : 'Детали'}
+                    </button>
                     {ot.status === 'PENDING' && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleCancel(ot.id); }}
@@ -337,14 +356,6 @@ const DashboardPage: React.FC = () => {
                         <XCircle size={18} />
                       </button>
                     )}
-                    <button
-                      disabled={!canEdit}
-                      onClick={() => handleEdit(ot)}
-                      className="action-button-modern"
-                      style={{ width: '38px', height: '38px', padding: 0, opacity: canEdit ? 1 : 0.5 }}
-                    >
-                      <ChevronRight size={20} />
-                    </button>
                   </div>
 
                 </div>
@@ -366,6 +377,14 @@ const DashboardPage: React.FC = () => {
             setIsModalOpen(false);
             setEditOvertimeData(null);
           }}
+        />
+      )}
+      {selectedOvertime && (
+        <OvertimeDetailModal
+          overtime={selectedOvertime}
+          currentUser={user}
+          onClose={() => setSelectedOvertime(null)}
+          onStatusUpdate={fetchData}
         />
       )}
     </div>

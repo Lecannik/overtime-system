@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, Briefcase, FileText, AlertCircle } from 'lucide-react';
+import { X, Calendar, Clock, Briefcase, FileText, AlertCircle, MapPin } from 'lucide-react';
 import { createOvertime, updateOvertime, getProjects } from '../../services/api';
 
 interface Props {
@@ -14,6 +14,7 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [description, setDescription] = useState('');
+    const [locationName, setLocationName] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -27,6 +28,7 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
             setStartTime(fmt(editData.start_time));
             setEndTime(fmt(editData.end_time));
             setDescription(editData.description);
+            setLocationName(editData.location_name || '');
         }
     }, [editData]);
 
@@ -40,7 +42,8 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
                 project_id: Number(projectId),
                 start_time: startTime, // Передаем строку прямо из инпута
                 end_time: endTime,     // Передаем строку прямо из инпута
-                description
+                description,
+                location_name: locationName
             };
 
             if (editData) {
@@ -124,6 +127,18 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
                                 </label>
                                 <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} required />
                             </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <MapPin size={16} style={{ color: 'var(--accent)' }} /> Местоположение (объект)
+                            </label>
+                            <input
+                                value={locationName}
+                                onChange={e => setLocationName(e.target.value)}
+                                placeholder="Укажите адрес или название объекта..."
+                                style={{ width: '100%' }}
+                            />
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

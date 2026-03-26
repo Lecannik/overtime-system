@@ -36,6 +36,7 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
         hashed_password=hashed_pwd,
         role=user_in.role,
         department_id=user_in.department_id,
+        company=user_in.company,
         is_active=getattr(user_in, "is_active", True)
     )
 

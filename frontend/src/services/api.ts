@@ -127,17 +127,13 @@ export const markAllNotificationsRead = async () => {
 };
 
 // Согласовать или отклонить заявку
-export const reviewOvertime = async (
-  overtimeId: number,
-  approved: boolean,
-  comment?: string,
-  asRole?: string
-) => {
+export const reviewOvertime = async (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) => {
   const token = localStorage.getItem('token');
-  const response = await api.post(`/overtimes/${overtimeId}/review`, {
+  const response = await api.post(`/overtimes/${id}/review`, {
     approved,
-    comment: comment || null,
-    as_role: asRole || null
+    comment,
+    as_role,
+    approved_hours
   }, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -268,11 +264,12 @@ export const updateProject = async (projectId: number, data: {
 // ==================== АНАЛИТИКА ====================
 
 export const getAnalyticsSummary = async (params?: any) => {
-  const token = localStorage.getItem('token');
-  const response = await api.get('/analytics/summary', {
-    headers: { Authorization: `Bearer ${token}` },
-    params
-  });
+  const response = await api.get('/analytics/summary', { params });
+  return response.data;
+};
+
+export const getCompanyComparison = async (params?: any) => {
+  const response = await api.get('/analytics/companies', { params });
   return response.data;
 };
 
@@ -326,6 +323,15 @@ export const deleteProject = async (projectId: number) => {
   await api.delete(`/admin/projects/${projectId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
+};
+
+export const getReviewAnalytics = async (params?: any) => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/analytics/reviews', {
+    params,
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
 };
 
 // ==================== АУДИТ ====================

@@ -16,12 +16,19 @@ from app.core.utils import calculate_overtime_hours
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
+    Создает новую заявку на переработку.
+    
+    Бизнес-логика:
+    1. Валидация времени (нельзя в будущее).
+    2. Проверка на пересечение с уже существующими заявками сотрудника.
+    3. Создание записи в БД.
+    4. Проверка недельного лимита проекта (уведомление менеджера при превышении).
+    5. Отправка уведомлений руководителям (Менеджер + Нач. отдела).
+    
     Args:
-        session: Асинхронная сессия SQLAlchemy.
-        overtime_in: Данные заявки (дата, часы, проект_id).
-        user_id: ID сотрудника, подающего заявку.
-
-    Создает новую заявку на переработку с проверкой бизнес-правил.
+        session: Сессия БД.
+        overtime_in: Данные из запроса (проект, время, описание, место).
+        user_id: Владелец заявки.
     """
     start_time = overtime_in.start_time
     end_time = overtime_in.end_time
@@ -91,16 +98,19 @@ async def review_overtime(
     current_user: User
 ):
     """
-    Обрабатывает решение по заявке на переработку.
-
-    Args:
-        session: Асинхронная сессия SQLAlchemy.
-        overtime_id: ID заявки.
-        review: Данные решения (approved, comment, as_role).
-        current_user: Пользователь, принимающий решение.
-
-    Returns:
-        Обновленная заявка.
+    Обрабатывает решение руководителя (или администратора) по заявке.
+    
+    Логика:
+    1. Проверка прав доступа: роль (Manager/Head) должна соответствовать проекту/отделу заявки.
+    2. Сохранение решения (Одобрено/Отклонено) и комментария.
+    3. Обновление общего статуса заявки (Workflow).
+    4. Логирование действия в AuditLog.
+    5. Уведомление сотрудника о решении.
+    
+    Workflow статусов:
+    - Оба Ок -> APPROVED
+    - Любой Reject -> REJECTED
+    - Только один Ок -> MANAGER_APPROVED / HEAD_APPROVED
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
     if not overtime:
@@ -144,6 +154,10 @@ async def review_overtime(
         else:
             raise HTTPException(status_code=403, detail="У вас нет прав для этого действия")
 
+    # Сохраняем переданные часы (если они есть в решении)
+    if review.approved_hours is not None:
+        overtime.approved_hours = review.approved_hours
+
     # 3. Финальный пересчет статуса
     if overtime.manager_approved is False or overtime.head_approved is False:
         overtime.status = OvertimeStatus.REJECTED
@@ -157,6 +171,11 @@ async def review_overtime(
     elif overtime.head_approved is True:
         overtime.status = OvertimeStatus.HEAD_APPROVED
 
+    # Если заявка полностью одобрена, но часы не были изменены вручную — 
+    # устанавливаем их равными запрошенным (с учетом округления бизнес-логики)
+    if overtime.status == OvertimeStatus.APPROVED and overtime.approved_hours is None:
+        overtime.approved_hours = overtime.hours
+
     # 4. Логируем действие
     await audit_repo.create_audit_log(
         session=session,
@@ -169,7 +188,10 @@ async def review_overtime(
             "comment": review.comment,
             "new_status": overtime.status,
             "as_role": review.as_role,
-            "description": overtime.description
+            "description": overtime.description,
+            "requested_hours": overtime.hours,
+            "raw_hours_exact": overtime.raw_hours,
+            "approved_hours": overtime.approved_hours
         }
     )
 
@@ -188,11 +210,8 @@ async def cancel_overtime(
     current_user: User
 ):
     """
-    Отменяет заявку на переработку.
-
-    Может отменить:
-    - Сам сотрудник (только свою заявку)
-    - Администратор (любую заявку)
+    Отменяет заявку. 
+    Доступно владельцу заявки (если она еще не обработана под корень) или администратору.
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
     if not overtime:
@@ -235,6 +254,11 @@ async def update_overtime(
     overtime_in: OvertimeUpdate,
     current_user: User
 ):
+    """
+    Обновляет данные заявки.
+    При любом изменении данных сотрудником (проект, время), результаты 
+    предыдущих согласований сбрасываются в ожидание (None), а статус возвращается в PENDING.
+    """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
     if not overtime:
         raise HTTPException(status_code=404, detail="Заявка не найдена")

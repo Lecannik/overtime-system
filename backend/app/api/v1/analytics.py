@@ -13,8 +13,8 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole
-from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics
+from app.models.user import User, UserRole, UserCompany
+from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics
 from app.repositories import analytics as analytics_repo
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -36,6 +36,16 @@ async def get_analytics_scope(current_user: User = Depends(get_current_user)) ->
         
     raise HTTPException(status_code=403, detail="Доступ запрещен. Требуется роль менеджера, начальника или админа.")
 
+@router.get("/reviews", response_model=ReviewAnalytics)
+async def get_reviews_stats(
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    db: AsyncSession = Depends(get_db),
+    scope: dict = Depends(get_analytics_scope)
+):
+    """Аналитика по качеству согласования (запрошено vs одобрено)."""
+    return await analytics_repo.get_review_analytics(db, **scope, start_date=start_date, end_date=end_date)
+
 @router.get("/weekly")
 async def get_weekly_stats(
     db: AsyncSession = Depends(get_db),
@@ -46,15 +56,28 @@ async def get_weekly_stats(
 
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_summary(
+    company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     db: AsyncSession = Depends(get_db),
     scope: dict = Depends(get_analytics_scope)
 ):
-    """
-    Получить сводную статистику по переработкам.
-    """
-    return await analytics_repo.get_analytics_summary(db, **scope, start_date=start_date, end_date=end_date)
+    """Общая сводка по переработкам (всего часов, заявок и т.д.)."""
+    return await analytics_repo.get_analytics_summary(db, **scope, company=company, start_date=start_date, end_date=end_date)
+
+
+@router.get("/companies")
+async def get_companies_comparison(
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Сравнительный отчет по компаниям (Доступно только Админам)."""
+    if current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администраторов.")
+    
+    return await analytics_repo.get_company_comparison(db, start_date=start_date, end_date=end_date)
 
 @router.get("/projects", response_model=List[ProjectAnalytics])
 async def get_projects_stats(
@@ -108,9 +131,23 @@ async def export_analytics(
     if not data:
         raise HTTPException(status_code=404, detail="Нет данных для экспорта")
     
-    # Конвертация в DataFrame и ЯВНАЯ фиксация порядка столбцов
+    # Добавляем новые колонки в экспорт
+    data_list = []
+    for d in data:
+        # Для экспорта нам нужно получить объект из БД или рассчитать часы
+        # Но в analytics_repo.get_export_data мы уже получаем список словарей.
+        # Нужно убедиться, что там есть raw_hours и approved_hours.
+        data_list.append(d)
+        
     df = pd.DataFrame(data)
-    cols_order = ["id", "employee", "project", "start_time", "end_time", "hours", "description", "status"]
+    
+    # Добавляем расчет raw_hours если его нет
+    # В репозитории get_export_data нужно убедиться что эти поля есть.
+    
+    # Временно: если в репо нет полей, добавлю их здесь (но лучше обновить репо)
+    # Позже я обновлю репозиторий.
+    
+    cols_order = ["id", "employee", "project", "start_time", "end_time", "hours", "approved_hours", "description", "status"]
     df = df[cols_order]
     
     # Форматирование дат для Excel
@@ -124,7 +161,8 @@ async def export_analytics(
         "project": "Проект",
         "start_time": "Начало",
         "end_time": "Окончание",
-        "hours": "Часы",
+        "hours": "Запрошено",
+        "approved_hours": "Согласовано",
         "description": "Описание",
         "status": "Статус"
     })

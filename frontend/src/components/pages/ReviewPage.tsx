@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
     CheckCircle2, XCircle, Search, Filter,
     Calendar, User, Briefcase, MessageSquare, ShieldCheck,
-    Check, Clock
+    Check, Clock, MapPin
 } from 'lucide-react';
 import api, { getOvertimes, reviewOvertime } from '../../services/api';
 import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
+import OvertimeDetailModal from './OvertimeDetailModal';
 
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
@@ -19,6 +20,9 @@ const ReviewPage: React.FC = () => {
     const [asRole, setAsRole] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [selectedOvertime, setSelectedOvertime] = useState<any | null>(null);
+    const [updateTrigger, setUpdateTrigger] = useState(0);
+    const [approvedHours, setApprovedHours] = useState<string>('');
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -45,16 +49,23 @@ const ReviewPage: React.FC = () => {
             }
         };
         fetchData();
-    }, [navigate]);
+    }, [navigate, updateTrigger]);
 
     const handleReview = async (overtimeId: number, approved: boolean) => {
         try {
-            await reviewOvertime(overtimeId, approved, comment || undefined, asRole || undefined);
+            await reviewOvertime(
+                overtimeId,
+                approved,
+                comment || undefined,
+                asRole || undefined,
+                approved ? parseFloat(approvedHours) : undefined
+            );
             const data = await getOvertimes();
             setOvertimes(data);
             setReviewingId(null);
             setComment('');
             setAsRole('');
+            setApprovedHours('');
         } catch (err: any) {
             alert(err.response?.data?.detail || 'Ошибка при согласовании');
         }
@@ -158,15 +169,16 @@ const ReviewPage: React.FC = () => {
                     {filteredOvertimes.map((ot: any) => (
                         <div key={ot.id} className="glass-card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                                    <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{ot.description}</h4>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                    <h4 className="line-clamp-3" style={{ fontSize: '1.1rem', fontWeight: 700, flex: 1 }}>{ot.description}</h4>
                                     <div style={{
                                         padding: '4px 10px', borderRadius: '10px', background: 'rgba(30, 64, 175, 0.1)',
-                                        color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 700
+                                        color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 700, marginLeft: '12px'
                                     }}>
                                         ID {ot.id}
                                     </div>
                                 </div>
+                                <div className="text-expand-btn" style={{ marginBottom: '16px' }} onClick={() => setSelectedOvertime(ot)}>Подробнее...</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -187,6 +199,14 @@ const ReviewPage: React.FC = () => {
                                             {new Date(ot.start_time).toLocaleString('ru', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} — {new Date(ot.end_time).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                     </div>
+                                    {ot.location_name && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--accent)' }}>
+                                            <MapPin size={16} />
+                                            <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {ot.location_name}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -209,6 +229,20 @@ const ReviewPage: React.FC = () => {
                                                 </select>
                                             </div>
                                         )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Согласовать часов:</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    value={approvedHours}
+                                                    onChange={(e) => setApprovedHours(e.target.value)}
+                                                    placeholder="Кол-во часов..."
+                                                    style={{ paddingLeft: '40px', height: '42px', borderRadius: '8px', border: '1px solid var(--border)', width: '100%', outline: 'none' }}
+                                                />
+                                            </div>
+                                        </div>
                                         <div style={{ position: 'relative' }}>
                                             <MessageSquare size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
                                             <textarea
@@ -261,7 +295,10 @@ const ReviewPage: React.FC = () => {
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => setReviewingId(ot.id)}
+                                            onClick={() => {
+                                                setReviewingId(ot.id);
+                                                setApprovedHours(ot.hours.toString());
+                                            }}
                                             className="primary"
                                             style={{ width: 'auto', padding: '10px 24px', borderRadius: '12px', fontSize: '0.85rem' }}
                                         >
@@ -273,6 +310,14 @@ const ReviewPage: React.FC = () => {
                         </div>
                     ))}
                 </div>
+            )}
+            {selectedOvertime && (
+                <OvertimeDetailModal
+                    overtime={selectedOvertime}
+                    currentUser={user}
+                    onClose={() => setSelectedOvertime(null)}
+                    onStatusUpdate={() => setUpdateTrigger(prev => prev + 1)}
+                />
             )}
         </div>
     );

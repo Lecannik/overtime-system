@@ -366,3 +366,31 @@ textarea:focus {
 .skeleton-base {
   display: block;
 }
+
+/* Text Truncation */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-expand-btn {
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-top: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.text-expand-btn:hover {
+  opacity: 0.8;
+}
+
+.modal-content.wide {
+  max-width: 800px;
+}
