@@ -9,9 +9,9 @@ from app.core.database import get_db
 from app.core.security import hash_password
 
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserCompany
 from app.repositories import user as user_repo
-from app.schemas.user import UserAdminUpdate, UserResponse, UserCreateByAdmin
+from app.schemas.user import UserAdminUpdate, UserResponse, UserCreateByAdmin, PaginatedUsersResponse
 from app.repositories.user import get_user_by_id, update_user, get_all_users
 
 from app.models.organization import Department, Project
@@ -278,18 +278,34 @@ async def create_user(
     return new_user
 
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users", response_model=PaginatedUsersResponse)
 async def list_users(
+    search: str | None = None,
+    sort_by: str = "id",
+    sort_order: str = "asc",
+    page: int = 1,
+    page_size: int = 15,
+    role: UserRole | None = None,
+    department_id: int | None = None,
+    company: UserCompany | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список всех пользователей.
-
-    Доступно только администраторам.
+    Получить список пользователей с поиском, сортировкой и пагинацией (с фильтрами).
     """
     require_admin(current_user)
-    return await user_repo.get_all_users(db)
+    return await user_repo.get_all_users(
+        db,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        page_size=page_size,
+        role=role,
+        department_id=department_id,
+        company=company
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
@@ -345,12 +361,26 @@ async def reset_user_password(
         "hashed_password": hash_password(new_password),
         "must_change_password": True
     })
-    
+    # Отправляем новый пароль по почте через MS Graph
+    try:
+        from app.services.ms_graph import ms_graph
+        success = await ms_graph.send_email(
+            recipient=user.email,
+            subject="Сброс пароля в системе Overtime Pro",
+            body_content=f"<h1>Ваш пароль был сброшен</h1><p>Ваш новый временный пароль: <b>{new_password}</b></p><p>При следующем входе система попросит вас его изменить.</p>"
+        )
+        if success:
+            print(f"DEBUG: Email success sent to {user.email}")
+        else:
+            print(f"DEBUG: Email FAILED to {user.email}. Check MS_SENDER_EMAIL and permissions.")
+    except Exception as e:
+        print(f"DEBUG: Email Exception to {user.email}: {e}")
+
     await audit_repo.create_audit_log(
         db, current_user.id, "RESET_PASSWORD", "user", user_id
     )
     await db.commit()
-    return {"detail": f"Пароль сброшен на: {new_password}"}
+    return {"detail": f"Пароль пользователя {user.full_name} успешно сброшен на: {new_password}"}
  
  
 @router.delete("/users/{user_id}", status_code=204)

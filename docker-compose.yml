@@ -6,32 +6,38 @@ services:
     image: postgres:15
     container_name: overtime_postgres
     restart: always
-    env_file: [.env]
+    env_file: [ .env ]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks: [overtime_network]
+    networks: [ overtime_network ]
 
   # 2. Бэкенд (FastAPI)
   backend:
     build: ./backend
     container_name: overtime_backend
     restart: always
-    env_file: [.env]
+    env_file: [ .env ]
+    environment:
+      - PYTHONUNBUFFERED=1
     depends_on:
       postgres: { condition: service_healthy }
-    networks: [overtime_network]
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./models/cache:/root/.cache/whisper
+      - ./models/gazeta:/app/models/gazeta # Проброс модели суммаризатора
+    networks: [ overtime_network ]
 
   # 3. Фронтенд (React Static)
   frontend:
     build: ./frontend
     container_name: overtime_frontend
     restart: always
-    networks: [overtime_network]
+    networks: [ overtime_network ]
 
   # 4. Внутренний роутер (Gateway)
   nginx-router:
@@ -41,14 +47,15 @@ services:
     volumes:
       - ./infra/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "8080:80"  # К этому порту будет подключаться твой ВНЕШНИЙ Nginx на хосте
+      - "8080:80"
     depends_on:
       - backend
       - frontend
-    networks: [overtime_network]
+    networks: [ overtime_network ]
 
 volumes:
   postgres_data:
+
 
 networks:
   overtime_network:

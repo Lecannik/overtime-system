@@ -1,60 +1,53 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Clock, CheckCircle2, XCircle, Calendar, Briefcase, FileText,
-  Search, User, Activity, Edit2
+  Plus, Clock, CheckCircle, AlertCircle, TrendingUp,
+  MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown
 } from 'lucide-react';
-import {
-  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area
-} from 'recharts';
-import api, { getOvertimes, cancelOvertime, getMyStats, getWeeklyStats } from '../../services/api';
-import CreateOvertimeModal from './CreateOvertimeModal';
-import OvertimeDetailModal from './OvertimeDetailModal';
+import { api, getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics } from '../../services/api';
 import Header from '../layout/Header';
-import Skeleton from '../common/Skeleton';
+import CreateOvertimeModal from './CreateOvertimeModal';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  PieChart, Pie, Cell
+} from 'recharts';
+import { STATUS_LABELS } from '../../constants/locale';
+import LoadingOverlay from '../atoms/LoadingOverlay';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [overtimes, setOvertimes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editOvertime, setEditOvertime] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [editOvertimeData, setEditOvertimeData] = useState<any>(null);
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
-  const [selectedOvertime, setSelectedOvertime] = useState<any | null>(null);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageSize] = useState(10);
 
   const fetchData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+      if (!token) { navigate('/login'); return; }
 
-      const userRes = await api.get('/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const userRes = await api.get('/auth/me');
       setUser(userRes.data);
 
-      if (userRes.data.must_change_password) {
-        navigate('/profile');
-        return;
-      }
-
-      const [otData, statsData, weekRes] = await Promise.all([
-        getOvertimes(),
-        getMyStats(),
-        getWeeklyStats()
+      const [ovRes, statsRes] = await Promise.all([
+        getMyOvertimes({ page: currentPage, page_size: pageSize }),
+        getMyStats()
       ]);
-      setOvertimes(otData);
-      setStats(statsData);
-      setWeeklyData(weekRes);
+      setOvertimes(ovRes.items || []);
+      setTotalPages(ovRes.pages || 1);
+      setStats(statsRes);
     } catch (err) {
-      console.error(err);
-      navigate('/login');
+      console.error('Failed to fetch dashboard data:', err);
+      // Don't auto-navigate to login on every error, maybe just token error
     } finally {
       setLoading(false);
     }
@@ -62,329 +55,312 @@ const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [navigate]);
+  }, [currentPage]);
 
   const handleCancel = async (id: number) => {
-    if (window.confirm('Вы уверены, что хотите отменить эту заявку?')) {
+    if (window.confirm('Отменить заявку?')) {
       await cancelOvertime(id);
       fetchData();
     }
   };
 
-  const handleEdit = (ot: any) => {
-    setEditOvertimeData(ot);
-    setIsModalOpen(true);
-  };
-
-  const getStatusInfo = (status: string) => {
-    switch (status) {
-      case 'APPROVED': return { label: 'Одобрено', icon: CheckCircle2, color: 'var(--success)', bg: 'rgba(22, 163, 74, 0.1)' };
-      case 'REJECTED': return { label: 'Отклонено', icon: XCircle, color: 'var(--danger)', bg: 'rgba(220, 38, 38, 0.1)' };
-      case 'CANCELLED': return { label: 'Отменено', icon: XCircle, color: 'var(--text-muted)', bg: 'var(--bg-tertiary)' };
-      default: return { label: 'В обработке', icon: Clock, color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.1)' };
+  const handleExport = async () => {
+    try {
+      const blob = await exportMyAnalytics();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my_overtime_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Ошибка при экспорте отчета');
     }
   };
 
-  const filteredOvertimes = overtimes.filter(ot => {
-    const matchesSearch = (ot.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ot.project?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'ALL' || ot.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  if (loading) return (
-    <div className="page-container">
-      <div style={{ height: '60px', marginBottom: '40px' }}><Skeleton height={60} /></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-        <div style={{ width: '400px' }}>
-          <Skeleton height={48} width="80%" />
-          <Skeleton height={20} width="60%" style={{ marginTop: '12px' }} />
-        </div>
-        <Skeleton height={56} width={220} borderRadius={14} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '32px', marginBottom: '48px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <Skeleton height={160} borderRadius={24} /><Skeleton height={160} borderRadius={24} />
-          <Skeleton height={140} style={{ gridColumn: 'span 2' }} borderRadius={24} />
-        </div>
-        <Skeleton height={320} borderRadius={32} />
-      </div>
-      <div style={{ marginBottom: '24px' }}><Skeleton height={32} width={200} /></div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {[1, 2, 3].map(i => <Skeleton key={i} height={120} borderRadius={20} />)}
-      </div>
-    </div>
+  const filteredOvertimes = (Array.isArray(overtimes) ? overtimes : []).filter(ot =>
+    (ot.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (ot.project?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading && !overtimes.length) return <LoadingOverlay />;
 
   return (
     <div className="page-container animate-fade-in">
+      {loading && <LoadingOverlay />}
       <Header user={user} />
 
-      {/* Welcome Section */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '-0.04em', marginBottom: '8px' }}>
-            Личный кабинет 👋
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', fontWeight: 500 }}>
-            Добро пожаловать, {user?.full_name || 'Сотрудник'}. Вот ваша статистика по переработкам.
-          </p>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Дашборд сотрудника</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Ваша активность и статус переработок за последнее время.</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="primary"
-          style={{ width: 'auto', padding: '0 32px', height: '56px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '12px' }}
-        >
-          <Plus size={22} /> Создать заявку
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={handleExport} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
+          }} className="btn-secondary">
+            <FileDown size={18} /> ЭКСПОРТ (EXCEL)
+          </button>
+          <button onClick={() => setIsCreateModalOpen(true)} className="primary">
+            <Plus size={20} /> НОВАЯ ЗАЯВКА
+          </button>
+        </div>
       </div>
 
-      {/* Stats Cards & Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '32px', marginBottom: '48px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div className="glass-card animate-scale-in" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
+      {/* Stats Overview */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '40px' }}>
+        {[
+          { label: 'Часов одобрено', value: `${stats?.total_approved_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'Всего подтверждено' },
+          { label: 'Всего заявок', value: stats?.total_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'За всё время' },
+          { label: 'Активных заявок', value: stats?.active_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
+          { label: 'Проектов', value: stats?.projects_count || '0', icon: CheckCircle, color: 'var(--info)', sub: 'Участие в проектах' },
+        ].map((stat, i) => (
+          <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>Этот месяц</p>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--accent)', letterSpacing: '-0.04em' }}>{stats?.current_month_hours || 0}</span>
-                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-muted)' }}>ч</span>
-              </div>
+              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
             </div>
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weeklyData.slice(-5)}>
-                  <Area type="monotone" dataKey="hours" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.1} strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
+              <stat.icon size={24} />
             </div>
           </div>
+        ))}
+      </div>
 
-          <div className="glass-card animate-scale-in" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden', animationDelay: '0.1s' }}>
-            <div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>Прошлый месяц</p>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                <span style={{ fontSize: '2.5rem', fontWeight: 900, letterSpacing: '-0.04em' }}>{stats?.last_month_hours || 0}</span>
-                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-muted)' }}>ч</span>
-              </div>
-            </div>
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', opacity: 0.5 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weeklyData.slice(0, 5)}>
-                  <Area type="monotone" dataKey="hours" stroke="var(--text-muted)" fill="var(--text-muted)" fillOpacity={0.1} strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="glass-card animate-scale-in" style={{ gridColumn: 'span 2', padding: '28px', animationDelay: '0.2s' }}>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '16px', letterSpacing: '0.05em' }}>Общий прогресс</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-              <div style={{ fontSize: '3.5rem', fontWeight: 900, letterSpacing: '-0.06em', color: 'var(--text-primary)' }}>
-                {stats?.total_hours || 0}<span style={{ fontSize: '1.5rem', color: 'var(--text-muted)', marginLeft: '8px', letterSpacing: '0' }}>часов</span>
-              </div>
-              <div style={{ height: '60px', width: '2px', background: 'var(--border)', borderRadius: '2px' }} />
-              <div>
-                <p style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '2px' }}>{stats?.by_project?.length || 0} проектов</p>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>За всё время работы</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '32px', display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Activity size={20} style={{ color: 'var(--accent)' }} /> Тенденции за неделю
-          </h3>
-          <div style={{ width: '100%', height: '240px' }}>
+      {/* Charts Section */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+        <div className="glass-card" style={{ padding: '24px' }}>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Активность за 30 дней (часы)</h4>
+          <div style={{ height: '200px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyData}>
-                <defs>
-                  <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 600, fill: 'var(--text-secondary)' }} />
-                <YAxis hide />
-                <RechartsTooltip
-                  contentStyle={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px' }}
+              <BarChart data={stats?.daily_stats || []}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
+                <XAxis
+                  dataKey="date"
+                  hide
                 />
-                <Area type="monotone" dataKey="hours" stroke="var(--accent)" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" />
-              </AreaChart>
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                <RechartsTooltip
+                  contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
+                  itemStyle={{ color: 'var(--primary)' }}
+                />
+                <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
 
-      <div style={{ marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em' }}>Последние заявки</h3>
-      </div>
-
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={20} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            placeholder="Поиск по описанию или проекту..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', paddingLeft: '52px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', height: '54px' }}
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: '0 24px', borderRadius: '14px', border: '1px solid var(--border)',
-            background: 'var(--bg-secondary)', color: 'var(--text-primary)',
-            fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
-          }}
-        >
-          <option value="ALL">Все статусы</option>
-          <option value="PENDING">В обработке</option>
-          <option value="APPROVED">Одобрено</option>
-          <option value="REJECTED">Отклонено</option>
-        </select>
-      </div>
-
-      {/* Overtimes List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {filteredOvertimes.length === 0 ? (
-          <div className="glass-card" style={{ textAlign: 'center', padding: '100px 40px' }}>
-            <div style={{ width: '80px', height: '80px', background: 'var(--bg-tertiary)', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
-              <FileText size={40} style={{ color: 'var(--text-muted)' }} />
+        <div className="glass-card" style={{ padding: '24px' }}>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
+          <div style={{ height: '200px', display: 'flex', alignItems: 'center' }}>
+            <div style={{ flex: 1, height: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stats?.by_project || []}
+                    dataKey="hours"
+                    nameKey="project_name"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                  >
+                    {(stats?.by_project || []).map((_entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={[
+                        'var(--primary)', 'var(--success)', 'var(--warning)', 'var(--info)', '#8b5cf6', '#ec4899'
+                      ][index % 6]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip
+                    contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '8px' }}>Записей не найдено</h3>
-            <p style={{ color: 'var(--text-secondary)' }}>Попробуйте изменить параметры поиска или фильтрации.</p>
-          </div>
-        ) : (
-          filteredOvertimes.map((ot: any) => {
-            const status = getStatusInfo(ot.status);
-            const StatusIcon = status.icon;
-            const canEdit = ot.status === 'PENDING' || user?.role === 'admin';
-
-            return (
-              <div key={ot.id} className="glass-card animate-scale-in" style={{ padding: '0', overflow: 'hidden', display: 'flex', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', border: '1px solid var(--border)', opacity: canEdit ? 1 : 0.9 }}>
-                <div style={{ width: '6px', background: status.color }} />
-                {/* Контент карточки с использованием Grid для идеального выравнивания */}
-                <div style={{
-                  padding: '20px 32px',
-                  flex: 1,
-                  display: 'grid',
-                  gridTemplateColumns: '3fr 2fr 1.2fr 1.5fr 100px',
-                  alignItems: 'center',
-                  gap: '24px'
-                }}>
-
-                  {/* 1. Проект и Автор */}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px' }}>#{ot.id}</span>
-                      <div style={{ padding: '4px 10px', borderRadius: '8px', background: status.bg, color: status.color, fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-                        <StatusIcon size={12} /> {status.label}
-                      </div>
-                    </div>
-                    <h4 className="line-clamp-3" style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '8px', overflow: 'hidden' }}>{ot.description}</h4>
-                    <div className="text-expand-btn" onClick={(e) => { e.stopPropagation(); setSelectedOvertime(ot); }}>Подробнее...</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)', fontWeight: 700, fontSize: '0.8rem' }}>
-                        <Briefcase size={14} /> {ot.project?.name || 'Внутренний'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                        <User size={14} /> {ot.user?.full_name?.split(' ')[0] || 'Сотрудник'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Дата и Время */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.95rem' }}>
-                      <Calendar size={16} style={{ color: 'var(--text-muted)' }} />
-                      {new Date(ot.start_time).toLocaleDateString('ru', { month: 'long', day: 'numeric' })}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', paddingLeft: '24px', fontWeight: 500 }}>
-                      {new Date(ot.start_time).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })} — {new Date(ot.end_time).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-
-                  {/* 3. Длительность */}
-                  <div style={{ textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Длительность</span>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 850, color: 'var(--text-primary)' }}>
-                      {ot.hours}<span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginLeft: '2px' }}>ч</span>
-                    </div>
-                  </div>
-
-                  {/* 4. Статусы согласования */}
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)', padding: '0 10px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>МЕН</span>
-                      {ot.manager_approved === true ? <CheckCircle2 size={18} style={{ color: 'var(--success)' }} /> : ot.manager_approved === false ? <XCircle size={18} style={{ color: 'var(--danger)' }} /> : <Clock size={18} style={{ color: 'var(--warning)', opacity: 0.5 }} />}
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>НАЧ</span>
-                      {ot.head_approved === true ? <CheckCircle2 size={18} style={{ color: 'var(--success)' }} /> : ot.head_approved === false ? <XCircle size={18} style={{ color: 'var(--danger)' }} /> : <Clock size={18} style={{ color: 'var(--warning)', opacity: 0.5 }} />}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    {ot.status === 'PENDING' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleEdit(ot); }}
-                        className="action-button-modern"
-                        style={{ width: '38px', height: '38px', padding: 0, background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-                        title="Редактировать"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedOvertime(ot); }}
-                      className="action-button-modern"
-                      style={{ height: '38px', padding: '0 16px', fontSize: '0.85rem', fontWeight: 700, borderRadius: '12px', background: 'var(--accent)', color: 'white', border: 'none' }}
-                    >
-                      {ot.status === 'PENDING' ? 'Просмотр' : 'Детали'}
-                    </button>
-                    {ot.status === 'PENDING' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCancel(ot.id); }}
-                        className="action-button-modern delete"
-                        style={{ width: '38px', height: '38px', padding: 0 }}
-                        title="Отменить"
-                      >
-                        <XCircle size={18} />
-                      </button>
-                    )}
-                  </div>
-
+            <div style={{ width: '40%', display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '20px' }}>
+              {(stats?.by_project || []).slice(0, 4).map((p: any, i: number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
+                  <div style={{
+                    width: '8px', height: '8px', borderRadius: '2px', background: [
+                      'var(--primary)', 'var(--success)', 'var(--warning)', 'var(--info)', '#8b5cf6', '#ec4899'
+                    ][i % 6]
+                  }} />
+                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.project_name}</span>
                 </div>
-              </div>
-            );
-          })
-        )}
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {isModalOpen && (
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: '16px' }}>
+        {/* Left: Table */}
+        <div className="glass-card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontWeight: 700 }}>Мои переработки</h3>
+            <div style={{ position: 'relative', width: '250px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                placeholder="Найти по описанию..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)' }}
+              />
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto', flex: 1 }}>
+            <table className="table-container">
+              <thead>
+                <tr>
+                  <th className="table-header">Дата</th>
+                  <th className="table-header">Проект</th>
+                  <th className="table-header">Часы</th>
+                  <th className="table-header">Статус</th>
+                  <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOvertimes.map((ot: any) => (
+                  <tr key={ot.id}>
+                    <td className="table-cell">{new Date(ot.start_time).toLocaleDateString()}</td>
+                    <td className="table-cell">
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ot.project?.name || 'Внутренний'}</div>
+                    </td>
+                    <td className="table-cell">{ot.hours}ч</td>
+                    <td className="table-cell">
+                      <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
+                        {STATUS_LABELS[ot.status] || ot.status}
+                      </span>
+                    </td>
+                    <td className="table-cell" style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        {(ot.status === 'PENDING' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
+                          ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
+                            <>
+                              <button
+                                onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
+                                className="action-button-modern"
+                                title="Редактировать"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleCancel(ot.id)}
+                                className="action-button-modern delete"
+                                title="Удалить/Отменить"
+                                style={{ color: 'var(--error)' }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
+                        {ot.start_lat && ot.start_lng && (
+                          <a
+                            href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="action-button-modern"
+                            title="Точка начала (карта)"
+                            style={{ color: 'var(--success)' }}
+                          >
+                            <MapPin size={16} />
+                          </a>
+                        )}
+                        {ot.end_lat && ot.end_lng && (
+                          <a
+                            href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="action-button-modern"
+                            title="Точка финиша (карта)"
+                            style={{ color: 'var(--error)' }}
+                          >
+                            <MapPin size={16} />
+                          </a>
+                        )}
+                        {!ot.start_lat && ot.location_name && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="action-button-modern"
+                            title={ot.location_name}
+                            style={{ color: 'var(--accent)' }}
+                          >
+                            <MapPin size={16} />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredOvertimes.length === 0 && (
+                  <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination UI */}
+          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Страница <b>{currentPage}</b> из <b>{totalPages}</b>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="action-button-modern"
+                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="action-button-modern"
+                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Info Widget */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="glass-card" style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', color: 'white', border: 'none' }}>
+            <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.8, marginBottom: '16px' }}>Текущий месяц</h4>
+            <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px' }}>{stats?.current_month_hours || 0}ч</div>
+            <p style={{ fontSize: '0.85rem', opacity: 0.9 }}>Всего одобренных часов за текущий месяц.</p>
+          </div>
+
+          <div className="glass-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)' }}>
+                <Clock size={20} />
+              </div>
+              <h4 style={{ fontWeight: 700 }}>Информация</h4>
+            </div>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Не забывайте прикреплять геолокацию к заявкам для более быстрого согласования менеджером.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {isCreateModalOpen && (
         <CreateOvertimeModal
-          editData={editOvertimeData}
+          editData={editOvertime}
+          onClose={() => { setIsCreateModalOpen(false); setEditOvertime(null); }}
           onCreated={() => {
+            setIsCreateModalOpen(false);
+            setEditOvertime(null);
             fetchData();
-            setIsModalOpen(false);
-            setEditOvertimeData(null);
           }}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditOvertimeData(null);
-          }}
-        />
-      )}
-      {selectedOvertime && (
-        <OvertimeDetailModal
-          overtime={selectedOvertime}
-          currentUser={user}
-          onClose={() => setSelectedOvertime(null)}
-          onStatusUpdate={fetchData}
         />
       )}
     </div>

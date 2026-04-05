@@ -10,7 +10,9 @@ pydantic-settings==2.2.1
 python-dotenv==1.0.1
 passlib[bcrypt]==1.7.4
 PyJWT==2.8.0
-
+openai-whisper
+transformers
+sentencepiece
 python-multipart==0.0.20
 email-validator==2.1.0
 
@@ -19,8 +21,12 @@ psycopg2-binary==2.9.9
 bcrypt==4.0.1
 
 # Telegram
+python-telegram-bot[job-queue]==21.0.1
 httpx==0.28.1
+
 # Export
 pandas==2.2.1
 openpyxl==3.1.2
 msal
+# AI / STT
+openai-whisper

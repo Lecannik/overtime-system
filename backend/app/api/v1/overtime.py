@@ -39,20 +39,29 @@ async def create_overtime(
     return await overtime_service.create_new_overtime(db, overtime_in, current_user.id)
 
 
-@router.get("/", response_model=List[OvertimeResponse])
+from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
+from app.models.overtime import OvertimeStatus
+
+@router.get("/", response_model=PaginatedOvertimeResponse)
 async def list_overtimes(
+    page: int = 1,
+    page_size: int = 15,
+    status: OvertimeStatus | None = None,
+    project_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список заявок на переработку.
-
-    - Сотрудник видит только свои заявки.
-    - Менеджер проекта видит свои и заявки по своим проектам.
-    - Начальник отдела видит заявки сотрудников своего отдела.
-    - Администратор видит всё.
+    Получить список заявок на переработку с пагинацией и фильтрами.
     """
-    return await overtime_repo.get_overtimes(db, current_user)
+    return await overtime_repo.get_overtimes(
+        db, 
+        current_user, 
+        status=status, 
+        project_id=project_id,
+        page=page,
+        page_size=page_size
+    )
 
 
 @router.get("/{overtime_id}", response_model=OvertimeResponse)

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit import AuditLog
 from app.models.user import User
@@ -29,7 +29,14 @@ async def get_audit_logs(
     limit: int = 100,
     offset: int = 0
 ):
-    """Получает список логов аудита с инфо о пользователях."""
+    """Получает список логов аудита с инфо о пользователях со счетчиком total."""
+    
+    # 1. Считаем общее количество
+    total_query = select(func.count(AuditLog.id))
+    total_result = await session.execute(total_query)
+    total = total_result.scalar()
+
+    # 2. Получаем данные
     query = select(
         AuditLog.id,
         AuditLog.user_id,
@@ -45,4 +52,19 @@ async def get_audit_logs(
      .offset(offset)
     
     result = await session.execute(query)
-    return result.all()
+    
+    # Формируем список словарей для фронта
+    items = []
+    for row in result.all():
+        items.append({
+            "id": row.id,
+            "user_id": row.user_id,
+            "user": {"full_name": row.user_full_name},
+            "action": row.action,
+            "target_type": row.target_type,
+            "target_id": row.target_id,
+            "details": row.details,
+            "timestamp": row.created_at
+        })
+
+    return {"items": items, "total": total}

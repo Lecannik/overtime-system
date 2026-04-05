@@ -11,7 +11,7 @@ class OvertimeBase(BaseModel):
     """
     project_id: int
     start_time: datetime
-    end_time: datetime
+    end_time: datetime | None = None
     description: str
     location_name: str | None = None
     start_lat: float | None = None
@@ -99,8 +99,25 @@ class ProjectHours(BaseModel):
     hours: float
 
 
+class DayHours(BaseModel):
+    date: str
+    hours: float
+
+
 class PersonalStats(BaseModel):
     current_month_hours: float
     last_month_hours: float
-    total_hours: float
+    total_approved_hours: float
+    total_requests: int
+    active_requests: int
+    projects_count: int
     by_project: list[ProjectHours]
+    daily_stats: list[DayHours]
+
+
+class PaginatedOvertimeResponse(BaseModel):
+    items: list[OvertimeResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

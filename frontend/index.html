@@ -4,7 +4,33 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>OvertimePro — Система учета переработок</title>
+    <script>
+      (function() {
+        const theme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+        window.addEventListener('DOMContentLoaded', () => {
+          document.body.setAttribute('data-theme', theme);
+        });
+      })();
+    </script>
+    <style>
+      [data-theme='dark'] ::-webkit-calendar-picker-indicator {
+        filter: invert(1) brightness(2) !important;
+        -webkit-filter: invert(1) brightness(2) !important;
+      }
+      [data-theme='dark'] input,
+      [data-theme='dark'] select,
+      [data-theme='dark'] textarea {
+        color-scheme: dark !important;
+      }
+      [data-theme='light'] input,
+      [data-theme='light'] select,
+      [data-theme='light'] textarea {
+        color-scheme: light !important;
+      }
+    </style>
+    <!-- Build: 2026-03-27 19:53 -->
   </head>
   <body>
     <div id="root"></div>

@@ -98,3 +98,14 @@ class UserAdminUpdate (BaseModel):
 class UserChangePassword(BaseModel):
     old_password: str
     new_password: str
+
+
+class PaginatedUsersResponse(BaseModel):
+    """Пагинированный ответ со списком пользователей."""
+    items: list[UserResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+    model_config = {"from_attributes": True}

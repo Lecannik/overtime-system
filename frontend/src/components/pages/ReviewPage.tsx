@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    CheckCircle2, XCircle, Search, Filter,
-    Calendar, User, Briefcase, MessageSquare, ShieldCheck,
-    Check, Clock, MapPin
+    CheckCircle2, Search, Filter, Calendar, ShieldCheck, ChevronDown, CheckCircle, Info, MapPin, Clock, XCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import api, { getOvertimes, reviewOvertime } from '../../services/api';
+import { api, getOvertimes, reviewOvertime } from '../../services/api';
 import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
 import OvertimeDetailModal from './OvertimeDetailModal';
+import { STATUS_LABELS } from '../../constants/locale';
+
 
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
@@ -24,32 +24,45 @@ const ReviewPage: React.FC = () => {
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const [approvedHours, setApprovedHours] = useState<string>('');
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [pageSize] = useState(10);
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const s = params.get('search');
         if (s) setSearchQuery(s);
     }, []);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) { navigate('/login'); return; }
-                const userRes = await api.get('/auth/me', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setUser(userRes.data);
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const token = localStorage.getItem('token');
+            if (!token) { navigate('/login'); return; }
 
-                const ovtData = await getOvertimes();
-                setOvertimes(ovtData);
-            } catch {
-                navigate('/login');
-            } finally {
-                setLoading(false);
-            }
-        };
+            const [userRes, ovtRes] = await Promise.all([
+                api.get('/auth/me'),
+                getOvertimes({
+                    page: currentPage,
+                    page_size: pageSize,
+                    status: statusFilter !== 'ALL' ? statusFilter : undefined
+                })
+            ]);
+
+            setUser(userRes.data);
+            setOvertimes(ovtRes.items || []);
+            setTotalPages(ovtRes.pages || 1);
+        } catch (err) {
+            console.error('Fetch error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchData();
-    }, [navigate, updateTrigger]);
+    }, [currentPage, statusFilter, updateTrigger]);
 
     const handleReview = async (overtimeId: number, approved: boolean) => {
         try {
@@ -60,8 +73,7 @@ const ReviewPage: React.FC = () => {
                 asRole || undefined,
                 approved ? parseFloat(approvedHours) : undefined
             );
-            const data = await getOvertimes();
-            setOvertimes(data);
+            fetchData();
             setReviewingId(null);
             setComment('');
             setAsRole('');
@@ -71,252 +83,243 @@ const ReviewPage: React.FC = () => {
         }
     };
 
-
+    const safeOvertimes = Array.isArray(overtimes) ? overtimes : [];
     const filteredOvertimes = (user?.role === 'admin'
-        ? overtimes
-        : overtimes.filter(ot =>
+        ? safeOvertimes
+        : safeOvertimes.filter(ot =>
             ot.status === 'PENDING' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED'
-        )).filter(ot => {
+        )).filter((ot: any) => {
             const empName = (ot.user?.full_name || '').toLowerCase();
             const projName = (ot.project?.name || '').toLowerCase();
             const desc = (ot.description || '').toLowerCase();
             const query = searchQuery.toLowerCase();
-            const matchesSearch = empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
-            const matchesStatus = statusFilter === 'ALL' || ot.status === statusFilter;
-            return matchesSearch && matchesStatus;
+            return empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
         });
 
-    if (loading) return (
-        <div className="page-container">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
-                <div style={{ width: '300px' }}><Skeleton height={60} /></div>
-                <div style={{ width: '200px' }}><Skeleton height={52} borderRadius={14} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
-                <Skeleton height={52} style={{ flex: 1 }} />
-                <Skeleton height={52} width={220} borderRadius={14} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '24px' }}>
-                {[1, 2, 3, 4].map(i => <Skeleton key={i} height={350} borderRadius={20} />)}
-            </div>
-        </div>
-    );
+    if (loading) return <div className="page-container"><Skeleton height={800} /></div>;
 
     return (
         <div className="page-container animate-fade-in">
             <Header user={user} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
-                    <h2 style={{ fontSize: '2.25rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '8px' }}>Согласование заявок</h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>Поток входящих запросов на подтверждение сверхурочной работы.</p>
+                    <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Согласование заявок</h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Поток входящих запросов на подтверждение работы.</p>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ padding: '12px 20px', borderRadius: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <ShieldCheck size={20} style={{ color: 'var(--accent)' }} />
-                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user?.role === 'admin' ? 'Права суперадмина' : 'Режим проверки'}</span>
-                    </div>
+                <div className="badge badge-info" style={{ padding: '8px 16px', borderRadius: '12px' }}>
+                    <ShieldCheck size={16} /> <span style={{ marginLeft: '8px' }}>Режим {user?.role === 'admin' ? 'Админа' : 'Проверки'}</span>
                 </div>
             </div>
 
-            {/* List Header / Filters */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+            <div className="glass-card" style={{ padding: '16px', display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
                 <div style={{ position: 'relative', flex: 1 }}>
-                    <Search size={20} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <input
-                        placeholder="Поиск по ФИО или описанию..."
+                        placeholder="Поиск по ФИО или проекту..."
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        style={{ width: '100%', paddingLeft: '52px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', height: '52px' }}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
                     />
                 </div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Filter size={18} style={{ position: 'absolute', left: '16px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                <div style={{ position: 'relative' }}>
+                    <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        style={{
-                            padding: '0 24px 0 44px', borderRadius: '14px', border: '1px solid var(--border)',
-                            background: 'var(--bg-secondary)', color: 'var(--text-primary)', height: '52px',
-                            fontWeight: 600, cursor: 'pointer', outline: 'none', width: '220px'
-                        }}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', minWidth: '180px' }}
                     >
                         <option value="ALL">Все статусы</option>
-                        <option value="PENDING">Ожидает</option>
-                        <option value="MANAGER_APPROVED">Менеджер OK</option>
-                        <option value="HEAD_APPROVED">Начальник OK</option>
-                        <option value="APPROVED">Завершено</option>
-                        <option value="REJECTED">Отклонено</option>
+                        {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
+                    <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                 </div>
             </div>
 
-            {filteredOvertimes.length === 0 ? (
-                <div className="glass-card" style={{ textAlign: 'center', padding: '120px 40px' }}>
-                    <div style={{
-                        width: '80px', height: '80px', background: 'rgba(21, 128, 61, 0.1)', borderRadius: '24px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: 'var(--success)'
-                    }}>
-                        <CheckCircle2 size={40} />
-                    </div>
-                    <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '8px' }}>Ничего не найдено</h3>
-                    <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto' }}>
-                        Попробуйте изменить параметры поиска или фильтр по статусу.
-                    </p>
-                </div>
-            ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '24px' }}>
-                    {filteredOvertimes.map((ot: any) => (
-                        <div key={ot.id} className="glass-card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                                    <h4 className="line-clamp-3" style={{ fontSize: '1.1rem', fontWeight: 700, flex: 1 }}>{ot.description}</h4>
-                                    <div style={{
-                                        padding: '4px 10px', borderRadius: '10px', background: 'rgba(30, 64, 175, 0.1)',
-                                        color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 700, marginLeft: '12px'
-                                    }}>
-                                        ID {ot.id}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '16px' }}>
+                {filteredOvertimes.map((ot: any) => (
+                    <div key={ot.id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+                        <div style={{ padding: '24px', borderBottom: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div className="icon-shape" style={{ width: '44px', height: '44px', background: 'var(--accent-gradient)' }}>
+                                        {ot.user?.full_name?.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ot.user?.full_name}</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{ot.project?.name || 'Внутренний'}</div>
                                     </div>
                                 </div>
-                                <div className="text-expand-btn" style={{ marginBottom: '16px' }} onClick={() => setSelectedOvertime(ot)}>Подробнее...</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <User size={16} />
-                                        </div>
-                                        <div>
-                                            <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700 }}>{ot.user?.full_name || `Сотрудник #${ot.user_id}`}</p>
-                                            <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{ot.user?.email}</p>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem' }}>
-                                        <Briefcase size={16} style={{ color: 'var(--text-muted)' }} />
-                                        <span style={{ fontWeight: 600 }}>{ot.project?.name || `Проект #${ot.project_id}`}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem' }}>
-                                        <Calendar size={16} style={{ color: 'var(--text-muted)' }} />
-                                        <span style={{ fontWeight: 600 }}>
-                                            {new Date(ot.start_time).toLocaleString('ru', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} — {new Date(ot.end_time).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                    </div>
-                                    {ot.location_name && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--accent)' }}>
-                                            <MapPin size={16} />
-                                            <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {ot.location_name}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div style={{ padding: '20px 28px', flex: 1, background: 'var(--bg-primary)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', padding: '10px', borderRadius: '10px', background: 'var(--bg-tertiary)' }}>
-                                    <Clock size={16} style={{ color: 'var(--accent)' }} />
-                                    <span style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.02em' }}>
-                                        {ot.hours} часа переработки
-                                    </span>
-                                </div>
-                                {reviewingId === ot.id ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                        {user?.role === 'admin' && (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Действовать как:</label>
-                                                <select value={asRole} onChange={(e) => setAsRole(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', outline: 'none' }}>
-                                                    <option value="">Автоматически</option>
-                                                    <option value="manager">Менеджер проекта</option>
-                                                    <option value="head">Начальник отдела</option>
-                                                </select>
-                                            </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <span className="badge badge-info" style={{ fontSize: '0.6rem' }}>ID {ot.id}</span>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                        {ot.start_lat && ot.start_lng && (
+                                            <a
+                                                href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="action-button-modern"
+                                                title="Точка начала (карта)"
+                                                style={{ color: 'var(--success)' }}
+                                            >
+                                                <MapPin size={16} />
+                                            </a>
                                         )}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Согласовать часов:</label>
-                                            <div style={{ position: 'relative' }}>
-                                                <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    value={approvedHours}
-                                                    onChange={(e) => setApprovedHours(e.target.value)}
-                                                    placeholder="Кол-во часов..."
-                                                    style={{ paddingLeft: '40px', height: '42px', borderRadius: '8px', border: '1px solid var(--border)', width: '100%', outline: 'none' }}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div style={{ position: 'relative' }}>
-                                            <MessageSquare size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                                            <textarea
-                                                value={comment}
-                                                onChange={(e) => setComment(e.target.value)}
-                                                placeholder="Введите ваш комментарий..."
-                                                style={{ paddingLeft: '40px', minHeight: '80px', fontSize: '0.9rem' }}
-                                            />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '12px' }}>
-                                            <button
-                                                onClick={() => handleReview(ot.id, true)}
-                                                style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: 'var(--success)', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                                        {ot.end_lat && ot.end_lng && (
+                                            <a
+                                                href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="action-button-modern"
+                                                title="Точка финиша (карта)"
+                                                style={{ color: 'var(--error)' }}
                                             >
-                                                <CheckCircle2 size={16} /> Подтвердить
-                                            </button>
-                                            <button
-                                                onClick={() => handleReview(ot.id, false)}
-                                                style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                                                <MapPin size={16} />
+                                            </a>
+                                        )}
+                                        {!ot.start_lat && ot.location_name && (
+                                            <a
+                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="action-button-modern"
+                                                title={ot.location_name}
+                                                style={{ color: 'var(--accent)' }}
                                             >
-                                                <XCircle size={16} /> Отклонить
-                                            </button>
-                                        </div>
-                                        <button onClick={() => setReviewingId(null)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>Отмена</button>
-                                    </div>
-                                ) : (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', gap: '16px' }}>
-                                            <div style={{ textAlign: 'center' }}>
-                                                <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Менеджер</p>
-                                                <div style={{
-                                                    width: '24px', height: '24px', borderRadius: '50%', margin: '0 auto',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    background: ot.manager_approved === true ? 'var(--success)' : ot.manager_approved === false ? 'var(--danger)' : 'var(--bg-tertiary)',
-                                                    color: ot.manager_approved === null ? 'var(--text-muted)' : 'white'
-                                                }}>
-                                                    {ot.manager_approved === true ? <Check size={14} strokeWidth={4} /> : ot.manager_approved === false ? <XCircle size={14} /> : <Clock size={14} />}
-                                                </div>
-                                            </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                                <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Отдел</p>
-                                                <div style={{
-                                                    width: '24px', height: '24px', borderRadius: '50%', margin: '0 auto',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    background: ot.head_approved === true ? 'var(--success)' : ot.head_approved === false ? 'var(--danger)' : 'var(--bg-tertiary)',
-                                                    color: ot.head_approved === null ? 'var(--text-muted)' : 'white'
-                                                }}>
-                                                    {ot.head_approved === true ? <Check size={14} strokeWidth={4} /> : ot.head_approved === false ? <XCircle size={14} /> : <Clock size={14} />}
-                                                </div>
-                                            </div>
-                                        </div>
+                                                <MapPin size={16} />
+                                            </a>
+                                        )}
                                         <button
-                                            onClick={() => {
-                                                setReviewingId(ot.id);
-                                                setApprovedHours(ot.hours.toString());
-                                            }}
-                                            className="primary"
-                                            style={{ width: 'auto', padding: '10px 24px', borderRadius: '12px', fontSize: '0.85rem' }}
+                                            onClick={() => setSelectedOvertime(ot)}
+                                            className="action-button-modern"
+                                            style={{ width: '28px', height: '28px', minWidth: '28px' }}
+                                            title="Подробнее"
                                         >
-                                            Рассмотреть
+                                            <Info size={14} />
                                         </button>
                                     </div>
-                                )}
+                                </div>
+                            </div>
+                            <h4
+                                className="line-clamp-3"
+                                style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px', cursor: 'pointer' }}
+                                onClick={() => setSelectedOvertime(ot)}
+                            >
+                                {ot.description}
+                            </h4>
+                            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                    <Calendar size={14} /> {new Date(ot.start_time).toLocaleDateString()}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                    <Clock size={14} /> {ot.hours}ч
+                                </div>
                             </div>
                         </div>
-                    ))}
+
+                        <div style={{ padding: '20px 24px', background: 'var(--bg-primary)' }}>
+                            {reviewingId === ot.id ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {user?.role === 'admin' && (
+                                        <select value={asRole} onChange={e => setAsRole(e.target.value)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>
+                                            <option value="">Как Админ</option>
+                                            <option value="manager">Как Менеджер</option>
+                                            <option value="head">Как Нач. отдела</option>
+                                        </select>
+                                    )}
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input
+                                            type="number" step="0.5"
+                                            value={approvedHours}
+                                            onChange={e => setApprovedHours(e.target.value)}
+                                            placeholder="Часов..."
+                                            style={{ height: '40px', background: 'var(--bg-secondary)', width: '100px' }}
+                                        />
+                                        <input
+                                            placeholder="Комментарий..."
+                                            value={comment}
+                                            onChange={e => setComment(e.target.value)}
+                                            style={{ height: '40px', borderRadius: '8px', fontSize: '0.85rem', flex: 1 }}
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => handleReview(ot.id, true)} className="primary" style={{ flex: 1, height: '40px', background: 'var(--success-gradient)' }}>Одобрить</button>
+                                        <button onClick={() => handleReview(ot.id, false)} className="primary" style={{ flex: 1, height: '40px', background: 'var(--danger-gradient)' }}>Отклонить</button>
+                                    </div>
+                                    <button onClick={() => setReviewingId(null)} style={{ background: 'none', border: '1px solid var(--error)', color: 'var(--error)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', padding: '8px', borderRadius: '8px', marginTop: '4px' }}>ОТМЕНА</button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '16px' }}>
+                                        <div style={{ textAlign: 'center' }}>
+                                            <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Менеджер</p>
+                                            <div style={{ color: ot.manager_approved === true ? 'var(--success)' : ot.manager_approved === false ? 'var(--danger)' : 'var(--text-muted)', opacity: ot.manager_approved === null ? 0.3 : 1 }}>
+                                                {ot.manager_approved === true ? <CheckCircle size={20} /> : ot.manager_approved === false ? <XCircle size={20} /> : <Clock size={20} />}
+                                            </div>
+                                        </div>
+                                        <div style={{ textAlign: 'center' }}>
+                                            <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Глава отдела</p>
+                                            <div style={{ color: ot.head_approved === true ? 'var(--success)' : ot.head_approved === false ? 'var(--danger)' : 'var(--text-muted)', opacity: ot.head_approved === null ? 0.3 : 1 }}>
+                                                {ot.head_approved === true ? <CheckCircle size={20} /> : ot.head_approved === false ? <XCircle size={20} /> : <Clock size={20} />}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => { setReviewingId(ot.id); setApprovedHours(ot.hours.toString()); }}
+                                        className="primary"
+                                        style={{ width: 'auto', padding: '0 20px', height: '40px' }}
+                                    >
+                                        Рассмотреть
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {totalPages > 1 && (
+                <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Страница <b>{currentPage}</b> из <b>{totalPages}</b>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="action-button-modern"
+                            style={{ padding: '8px 16px', background: 'var(--bg-tertiary)', opacity: currentPage === 1 ? 0.5 : 1 }}
+                        >
+                            <ChevronLeft size={18} />
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="action-button-modern"
+                            style={{ padding: '8px 16px', background: 'var(--bg-tertiary)', opacity: currentPage === totalPages ? 0.5 : 1 }}
+                        >
+                            <ChevronRight size={18} />
+                        </button>
+                    </div>
                 </div>
             )}
+
+            {filteredOvertimes.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '100px' }}>
+                    <CheckCircle2 size={60} style={{ color: 'var(--success)', opacity: 0.2 }} />
+                    <p style={{ color: 'var(--text-muted)', marginTop: '20px' }}>Нет активных заявок для согласования.</p>
+                </div>
+            )}
+
             {selectedOvertime && (
                 <OvertimeDetailModal
                     overtime={selectedOvertime}
                     currentUser={user}
                     onClose={() => setSelectedOvertime(null)}
-                    onStatusUpdate={() => setUpdateTrigger(prev => prev + 1)}
+                    onStatusUpdate={() => {
+                        setUpdateTrigger(prev => prev + 1);
+                        setSelectedOvertime(null);
+                    }}
                 />
             )}
         </div>

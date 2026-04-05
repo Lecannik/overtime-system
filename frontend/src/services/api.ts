@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Создаем «экземпляр» axios с базовыми настройками
-const api = axios.create({
+export const api = axios.create({
   baseURL: '/api/v1',  // Vite-прокси перенаправит это на localhost:8000
 });
 
@@ -16,12 +16,12 @@ api.interceptors.request.use((config) => {
 
 // Функция входа — отправляет email и пароль на бэкенд
 export const login = async (email: string, password: string) => {
-  // FastAPI ожидает данные формы (не JSON!), поэтому используем FormData
-  const formData = new FormData();
-  formData.append('username', email);  // В OAuth2 поле называется 'username'
-  formData.append('password', password);
+  // FastAPI OAuth2PasswordRequestForm ожидает x-www-form-urlencoded
+  const params = new URLSearchParams();
+  params.append('username', email);
+  params.append('password', password);
 
-  const response = await api.post('/auth/login', formData);
+  const response = await api.post('/auth/login', params);
   return response.data;
 };
 
@@ -43,12 +43,15 @@ export const confirmPasswordReset = async (data: any) => {
   return response.data;
 };
 
-// Получить список заявок текущего пользователя
-export const getOvertimes = async () => {
-  const token = localStorage.getItem('token');
-  const response = await api.get('/overtimes/', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+// Получить список заявок текущего пользователя (с пагинацией)
+export const getMyOvertimes = async (params: { page?: number; page_size?: number; status?: string; project_id?: number } = {}) => {
+  const response = await api.get('/overtimes/', { params });
+  return response.data;
+};
+
+// Получить список всех заявок (для менеджера/админа)
+export const getOvertimes = async (params: { page?: number; page_size?: number; status?: string; project_id?: number } = {}) => {
+  const response = await api.get('/overtimes/', { params });
   return response.data;
 };
 
@@ -86,10 +89,7 @@ export const cancelOvertime = async (overtimeId: number) => {
 
 // Получить личную статистику
 export const getMyStats = async () => {
-  const token = localStorage.getItem('token');
-  const response = await api.get('/overtimes/stats/me', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const response = await api.get('/overtimes/stats/me');
   return response.data;
 };
 
@@ -140,12 +140,18 @@ export const reviewOvertime = async (id: number, approved: boolean, comment?: st
   return response.data;
 };
 
-// Получить всех пользователей (только для админа)
-export const getUsers = async () => {
-  const token = localStorage.getItem('token');
-  const response = await api.get('/admin/users', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+// Получить всех пользователей (только для админа) с поиском, сортировкой и пагинацией
+export const getUsers = async (params?: {
+  search?: string;
+  sort_by?: string;
+  sort_order?: string;
+  page?: number;
+  page_size?: number;
+  role?: string;
+  department_id?: number;
+  company?: string;
+}) => {
+  const response = await api.get('/admin/users', { params });
   return response.data;
 };
 // Обновить пользователя (роль, отдел, активность)
@@ -159,10 +165,7 @@ export const updateUser = async (userId: number, data: any) => {
 
 // Сбросить пароль пользователя (только для админа)
 export const resetUserPassword = async (userId: number) => {
-  const token = localStorage.getItem('token');
-  const response = await api.post(`/admin/users/${userId}/reset-password`, null, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const response = await api.post(`/admin/users/${userId}/reset-password`);
   return response.data;
 };
 
@@ -236,7 +239,6 @@ export const deleteDepartment = async (deptId: number) => {
 };
 
 // ==================== ПРОЕКТЫ ====================
-
 export const createProject = async (data: {
   name: string;
   manager_id?: number | null;
@@ -311,6 +313,16 @@ export const getWeeklyStats = async () => {
 export const exportAnalytics = async (params?: any) => {
   const token = localStorage.getItem('token');
   const response = await api.get('/analytics/export', {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
+export const exportMyAnalytics = async (params?: any) => {
+  const token = localStorage.getItem('token');
+  const response = await api.get('/analytics/export/me', {
     headers: { Authorization: `Bearer ${token}` },
     params,
     responseType: 'blob'

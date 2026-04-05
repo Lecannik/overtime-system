@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Shield, Mail, Building, Bell, MessageSquare, Key, Save, X, Edit3, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { User as UserIcon, Shield, Mail, Building, Bell, MessageSquare, Key, Save, X, Edit3, AlertTriangle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import api, { updateMyProfile, getDepartments, changePassword } from '../../services/api';
 import Header from '../layout/Header';
 
@@ -15,6 +15,9 @@ const ProfilePage: React.FC = () => {
     });
     const [pwdForm, setPwdForm] = useState({
         old_password: '', new_password: '', confirm_password: ''
+    });
+    const [showPwd, setShowPwd] = useState({
+        old: false, new: false, confirm: false
     });
 
     useEffect(() => {
@@ -267,18 +270,45 @@ const ProfilePage: React.FC = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Текущий пароль</label>
-                            <input type="password" value={pwdForm.old_password}
-                                onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })} />
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type={showPwd.old ? "text" : "password"}
+                                    value={pwdForm.old_password}
+                                    onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })}
+                                    style={{ width: '100%', paddingRight: '44px' }}
+                                />
+                                <button type="button" onClick={() => setShowPwd({ ...showPwd, old: !showPwd.old })} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: 0 }}>
+                                    {showPwd.old ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Новый пароль</label>
-                            <input type="password" value={pwdForm.new_password}
-                                onChange={(e) => setPwdForm({ ...pwdForm, new_password: e.target.value })} />
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type={showPwd.new ? "text" : "password"}
+                                    value={pwdForm.new_password}
+                                    onChange={(e) => setPwdForm({ ...pwdForm, new_password: e.target.value })}
+                                    style={{ width: '100%', paddingRight: '44px' }}
+                                />
+                                <button type="button" onClick={() => setShowPwd({ ...showPwd, new: !showPwd.new })} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: 0 }}>
+                                    {showPwd.new ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Подтверждение</label>
-                            <input type="password" value={pwdForm.confirm_password}
-                                onChange={(e) => setPwdForm({ ...pwdForm, confirm_password: e.target.value })} />
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type={showPwd.confirm ? "text" : "password"}
+                                    value={pwdForm.confirm_password}
+                                    onChange={(e) => setPwdForm({ ...pwdForm, confirm_password: e.target.value })}
+                                    style={{ width: '100%', paddingRight: '44px' }}
+                                />
+                                <button type="button" onClick={() => setShowPwd({ ...showPwd, confirm: !showPwd.confirm })} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: 0 }}>
+                                    {showPwd.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
                         <button onClick={handlePasswordChange} className="primary" style={{ marginTop: '12px' }}>
                             Обновить пароль

@@ -25,6 +25,7 @@ class UserAnalytics(BaseModel):
     full_name: str
     total_hours: float
     request_count: int
+    project_name: Optional[str] = None
 
 class ReviewAnalytics(BaseModel):
     total_requested_hours: float

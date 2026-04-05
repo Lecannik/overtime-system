@@ -4,6 +4,17 @@ agent.md
 Gemini.md_old
 AGENT_GUIDELINES.md
 
+# --- AI MODELS & WEIGHTS (НЕ ДЛЯ GIT) ---
+models/
+models/cache/
+models/gazeta/
+*.pt
+*.bin
+
+# --- USER UPLOADS ---
+backend/uploads/
+uploads/
+
 # --- PYTHON (БЭКЕНД) ---
 venv/
 .venv/
@@ -34,3 +45,4 @@ dist-ssr/
 Thumbs.db
 *.swp
 *.bak
+*.xlsm

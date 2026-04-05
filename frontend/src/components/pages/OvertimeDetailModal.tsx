@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Clock, Calendar, Briefcase, User, CheckCircle2, XCircle, Info, MessageSquare, ShieldCheck, MapPin, ExternalLink } from 'lucide-react';
 import { reviewOvertime } from '../../services/api';
+import { getStatusLabel, getStatusColor } from '../../constants/locale';
 
 interface OvertimeDetailModalProps {
     overtime: any;
@@ -64,8 +65,16 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                             <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)' }}>ЗАЯВКА #{overtime.id}</span>
-                            <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent)', fontSize: '0.7rem', fontWeight: 700 }}>
-                                {overtime.status}
+                            <div style={{
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                background: `${getStatusColor(overtime.status)}20`,
+                                color: getStatusColor(overtime.status),
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                border: `1px solid ${getStatusColor(overtime.status)}40`
+                            }}>
+                                {getStatusLabel(overtime.status).toUpperCase()}
                             </div>
                         </div>
                         <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Детали переработки</h3>
@@ -75,8 +84,8 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                     </button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '0' }}>
-                    <div style={{ padding: '32px', borderRight: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', minHeight: 'fit-content', maxHeight: '80vh', overflowY: 'auto' }}>
+                    <div style={{ flex: '1 1 500px', padding: '32px', borderRight: '1px solid var(--border)', minWidth: '350px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div>
                                 <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Описание задачи</h4>
@@ -88,82 +97,82 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                             {overtime.location_name && (
                                 <div>
                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Местоположение</h4>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderRadius: '14px', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <MapPin size={18} />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderRadius: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                                        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <MapPin size={20} />
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <p style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{overtime.location_name}</p>
+                                            <p style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '2px', color: 'var(--text-primary)' }}>{overtime.location_name}</p>
                                             <a
                                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(overtime.location_name)}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                                                style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
                                             >
-                                                Открыть на карте <ExternalLink size={12} />
+                                                Посмотреть на карте <ExternalLink size={12} />
                                             </a>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '24px', borderRadius: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
                                 <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
                                         <Calendar size={14} /> Начало
                                     </div>
-                                    <p style={{ fontWeight: 700 }}>{formatDate(overtime.start_time)}</p>
+                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatDate(overtime.start_time)}</p>
                                 </div>
                                 <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
                                         <Calendar size={14} /> Окончание
                                     </div>
-                                    <p style={{ fontWeight: 700 }}>{formatDate(overtime.end_time)}</p>
+                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatDate(overtime.end_time)}</p>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '32px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
-                                        <Clock size={20} />
+                            <div style={{ display: 'flex', gap: '40px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                                        <Clock size={24} />
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Запрошено</p>
-                                        <p style={{ fontWeight: 800, fontSize: '1.1rem' }}>{overtime.hours} ч</p>
+                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{overtime.hours}ч</p>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
-                                        <Info size={20} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
+                                        <Info size={24} />
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Фактически</p>
-                                        <p style={{ fontWeight: 800, fontSize: '1.1rem' }}>{rawHours.toFixed(2)} ч</p>
+                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{rawHours.toFixed(2)}ч</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div style={{ padding: '32px', background: 'var(--bg-secondary)' }}>
+                    <div style={{ flex: '1 1 350px', padding: '32px', background: 'var(--bg-main)', minWidth: '350px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-                                    <User size={24} style={{ color: 'var(--text-secondary)' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <User size={22} style={{ color: 'var(--text-secondary)' }} />
                                 </div>
-                                <div>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Сотрудник</p>
-                                    <p style={{ fontWeight: 700 }}>{overtime.user?.full_name}</p>
+                                <div style={{ minWidth: 0 }}>
+                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Сотрудник</p>
+                                    <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{overtime.user?.full_name}</p>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-                                    <Briefcase size={24} style={{ color: 'var(--accent)' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    <Briefcase size={22} style={{ color: 'var(--primary)' }} />
                                 </div>
-                                <div>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Проект</p>
-                                    <p style={{ fontWeight: 700 }}>{overtime.project?.name}</p>
+                                <div style={{ minWidth: 0 }}>
+                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Проект</p>
+                                    <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{overtime.project?.name}</p>
                                 </div>
                             </div>
 

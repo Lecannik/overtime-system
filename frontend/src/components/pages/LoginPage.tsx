@@ -1,137 +1,110 @@
-import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, ArrowRight, ShieldCheck, Key, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import { login, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
+import { api, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
+import Logo from '../atoms/Logo';
 
-const Logo: React.FC = () => (
-  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center', marginBottom: '32px' }}>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px' }}>
-      <div style={{ width: '12px', height: '12px', background: '#dc2626', borderRadius: '4px' }}></div>
-      <div style={{ width: '12px', height: '12px', background: '#16a34a', borderRadius: '4px' }}></div>
-      <div style={{ width: '12px', height: '12px', background: '#1e40af', borderRadius: '4px' }}></div>
-      <div style={{ width: '12px', height: '12px', background: '#dc2626', borderRadius: '4px' }}></div>
-    </div>
-    <span style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.04em' }}>Overtime<span style={{ color: 'var(--accent)' }}>Pro</span></span>
-  </div>
-);
+type PageMode = 'login' | 'forgot' | 'reset-code' | '2fa';
 
 const LoginPage: React.FC = () => {
-  // Common states
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Login states
-  const [password, setPassword] = useState('');
-
-  // 2FA states
-  const [is2FARequired, setIs2FARequired] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-
-  // Password Reset states
-  const [isResetMode, setIsResetMode] = useState(false);
-  const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
+  const [mode, setMode] = useState<PageMode>('login'); // Changed type to PageMode
+  const [resetEmail, setResetEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
-
-  // Visibility toggles
-  const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // 2FA state
+  const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaEmail, setTwoFaEmail] = useState('');
+
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      navigate('/dashboard');
-    }
+    if (localStorage.getItem('token')) navigate('/dashboard');
   }, [navigate]);
 
-  const handleLoginSuccess = (data: any) => {
-    localStorage.setItem('token', data.access_token);
-    if (data.user?.must_change_password) {
-      navigate('/profile');
-    } else {
-      navigate('/dashboard');
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      const data = await login(email, password);
-      if (data.status === '2fa_required') {
-        setIs2FARequired(true);
+      const formData = new URLSearchParams();
+      formData.append('username', email);
+      formData.append('password', password);
+      const res = await api.post('/auth/login', formData);
+
+      if (res.data.status === '2fa_required') {
+        setTwoFaEmail(res.data.email);
+        setMode('2fa');
+        setSuccess('Код подтверждения отправлен на вашу почту.');
       } else {
-        handleLoginSuccess(data);
+        localStorage.setItem('token', res.data.access_token);
+        navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Неверный логин или пароль');
+      setError(err.response?.data?.detail || 'Неверный email или пароль');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerify2FA = async (e: React.FormEvent) => {
+  const handle2FA = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      const data = await verify2FA(email, otpCode);
-      handleLoginSuccess(data);
+      const res = await verify2FA(twoFaEmail, twoFaCode);
+      localStorage.setItem('token', res.access_token);
+      navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Неверный код подтверждения');
+      setError(err.response?.data?.detail || 'Неверный код');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRequestReset = async (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
-
     try {
-      const res = await requestPasswordReset(email);
-      setSuccess(res.detail);
-      setResetStep('confirm');
+      const res = await requestPasswordReset(resetEmail);
+      setSuccess(res.detail || 'Код восстановления отправлен на почту.');
+      setMode('reset-code');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка при запросе сброса пароля');
+      setError(err.response?.data?.detail || 'Ошибка при запросе сброса');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfirmReset = async (e: React.FormEvent) => {
+  const handleResetConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
     if (newPassword !== confirmNewPassword) {
       setError('Пароли не совпадают');
       return;
     }
-
     setLoading(true);
     try {
-      const res = await confirmPasswordReset({
-        email,
-        code: resetCode,
-        new_password: newPassword
-      });
-      setSuccess(res.detail);
-      setTimeout(() => {
-        setIsResetMode(false);
-        setResetStep('request');
-        setSuccess('');
-        setPassword('');
-        setError('');
-      }, 3000);
+      await confirmPasswordReset({ email: resetEmail, code: resetCode, new_password: newPassword });
+      setSuccess('Пароль успешно сброшен! Войдите с новым паролем.');
+      setMode('login');
+      setPassword('');
+      setEmail(resetEmail);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка при сбросе пароля');
     } finally {
@@ -139,287 +112,177 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const renderContent = () => {
-    if (is2FARequired) {
+  const goBackToLogin = () => {
+    setMode('login');
+    setError('');
+    setSuccess('');
+  };
+
+  const renderForm = () => {
+    if (mode === 'login') {
       return (
-        <form onSubmit={handleVerify2FA} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Код подтверждения</label>
-            <div style={{ position: 'relative' }}>
-              <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                placeholder="123456"
-                maxLength={6}
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                style={{ paddingLeft: '48px', letterSpacing: '8px', fontSize: '1.2rem', fontWeight: 700 }}
-                required
-                autoFocus
-              />
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div>
+            <h1 style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--text-primary)', marginBottom: '8px' }}>Вход в систему</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Введите данные вашей корпоративной учетной записи.</p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'block', letterSpacing: '0.05em' }}>Email</label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 5 }} />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@polymedia.ru"
+                  style={{ paddingLeft: '50px', height: '54px' }} required />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'flex-end' }}>
+                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Пароль</label>
+                <button type="button" onClick={() => { setMode('forgot'); setResetEmail(email); }}
+                  style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  Забыли пароль?
+                </button>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 5 }} />
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••" style={{ paddingLeft: '50px', height: '54px' }} required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
           </div>
-          <button type="submit" className="primary" disabled={loading} style={{ padding: '14px' }}>
-            {loading ? 'Проверка...' : 'Подтвердить вход'}
-          </button>
-          <button type="button" onClick={() => setIs2FARequired(false)} className="secondary" style={{ border: 'none', background: 'none' }}>
-            Вернуться к логину
+
+          <button type="submit" className="primary" disabled={loading} style={{ height: '56px', fontSize: '1rem', fontWeight: 800, borderRadius: '16px', marginTop: '12px' }}>
+            {loading ? 'Вход...' : 'ВОЙТИ В СИСТЕМУ'} <ArrowRight size={20} style={{ marginLeft: '12px' }} />
           </button>
         </form>
       );
     }
 
-    if (isResetMode) {
-      if (resetStep === 'request') {
-        return (
-          <form onSubmit={handleRequestReset} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Ваша почта</label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={{ paddingLeft: '48px' }}
-                  required
-                />
-              </div>
-            </div>
-            <button type="submit" className="primary" disabled={loading} style={{ padding: '14px' }}>
-              {loading ? 'Отправка...' : 'Отправить код'}
-            </button>
-            <button type="button" onClick={() => setIsResetMode(false)} className="secondary" style={{ border: 'none', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <ArrowLeft size={16} /> Назад к входу
-            </button>
-          </form>
-        );
-      } else {
-        return (
-          <form onSubmit={handleConfirmReset} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Код из письма</label>
-              <div style={{ position: 'relative' }}>
-                <Key size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="123456"
-                  maxLength={6}
-                  value={resetCode}
-                  onChange={(e) => setResetCode(e.target.value)}
-                  style={{ paddingLeft: '48px', letterSpacing: '4px', fontWeight: 700 }}
-                  required
-                />
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Новый пароль</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type={showNewPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  style={{ paddingLeft: '48px', paddingRight: '48px' }}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  style={{
-                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px'
-                  }}
-                >
-                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Повторите пароль</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  style={{ paddingLeft: '48px', paddingRight: '48px' }}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={{
-                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px'
-                  }}
-                >
-                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-            <button type="submit" className="primary" disabled={loading} style={{ padding: '14px' }}>
-              {loading ? 'Сброс...' : 'Установить пароль'}
-            </button>
-            <button type="button" onClick={() => setResetStep('request')} className="secondary" style={{ border: 'none', background: 'none' }}>
-              Отправить код повторно
-            </button>
-          </form>
-        );
-      }
+    if (mode === 'forgot') {
+      return (
+        <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>Сброс пароля</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Введите email для получения кода восстановления.</p>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Email</label>
+            <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="name@polymedia.ru"
+              style={{ height: '50px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }} required />
+          </div>
+          <button type="submit" className="primary" disabled={loading}>ОТПРАВИТЬ КОД</button>
+          <button type="button" onClick={goBackToLogin} style={{ background: 'none', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+            <ArrowLeft size={16} /> Назад к входу
+          </button>
+        </form>
+      );
     }
 
-    return (
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Электронная почта</label>
+    if (mode === 'reset-code') {
+      return (
+        <form onSubmit={handleResetConfirm} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>Новый пароль</h1>
+          <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Код из письма</label>
+            <div style={{ position: 'relative' }}>
+              <KeyRound size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input type="text" value={resetCode} onChange={e => setResetCode(e.target.value)} placeholder="000000"
+                style={{ paddingLeft: '44px', height: '50px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', letterSpacing: '8px', fontSize: '1.2rem', textAlign: 'center' }} maxLength={6} required />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Новый пароль</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                style={{ height: '50px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }} required />
+              <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none' }}>
+                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Подтверждение</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showConfirmPassword ? 'text' : 'password'} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}
+                style={{ height: '50px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }} required />
+              <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none' }}>
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          <button type="submit" className="primary" disabled={loading}>СБРОСИТЬ ПАРОЛЬ</button>
+        </form>
+      );
+    }
+
+    if (mode === '2fa') {
+      return (
+        <form onSubmit={handle2FA} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>Подтверждение</h1>
+          <p style={{ color: 'var(--text-secondary)' }}>Введите 6-значный код из письма.</p>
           <div style={{ position: 'relative' }}>
-            <Mail size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="email"
-              placeholder="name@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ paddingLeft: '48px' }}
-              required
-            />
+            <ShieldCheck size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input type="text" value={twoFaCode} onChange={e => setTwoFaCode(e.target.value)} placeholder="000000"
+              style={{ paddingLeft: '44px', height: '54px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', letterSpacing: '8px', fontSize: '1.2rem', textAlign: 'center' }} maxLength={6} required />
           </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Пароль</label>
-            <button
-              type="button"
-              onClick={() => { setIsResetMode(true); setError(''); setSuccess(''); }}
-              style={{ fontSize: '0.8rem', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}
-            >
-              Забыли пароль?
-            </button>
-          </div>
-          <div style={{ position: 'relative' }}>
-            <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ paddingLeft: '48px', paddingRight: '48px' }}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px'
-              }}
-            >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-        </div>
-
-        <button type="submit" className="primary" disabled={loading} style={{ marginTop: '8px', padding: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            {loading ? 'Авторизация...' : (
-              <>
-                Войти в систему <ArrowRight size={18} />
-              </>
-            )}
-          </div>
-        </button>
-      </form>
-    );
-  };
-
-  const getTitle = () => {
-    if (is2FARequired) return 'Подтвердите вход';
-    if (isResetMode) return 'Восстановление пароля';
-    return 'Добро пожаловать';
-  };
-
-  const getSubtitle = () => {
-    if (is2FARequired) return `Мы отправили код на почту ${email}`;
-    if (isResetMode && resetStep === 'confirm') return 'Введите код из письма и новый пароль';
-    if (isResetMode) return 'Введите ваш email для получения кода сброса';
-    return 'Войдите в учетную запись для управления временем.';
+          <button type="submit" className="primary" disabled={loading}>ПОДТВЕРДИТЬ</button>
+        </form>
+      );
+    }
   };
 
   return (
-    <div style={{
-      display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)',
-      backgroundSize: '20px 20px',
-      backgroundImage: `radial-gradient(var(--border) 1px, transparent 0)`
-    }}>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
-        <div className="glass-card animate-fade-in" style={{ maxWidth: '440px', width: '100%', padding: '48px' }}>
-          <Logo />
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(450px, 1fr) 1.5fr', minHeight: '100vh', background: 'var(--bg-main)' }}>
+      <div style={{ background: 'var(--bg-secondary)', padding: '60px 50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: '1px solid var(--border)' }}>
+        <div style={{ marginBottom: '60px' }}>
+          <Logo size="md" />
+        </div>
 
-          <div style={{ marginBottom: '32px' }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '8px' }}>{getTitle()}</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>{getSubtitle()}</p>
-          </div>
+        {error && <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', marginBottom: '24px', fontSize: '0.9rem', fontWeight: 600 }}>{error}</div>}
+        {success && <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)', marginBottom: '24px', fontSize: '0.9rem', fontWeight: 600 }}>{success}</div>}
 
-          {error && (
-            <div style={{
-              padding: '16px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)',
-              color: 'var(--danger)', fontSize: '0.9rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px',
-              fontWeight: 500
-            }}>
-              <ShieldCheck size={18} /> {error}
-            </div>
-          )}
+        {renderForm()}
 
-          {success && (
-            <div style={{
-              padding: '16px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.1)',
-              color: '#22c55e', fontSize: '0.9rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px',
-              fontWeight: 500
-            }}>
-              <CheckCircle2 size={18} /> {success}
-            </div>
-          )}
-
-          {renderContent()}
-
-          <p style={{ textAlign: 'center', marginTop: '32px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            © 2026 Overtime Pro — Система учета рабочего времени
-          </p>
+        <div style={{ marginTop: 'auto', paddingTop: '40px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+          © 2026 Polymedia Overtime Pro. Все права защищены.
         </div>
       </div>
 
       <div style={{
-        flex: 1.2, display: 'flex', flexDirection: 'column',
-        justifyContent: 'center', padding: '80px', color: 'white',
-        background: `linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%)`,
-        position: 'relative', overflow: 'hidden'
-      }} className="desktop-only">
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <h1 style={{ fontSize: '3.5rem', fontWeight: 800, lineHeight: 1.1, marginBottom: '24px', letterSpacing: '-0.02em' }}>
-            Прозрачный учет <br />вашего времени.
-          </h1>
-          <p style={{ fontSize: '1.25rem', opacity: 0.9, maxWidth: '500px', lineHeight: 1.6 }}>
-            Корпоративный стандарт управления переработками. Автоматизация согласований и детальная аналитика проектов.
-          </p>
-        </div>
-        <div style={{
-          position: 'absolute', bottom: '-10%', right: '-10%', width: '600px', height: '600px',
-          background: 'rgba(255,255,255,0.05)', borderRadius: '50%', border: '40px solid rgba(255,255,255,0.05)'
-        }}></div>
-      </div>
+        background: 'linear-gradient(rgba(2, 6, 23, 0.85), rgba(2, 6, 23, 0.6)), url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '60px'
+      }}>
+        <div style={{ maxWidth: '600px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+              <Logo size="lg" />
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Система учета переработок</p>
+          </div>
 
-      <style>{`
-                @media (max-width: 900px) {
-                    .desktop-only { display: none !important; }
-                }
-            `}</style>
+          <div style={{ display: 'flex', gap: '32px', marginTop: '48px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ color: 'var(--primary)', fontWeight: 800, fontSize: '1.5rem' }}>100%</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Точность данных</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ color: 'var(--success)', fontWeight: 800, fontSize: '1.5rem' }}>24/7</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Доступность</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

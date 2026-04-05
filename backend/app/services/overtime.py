@@ -33,6 +33,13 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     start_time = overtime_in.start_time
     end_time = overtime_in.end_time
     
+    # 0. Валидация порядка времени (защита от "отрицательных" часов)
+    if end_time <= start_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Время окончания должно быть позже времени начала."
+        )
+
     # Убираем таймзоны для корректного сравнения
     if start_time.tzinfo:
         start_time = start_time.replace(tzinfo=None)
@@ -53,7 +60,7 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     if has_overlap:
         raise HTTPException(
             status_code=400,
-            detail="У вас уже есть заявка на это (или перекрывающееся) время."
+            detail="У вас уже есть заявка, которая пересекается с этим интервалом времени."
         )
 
     # 3. Базовое создание
@@ -162,14 +169,24 @@ async def review_overtime(
     if overtime.manager_approved is False or overtime.head_approved is False:
         overtime.status = OvertimeStatus.REJECTED
 
-    elif overtime.manager_approved is True and overtime.head_approved is True:
-        overtime.status = OvertimeStatus.APPROVED
+    elif overtime.head_approved is True:
+        # Проверяем лимит для принятия решения о финальном одобрении
+        weekly_hours = await overtime_repo.get_weekly_overtime_hours(
+            session, overtime.user_id, overtime.project_id
+        )
+        
+        # Если лимит не превышен, одобрения Начальника (Head) достаточно
+        if weekly_hours <= overtime.project.weekly_limit:
+            overtime.status = OvertimeStatus.APPROVED
+        else:
+            # Если лимит превышен — ждем еще и менеджера
+            if overtime.manager_approved is True:
+                overtime.status = OvertimeStatus.APPROVED
+            else:
+                overtime.status = OvertimeStatus.HEAD_APPROVED
 
     elif overtime.manager_approved is True:
         overtime.status = OvertimeStatus.MANAGER_APPROVED
-
-    elif overtime.head_approved is True:
-        overtime.status = OvertimeStatus.HEAD_APPROVED
 
     # Если заявка полностью одобрена, но часы не были изменены вручную — 
     # устанавливаем их равными запрошенным (с учетом округления бизнес-логики)
@@ -273,11 +290,33 @@ async def update_overtime(
 
     update_data = overtime_in.model_dump(exclude_unset=True)
     
-    # Убираем таймзоны
-    if update_data.get("start_time") and update_data["start_time"].tzinfo:
-        update_data["start_time"] = update_data["start_time"].replace(tzinfo=None)
-    if update_data.get("end_time") and update_data["end_time"].tzinfo:
-        update_data["end_time"] = update_data["end_time"].replace(tzinfo=None)
+    # 0. Валидация времени (новая или старая - проверка на корректность)
+    new_start = update_data.get("start_time", overtime.start_time)
+    new_end = update_data.get("end_time", overtime.end_time)
+    
+    if new_start.tzinfo: new_start = new_start.replace(tzinfo=None)
+    if new_end.tzinfo: new_end = new_end.replace(tzinfo=None)
+
+    if new_end <= new_start:
+        raise HTTPException(
+            status_code=400,
+            detail="Время окончания должно быть позже времени начала."
+        )
+
+    # 1. Проверка на пересечение (Overlap) при изменении времени
+    if "start_time" in update_data or "end_time" in update_data:
+        has_overlap = await overtime_repo.check_overlapping_overtimes(
+            session, overtime.user_id, new_start, new_end, exclude_id=overtime.id
+        )
+        if has_overlap:
+            raise HTTPException(
+                status_code=400,
+                detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
+            )
+
+    # Убираем таймзоны для итогового словаря
+    if "start_time" in update_data: update_data["start_time"] = new_start
+    if "end_time" in update_data: update_data["end_time"] = new_end
 
     # При изменении сбрасываем согласование и статус (если не админ меняет технически)
     if current_user.role != UserRole.admin:

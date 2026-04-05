@@ -24,6 +24,7 @@ class OvertimeStatus(str, PyEnum):
     Статусы жизненного цикла заявки на переработку.
     Используются для управления процессом согласования (Workflow).
     """
+    IN_PROGRESS = "IN_PROGRESS"            # Сессия активна (начата через бота)
     PENDING = "PENDING"                    # Ожидает действий руководителей
     MANAGER_APPROVED = "MANAGER_APPROVED"  # Одобрено менеджером проекта
     HEAD_APPROVED = "HEAD_APPROVED"        # Одобрено начальником отдела
@@ -35,6 +36,7 @@ class OvertimeStatus(str, PyEnum):
     def russian_label(self) -> str:
         """Возвращает человекочитаемое название статуса на русском."""
         labels = {
+            OvertimeStatus.IN_PROGRESS: "В процессе",
             OvertimeStatus.PENDING: "Ожидает",
             OvertimeStatus.MANAGER_APPROVED: "Одобрено менеджером",
             OvertimeStatus.HEAD_APPROVED: "Одобрено нач. отдела",
@@ -48,39 +50,31 @@ class OvertimeStatus(str, PyEnum):
 class Overtime(Base):
     """
     SQLAlchemy модель записи о переработке.
-    Это "Склад" данных — то, как они физически лежат в таблице `overtimes`.
-    
-    Attributes:
-        user_id: ID сотрудника, создавшего заявку.
-        project_id: ID проекта, по которому выполнялась работа.
-        start_time / end_time: Временной интервал переработки.
-        description: Описание того, что именно делал сотрудник.
-        location_name: Название объекта или адрес выполнения работ.
-        manager_approved / head_approved: Флаги решений руководителей.
-        approved_hours: Итоговое количество часов, которое будет оплачено/учтено.
     """
     __tablename__ = "overtimes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False)
 
+    # Геопозиция
     start_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     start_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
-
     end_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     end_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Временные метки
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Описание и голос
     description: Mapped[str] = mapped_column(String, nullable=False)
     location_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    voice_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    voice_summary: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Поля согласования
     manager_approved: Mapped[bool | None] = mapped_column(Boolean, default=None)
     head_approved: Mapped[bool | None] = mapped_column(Boolean, default=None)
-
-    # Комментарии (почему одобрил или отклонил)
     manager_comment: Mapped[str | None] = mapped_column(String, nullable=True)
     head_comment: Mapped[str | None] = mapped_column(String, nullable=True)
 

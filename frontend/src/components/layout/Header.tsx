@@ -1,151 +1,142 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { User, LogOut, Sun, Moon, BarChart2, CheckSquare, Settings, LayoutDashboard } from 'lucide-react';
-import { useTheme } from '../../context/ThemeContext';
-import NotificationBell from './NotificationBell';
+import {
+    LayoutDashboard, BarChart3, ClipboardCheck, Settings,
+    LogOut, User, Bell, Sun, Moon
+} from 'lucide-react';
 
 interface HeaderProps {
     user: any;
 }
 
-const Logo: React.FC = () => (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '3px' }}>
-            <div style={{ width: '10px', height: '10px', background: '#dc2626', borderRadius: '3px' }}></div>
-            <div style={{ width: '10px', height: '10px', background: '#16a34a', borderRadius: '3px' }}></div>
-            <div style={{ width: '10px', height: '10px', background: '#1e40af', borderRadius: '3px' }}></div>
-            <div style={{ width: '10px', height: '10px', background: '#dc2626', borderRadius: '3px' }}></div>
-        </div>
-        <span style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.03em' }}>Overtime<span style={{ color: 'var(--accent)' }}>Pro</span></span>
-    </div>
-);
+import Logo from '../atoms/Logo';
 
 const Header: React.FC<HeaderProps> = ({ user }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { theme, toggleTheme } = useTheme();
+    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        document.body.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => {
+        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('token');
         navigate('/login');
     };
 
-    if (!user) return null;
+    const navItems = [
+        { path: '/dashboard', label: 'Главная', icon: LayoutDashboard },
+        { path: '/analytics', label: 'Аналитика', icon: BarChart3 },
+    ];
 
-    const ROLE_LABELS: Record<string, string> = {
-        admin: 'Администратор',
-        head: 'Руководитель',
-        manager: 'Менеджер',
-        employee: 'Сотрудник'
-    };
+    if (user?.role === 'manager' || user?.role === 'head' || user?.role === 'admin') {
+        navItems.push({ path: '/review', label: 'Согласование', icon: ClipboardCheck });
+    }
 
-    const NavButton = ({ onClick, children, path, icon: Icon }: any) => {
-        const isActive = location.pathname === path;
-        return (
-            <button
-                onClick={onClick}
-                style={{
-                    padding: '10px 18px',
-                    borderRadius: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    border: 'none',
-                    background: isActive ? 'var(--bg-tertiary)' : 'transparent',
-                    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: '0.95rem',
-                    fontWeight: 700,
-                    transition: 'all 0.2s',
-                    position: 'relative'
-                }}
-            >
-                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                {children}
-                {isActive && (
-                    <div style={{
-                        position: 'absolute', bottom: '0', left: '20%', right: '20%',
-                        height: '3px', background: 'var(--accent)', borderRadius: '10px 10px 0 0'
-                    }}></div>
-                )}
-            </button>
-        );
-    };
+    if (user?.role === 'admin') {
+        navItems.push({ path: '/users', label: 'Управление', icon: Settings });
+    }
 
     return (
-        <div style={{
+        <header className="glass-card animate-fade-in" style={{
+            padding: '12px 24px',
+            marginBottom: '32px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '48px',
-            paddingBottom: '28px',
-            borderBottom: '1px solid var(--border)',
-            paddingTop: '8px'
+            position: 'sticky',
+            top: '16px',
+            zIndex: 1000,
+            background: 'var(--bg-secondary)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '16px',
+            border: '1px solid var(--border)',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.3)'
         }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '48px' }}>
-                <div
-                    onClick={() => !user.must_change_password && navigate('/dashboard')}
-                    style={{ cursor: user.must_change_password ? 'default' : 'pointer' }}
-                >
-                    <Logo />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+                <div onClick={() => navigate('/dashboard')} style={{ cursor: 'pointer' }}>
+                    <Logo size="sm" />
                 </div>
 
-                {!user.must_change_password && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <NavButton icon={LayoutDashboard} path="/dashboard" onClick={() => navigate('/dashboard')}>Главная</NavButton>
-
-                        {(user.role === 'admin' || user.role === 'head' || user.role === 'manager') && (
-                            <>
-                                <NavButton icon={BarChart2} path="/analytics" onClick={() => navigate('/analytics')}>Аналитика</NavButton>
-                                <NavButton icon={CheckSquare} path="/review" onClick={() => navigate('/review')}>Согласование</NavButton>
-                            </>
-                        )}
-
-                        {user.role === 'admin' && (
-                            <NavButton icon={Settings} path="/users" onClick={() => navigate('/users')}>Управление</NavButton>
-                        )}
-                    </div>
-                )}
+                <nav style={{ display: 'flex', gap: '8px', background: 'var(--bg-tertiary)', padding: '6px', borderRadius: '12px' }}>
+                    {navItems.map(item => {
+                        const Icon = item.icon;
+                        const active = location.pathname === item.path;
+                        return (
+                            <button
+                                key={item.path}
+                                onClick={() => navigate(item.path)}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '10px',
+                                    background: active ? 'var(--bg-secondary)' : 'transparent',
+                                    color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                                    boxShadow: active ? 'var(--card-shadow)' : 'none',
+                                    textTransform: 'none',
+                                    fontSize: '0.85rem',
+                                    gap: '8px',
+                                    fontWeight: active ? 700 : 500
+                                }}
+                            >
+                                <Icon size={18} /> {item.label}
+                            </button>
+                        );
+                    })}
+                </nav>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {/* User Context Info */}
-                <div style={{ textAlign: 'right', marginRight: '16px' }}>
-                    <p style={{ fontWeight: 700, fontSize: '0.9rem' }}>{user.full_name || user.email}</p>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {ROLE_LABELS[user.role]}
-                    </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div className="user-info-desktop">
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{user?.full_name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user?.role === 'admin' ? 'Администратор' : 'Сотрудник'}</div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-secondary)', padding: '6px', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                    <NotificationBell />
+                <div style={{ height: '32px', width: '1px', background: 'var(--border)' }}></div>
 
-                    <button onClick={toggleTheme} style={{
-                        width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: 'none', background: 'var(--bg-primary)',
-                        color: 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}>
-                        {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="action-button-modern" title="Уведомления"><Bell size={18} /></button>
+                    <button className="action-button-modern" onClick={toggleTheme} title="Переключить тему">
+                        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
                     </button>
-
-                    <button onClick={() => navigate('/profile')} style={{
-                        width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: 'none', background: location.pathname === '/profile' ? 'var(--accent)' : 'var(--bg-primary)',
-                        color: location.pathname === '/profile' ? 'white' : 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}>
-                        <User size={20} />
-                    </button>
-
-                    <button onClick={handleLogout} style={{
-                        width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: 'none', background: 'var(--bg-primary)',
-                        color: 'var(--danger)', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}>
-                        <LogOut size={20} />
+                    <button className="action-button-modern" onClick={() => navigate('/profile')} title="Профиль"><User size={18} /></button>
+                    <button
+                        onClick={handleLogout}
+                        className="action-button-modern"
+                        style={{ color: 'var(--danger)' }}
+                        title="Выйти"
+                    >
+                        <LogOut size={18} />
                     </button>
                 </div>
             </div>
-        </div>
+
+            <style>{`
+                .action-button-modern {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 10px;
+                    background: var(--bg-tertiary);
+                    color: var(--text-secondary);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s ease;
+                }
+                .user-info-desktop {
+                    text-align: right;
+                }
+                @media (max-width: 640px) {
+                    .user-info-desktop { display: none; }
+                }
+            `}</style>
+        </header>
     );
 };
 
