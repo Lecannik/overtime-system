@@ -154,7 +154,8 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active.end_time = datetime.now()
             active.description = comment_text
             active.status = OvertimeStatus.PENDING
-            active.voice_url = voice_url
+            active.voice_url = f"/{voice_url}" if voice_url and not voice_url.startswith("/") else voice_url
+            active.voice_summary = summary_text if summary_text else None
             # Сохраняем конечные координаты
             active.end_lat = end_lat
             active.end_lng = end_lng

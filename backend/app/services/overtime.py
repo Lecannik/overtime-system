@@ -11,91 +11,109 @@ from app.repositories import organization as org_repo
 from app.repositories import user as user_repo
 
 
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from app.core.utils import calculate_overtime_hours
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
-    Создает новую заявку на переработку.
-    
-    Бизнес-логика:
-    1. Валидация времени (нельзя в будущее).
-    2. Проверка на пересечение с уже существующими заявками сотрудника.
-    3. Создание записи в БД.
-    4. Проверка недельного лимита проекта (уведомление менеджера при превышении).
-    5. Отправка уведомлений руководителям (Менеджер + Нач. отдела).
-    
-    Args:
-        session: Сессия БД.
-        overtime_in: Данные из запроса (проект, время, описание, место).
-        user_id: Владелец заявки.
+    Создает заявку на переработку.
+    Если интервал пересекает полночь (в локальном времени пользователя), 
+    автоматически разделяет её на несколько записей.
     """
-    start_time = overtime_in.start_time
-    end_time = overtime_in.end_time
+    original_start = overtime_in.start_time
+    original_end = overtime_in.end_time
+    offset_min = overtime_in.timezone_offset or 0  # JS getTimezoneOffset(): для +05:00 = -300
+
+    if original_end <= original_start:
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала.")
+
+    # 1. Гарантируем, что datetime имеет UTC-метку (aware)
+    def ensure_utc_aware(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    start_utc = ensure_utc_aware(original_start)
+    end_utc = ensure_utc_aware(original_end)
+
+    # 2. Часовой пояс клиента: JS getTimezoneOffset() возвращает разницу UTC - LOCAL в минутах
+    #    Для +05:00 (Ёкатеринбург): getTimezoneOffset() = -300
+    #    Формула: local = utc - offset_min (в минутах)
+    #    timezone() принимает смещение UTC→LOCAL: для +05:00 = +300 мин, т.е. -offset_min
+    client_tz = timezone(timedelta(minutes=-offset_min))
+
+    # 3. Конвертим UTC → локальное время для определения границ суток
+    curr_s_local = start_utc.astimezone(client_tz)
+    end_local = end_utc.astimezone(client_tz)
+
+    # 4. Разделяем интервал по полуночи в ЛОКАЛЬНОМ времени клиента
+    intervals_utc = []
+
+    while curr_s_local.date() < end_local.date():
+        # Полночь следующего локального дня (сохраняем tzinfo!)
+        midnight_local = (curr_s_local + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=client_tz
+        )
+        # Конвертируем обратно в naive UTC для PostgreSQL
+        chunk_s_utc = curr_s_local.astimezone(timezone.utc).replace(tzinfo=None)
+        chunk_e_utc = midnight_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+        intervals_utc.append((chunk_s_utc, chunk_e_utc))
+        curr_s_local = midnight_local
+
+    # Последний (или единственный) кусок
+    intervals_utc.append((
+        curr_s_local.astimezone(timezone.utc).replace(tzinfo=None),
+        end_utc.astimezone(timezone.utc).replace(tzinfo=None)
+    ))
+
+    created_overtimes = []
     
-    # 0. Валидация порядка времени (защита от "отрицательных" часов)
-    if end_time <= start_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания должно быть позже времени начала."
+    for s_utc, e_utc in intervals_utc:
+        # Проверка на пересечение (уже в UTC)
+        has_overlap = await overtime_repo.check_overlapping_overtimes(
+            session, user_id, s_utc, e_utc
         )
+        if has_overlap:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Конфликт: период {s_utc.strftime('%H:%M')} - {e_utc.strftime('%H:%M')} (UTC) пересекается с существующей заявкой."
+            )
 
-    # Убираем таймзоны для корректного сравнения
-    if start_time.tzinfo:
-        start_time = start_time.replace(tzinfo=None)
-    if end_time.tzinfo:
-        end_time = end_time.replace(tzinfo=None)
-
-    # 1. Запрет на будущее время
-    if start_time > datetime.now():
-        raise HTTPException(
-            status_code=400, 
-            detail="Нельзя создавать заявку на будущее время."
+        # Создание записи
+        data = overtime_in.model_dump(exclude={"timezone_offset"})
+        data["start_time"] = s_utc
+        data["end_time"] = e_utc
+        
+        overtime_db = Overtime(
+            **data,
+            user_id=user_id,
+            status=OvertimeStatus.PENDING
         )
+        new_ot = await overtime_repo.create_overtime(session, overtime_db)
+        created_overtimes.append(new_ot)
 
-    # 2. Проверка на пересечение (Overlap)
-    has_overlap = await overtime_repo.check_overlapping_overtimes(
-        session, user_id, start_time, end_time
-    )
-    if has_overlap:
-        raise HTTPException(
-            status_code=400,
-            detail="У вас уже есть заявка, которая пересекается с этим интервалом времени."
-        )
-
-    # 3. Базовое создание
-    data = overtime_in.model_dump()
-    overtime_db = Overtime(
-        **data,
-        user_id=user_id,
-        status=OvertimeStatus.PENDING
-    )
-    overtime = await overtime_repo.create_overtime(session, overtime_db)
-
-    # Релоадим с релейшнами
-    overtime = await overtime_repo.get_overtime_by_id(session, overtime.id)
-
-    # 4. Проверка недельных лимитов
+    # Уведомления (только для первой части, чтобы не спамить, или для всей группы)
+    # Для простоты берем первую созданную
+    main_ot = await overtime_repo.get_overtime_by_id(session, created_overtimes[0].id)
+    
+    # Проверка лимитов и уведомления
     weekly_hours = await overtime_repo.get_weekly_overtime_hours(
-        session, user_id, overtime.project_id
+        session, user_id, main_ot.project_id
     )
     
-    # Получаем менеджера проекта
-    manager = await user_repo.get_user_by_id(session, overtime.project.manager_id)
-    
-    # Если лимит превышен — уведомляем менеджера
-    if weekly_hours > overtime.project.weekly_limit:
+    manager = await user_repo.get_user_by_id(session, main_ot.project.manager_id)
+    if weekly_hours > main_ot.project.weekly_limit:
         await notifications.notify_limit_exceeded(
-            session, overtime, manager, weekly_hours, overtime.project.weekly_limit
+            session, main_ot, manager, weekly_hours, main_ot.project.weekly_limit
         )
 
-    # Получаем начальника для стандартного уведомления
-    dept = await org_repo.get_department_by_id(session, overtime.user.department_id)
+    dept = await org_repo.get_department_by_id(session, main_ot.user.department_id)
     head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
 
-    await notifications.notify_new_overtime(session, overtime, manager, head)
+    await notifications.notify_new_overtime(session, main_ot, manager, head)
 
-    return overtime
+    return main_ot
 
 
 async def review_overtime(
@@ -288,37 +306,33 @@ async def update_overtime(
     if current_user.role != UserRole.admin and overtime.status != OvertimeStatus.PENDING:
         raise HTTPException(status_code=400, detail="Нельзя редактировать заявку, которая уже прошла согласование или отменена")
 
-    update_data = overtime_in.model_dump(exclude_unset=True)
+    update_data = overtime_in.model_dump(exclude_unset=True, exclude={"timezone_offset"})
     
-    # 0. Валидация времени (новая или старая - проверка на корректность)
+    # ПРИВОДИМ К UTC ДЛЯ БД
     new_start = update_data.get("start_time", overtime.start_time)
     new_end = update_data.get("end_time", overtime.end_time)
-    
-    if new_start.tzinfo: new_start = new_start.replace(tzinfo=None)
-    if new_end.tzinfo: new_end = new_end.replace(tzinfo=None)
+
+    if isinstance(new_start, datetime) and new_start.tzinfo:
+        new_start = new_start.astimezone(timezone.utc).replace(tzinfo=None)
+    if isinstance(new_end, datetime) and new_end.tzinfo:
+        new_end = new_end.astimezone(timezone.utc).replace(tzinfo=None)
 
     if new_end <= new_start:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания должно быть позже времени начала."
-        )
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала.")
 
-    # 1. Проверка на пересечение (Overlap) при изменении времени
+    # Проверка на пересечение
     if "start_time" in update_data or "end_time" in update_data:
         has_overlap = await overtime_repo.check_overlapping_overtimes(
             session, overtime.user_id, new_start, new_end, exclude_id=overtime.id
         )
         if has_overlap:
-            raise HTTPException(
-                status_code=400,
-                detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
-            )
+            raise HTTPException(status_code=400, detail="У вас уже есть другая заявка, пересекающаяся с этим периодом.")
 
-    # Убираем таймзоны для итогового словаря
+    # Принудительно ставим очищенные даты в update_data
     if "start_time" in update_data: update_data["start_time"] = new_start
     if "end_time" in update_data: update_data["end_time"] = new_end
 
-    # При изменении сбрасываем согласование и статус (если не админ меняет технически)
+    # При изменении сбрасываем согласование и статус
     if current_user.role != UserRole.admin:
         update_data["manager_approved"] = None
         update_data["head_approved"] = None

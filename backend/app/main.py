@@ -1,6 +1,10 @@
 import os
 import asyncio
+import logging
 from contextlib import asynccontextmanager
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,19 +20,26 @@ from app.api.v1.audit import router as audit_router
 from app.api.v1.health import router as health_router
 
 from app.services.bot_service import run_bot_async
+from app.services.cleanup_service import setup_cleanup_scheduler
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Обеспечиваем существование папок
     os.makedirs("uploads/voice", exist_ok=True)
     
-    # Запуск Telegram Бота
+    # Задача 1: Запуск бота
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if token:
-        print("🤖 Запуск Telegram Бота...")
-        app.state.tg_bot = await run_bot_async(token)
+        logger.info("🤖 Запуск Telegram-бота...")
+        asyncio.create_task(run_bot_async(token))
     else:
-        print("⚠️ TELEGRAM_BOT_TOKEN не найден в .env. Бот не будет запущен.")
+        logger.warning("⚠️ TELEGRAM_BOT_TOKEN не найден в .env. Бот не будет запущен.")
+    
+    # Задача 2: Запуск планировщика очистки
+    logger.info("🧹 Инициализация фоновой очистки данных...")
+    setup_cleanup_scheduler()
     
     yield
     

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from app.models.overtime import OvertimeStatus
 from app.models.user import UserRole
 
@@ -14,6 +14,7 @@ class OvertimeBase(BaseModel):
     end_time: datetime | None = None
     description: str
     location_name: str | None = None
+    timezone_offset: int | None = None  # Смещение часового пояса клиента в минутах (getTimezoneOffset())
     start_lat: float | None = None
     start_lng: float | None = None
     end_lat: float | None = None
@@ -56,6 +57,8 @@ class OvertimeResponse(OvertimeBase):
     head_comment: str | None
 
     created_at: datetime
+    voice_url: str | None = None
+    voice_summary: str | None = None
 
     # Вложенные объекты (для отображения имен вместо ID)
     project: "ProjectMini | None" = None
@@ -65,6 +68,15 @@ class OvertimeResponse(OvertimeBase):
     hours: float
     raw_hours: float
     approved_hours: float | None = None
+
+    @field_validator("start_time", "end_time", "created_at", mode="after")
+    @classmethod
+    def add_utc_tz(cls, v: datetime | None) -> datetime | None:
+        """Добавляет метку UTC к 'наивным' датам из базы данных для корректного парсинга фронтендом."""
+        if v and v.tzinfo is None:
+            from datetime import timezone
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
     model_config = ConfigDict(from_attributes=True)
 

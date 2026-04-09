@@ -61,6 +61,8 @@ export const createOvertime = async (data: {
   start_time: string;
   end_time: string;
   description: string;
+  location_name?: string;
+  timezone_offset?: number;
 }) => {
   const token = localStorage.getItem('token');
   const response = await api.post('/overtimes/', data, {
@@ -70,7 +72,14 @@ export const createOvertime = async (data: {
 };
 
 // Обновить существующую заявку
-export const updateOvertime = async (overtimeId: number, data: any) => {
+export const updateOvertime = async (overtimeId: number, data: {
+  project_id?: number;
+  start_time?: string;
+  end_time?: string;
+  description?: string;
+  location_name?: string;
+  timezone_offset?: number;
+}) => {
   const token = localStorage.getItem('token');
   const response = await api.patch(`/overtimes/${overtimeId}`, data, {
     headers: { Authorization: `Bearer ${token}` }

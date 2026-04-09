@@ -94,6 +94,32 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                                 </p>
                             </div>
 
+                            {overtime.voice_url && (
+                                <div className="glass-card" style={{ padding: '20px', background: 'var(--bg-secondary)', border: '1px solid var(--primary)30' }}>
+                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', marginBottom: '14px', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <MessageSquare size={16} /> ОРИГИНАЛ ЗАПИСИ
+                                    </h4>
+                                    <audio
+                                        controls
+                                        style={{ width: '100%', height: '40px' }}
+                                        src={overtime.voice_url.startsWith('/') ? overtime.voice_url : `/${overtime.voice_url}`}
+                                    >
+                                        Ваш браузер не поддерживает аудио элемент.
+                                    </audio>
+                                    {overtime.voice_summary && (
+                                        <div style={{ marginTop: '12px', padding: '12px 16px', borderRadius: '10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                                            <p style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>🤖 ИИ-резюме</p>
+                                            <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: '1.5', fontStyle: 'italic' }}>
+                                                «{overtime.voice_summary}»
+                                            </p>
+                                        </div>
+                                    )}
+                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+                                        * Аудиозапись хранится в течение 90 дней
+                                    </p>
+                                </div>
+                            )}
+
                             {overtime.location_name && (
                                 <div>
                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Местоположение</h4>

@@ -13,6 +13,7 @@ PyJWT==2.8.0
 openai-whisper
 transformers
 sentencepiece
+apscheduler
 python-multipart==0.0.20
 email-validator==2.1.0
 

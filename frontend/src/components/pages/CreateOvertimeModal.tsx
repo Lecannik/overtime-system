@@ -21,10 +21,15 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
     useEffect(() => {
         getProjects().then(setProjects).catch(() => { });
 
+        const fmt = (d: string) => {
+            if (!d) return '';
+            const date = new Date(d);
+            const offset = date.getTimezoneOffset() * 60000;
+            return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+        };
+
         if (editData) {
             setProjectId(editData.project_id.toString());
-            // Форматируем дату для datetime-local (YYYY-MM-DDTHH:mm)
-            const fmt = (d: string) => new Date(d).toISOString().slice(0, 16);
             setStartTime(fmt(editData.start_time));
             setEndTime(fmt(editData.end_time));
             setDescription(editData.description);
@@ -33,8 +38,14 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
     }, [editData]);
 
     const hasChanges = () => {
+        const fmt = (d: string) => {
+            if (!d) return '';
+            const date = new Date(d);
+            const offset = date.getTimezoneOffset() * 60000;
+            return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+        };
+
         if (editData) {
-            const fmt = (d: string) => new Date(d).toISOString().slice(0, 16);
             return (
                 projectId !== editData.project_id.toString() ||
                 startTime !== fmt(editData.start_time) ||
@@ -62,18 +73,21 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
         setLoading(true);
 
         try {
-            const data = {
+            const payload = {
                 project_id: Number(projectId),
-                start_time: startTime,
-                end_time: endTime,
+                start_time: new Date(startTime).toISOString(),
+                end_time: new Date(endTime).toISOString(),
                 description,
-                location_name: locationName
+                location_name: locationName,
+                timezone_offset: new Date().getTimezoneOffset()
             };
 
+            console.log('SUBMITTING OVERTIME:', payload);
+
             if (editData) {
-                await updateOvertime(editData.id, data);
+                await updateOvertime(editData.id, payload);
             } else {
-                await createOvertime(data);
+                await createOvertime(payload);
             }
 
             onCreated();

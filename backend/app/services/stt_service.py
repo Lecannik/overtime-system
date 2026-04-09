@@ -33,27 +33,34 @@ def get_summarizer():
 
 async def summarize_text(text: str) -> str:
     """Генерирует профессиональное резюме с помощью T5."""
-    if not text or len(text) < 30:
-        return text or "[Нет текста]"
+    if not text:
+        return "[Нет текста]"
+
+    # Если текст короткий (меньше 100 символов), суммаризация не нужна.
+    # Т5 на коротких текстах часто галлюцинирует.
+    if len(text) < 100:
+        cleaned = text.strip()
+        if cleaned:
+            return cleaned[0].upper() + cleaned[1:]
+        return cleaned
 
     try:
         model, tokenizer = get_summarizer()
-        # Т5 работает лучше с префиксом (хотя эта модель училась без него, но мы добавим контекст)
         inputs = tokenizer([text], max_length=1024, truncation=True, return_tensors="pt")
         
-        # Генерация (регулируем краткость)
+        # Генерация с улучшенными параметрами для предотвращения бреда
         output_ids = model.generate(
             input_ids=inputs["input_ids"],
-            max_length=60,
+            max_length=80,
             min_length=10,
             num_beams=4,
-            no_repeat_ngram_size=2,
+            repetition_penalty=2.5,  # Штраф за повторы
+            no_repeat_ngram_size=3,
             early_stopping=True
         )
         
         summary = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
         
-        # Умная чистка (исправление первой буквы)
         if summary:
             summary = summary[0].upper() + summary[1:]
         

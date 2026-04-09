@@ -231,7 +231,14 @@ async def check_overlapping_overtimes(
         query = query.where(Overtime.id != exclude_id)
         
     result = await session.execute(query)
-    return result.scalar_one_or_none() is not None
+    conflict = result.scalar_one_or_none()
+    
+    if conflict:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"⚠️ Конфликт обнаружен! Текущий ID: {exclude_id}, Конфликтный ID: {conflict.id}, Пользователь: {user_id}")
+    
+    return conflict is not None
 
 async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project_id: int) -> float:
     """
