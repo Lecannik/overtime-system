@@ -8,7 +8,7 @@ class Notification(Base):
     __tablename__ = "notifications"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     message: Mapped[str] = mapped_column(String, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -19,4 +19,4 @@ class Notification(Base):
     )
 
     # Связь с пользователем
-    user = relationship("User", backref="notifications")
+    user = relationship("User", back_populates="notifications")

@@ -15,9 +15,18 @@ class MSGraphService:
         self.secret = settings.MS_CLIENT_SECRET
         self.tenant_id = settings.MS_TENANT_ID
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
+        self.redirect_uri = settings.MS_REDIRECT_URI
         self.scope = ["https://graph.microsoft.com/.default"]
+        self.user_scopes = ["User.Read"]
         
         self._access_token = None
+
+    def _get_msal_app(self):
+        return msal.ConfidentialClientApplication(
+            self.client_id,
+            authority=self.authority,
+            client_credential=self.secret
+        )
 
     async def _get_access_token(self):
         """Получает или обновляет токен доступа от Microsoft."""
@@ -26,11 +35,7 @@ class MSGraphService:
             return None
 
         logger.debug(f"Attempting MS Auth for Tenant: {self.tenant_id}")
-        app = msal.ConfidentialClientApplication(
-            self.client_id,
-            authority=self.authority,
-            client_credential=self.secret
-        )
+        app = self._get_msal_app()
         
         result = app.acquire_token_for_client(scopes=self.scope)
         if "access_token" in result:
@@ -38,6 +43,39 @@ class MSGraphService:
             return result["access_token"]
         else:
             logger.error(f"MS Auth Error: {result.get('error')} - {result.get('error_description')}")
+            return None
+
+    def get_login_url(self) -> str:
+        """Генерирует URL для перенаправления пользователя на страницу входа Microsoft."""
+        app = self._get_msal_app()
+        return app.get_authorization_request_url(
+            self.user_scopes,
+            redirect_uri=self.redirect_uri
+        )
+
+    async def get_user_info_from_code(self, code: str) -> Dict[str, Any]:
+        """Обменивает код авторизации на данные пользователя."""
+        app = self._get_msal_app()
+        result = app.acquire_token_by_authorization_code(
+            code,
+            scopes=self.user_scopes,
+            redirect_uri=self.redirect_uri
+        )
+        
+        if "error" in result:
+            logger.error(f"MS Token Exchange Error: {result.get('error_description')}")
+            return None
+            
+        access_token = result.get("access_token")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if response.status_code == 200:
+                return response.json()
+            
+            logger.error(f"MS Graph /me Error: {response.text}")
             return None
 
     async def get_users(self) -> List[Dict[str, Any]]:

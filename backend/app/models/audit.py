@@ -13,7 +13,7 @@ class AuditLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
     # КТО совершил действие (ID пользователя)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     # ЧТО за действие (например: "LOGIN", "SUBMIT_OVERTIME", "REVIEW_MANAGER")
     action: Mapped[str] = mapped_column(String, nullable=False)

@@ -53,3 +53,25 @@ async def get_current_user(
             )
 
     return user
+
+
+class PermissionChecker:
+    """
+    Зависимость для проверки наличия конкретных прав у пользователя.
+    Пример использования: user: User = Depends(PermissionChecker("crm:leads:create"))
+    """
+    def __init__(self, required_permission: str):
+        self.required_permission = required_permission
+
+    def __call__(self, user: User = Depends(get_current_user)) -> User:
+        # Админы имеют доступ ко всему
+        if user.role_name.lower() == "admin":
+            return user
+            
+        if self.required_permission in user.permissions:
+            return user
+            
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Недостаточно прав. Требуется разрешение: {self.required_permission}"
+        )

@@ -12,9 +12,11 @@ from app.schemas.user import UserCreate, UserResponse, Token, UserUpdatePreferen
 from app.services.auth import register_user, authenticate_user
 from app.core.security import create_access_token
 from app.api.deps import get_current_user
-from app.models.user import User, OTPType
+from app.models.user import User, OTPType, TwoFAMethod
 from app.repositories.user import update_user, get_user_by_email
+import logging
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -39,10 +41,14 @@ async def login(
     
     # ПРОВЕРКА 2FA
     if user.is_2fa_enabled:
+        # 1. Если выбран TOTP (Authenticator App)
+        if user.two_fa_method == TwoFAMethod.totp and user.totp_secret:
+            return {"status": "2fa_required", "email": user.email, "method": "totp"}
+            
+        # 2. Иначе используем Email (через Microsoft)
         code = await create_otp(session, user.id, OTPType.login)
         await session.commit()
         
-        # Отправляем код на почту
         await ms_graph.send_email(
             recipient=user.email,
             subject="Код подтверждения Overtime Pro",
@@ -57,7 +63,7 @@ async def login(
             """
         )
         
-        return {"status": "2fa_required", "email": user.email}
+        return {"status": "2fa_required", "email": user.email, "method": "email"}
 
     # Логируем вход в систему
     await audit_repo.create_audit_log(
@@ -77,19 +83,23 @@ async def verify_login_2fa(
     verify_in: OTPVerify,
     db: AsyncSession = Depends(get_session)
 ):
-    """Верификация 2FA кода при входе."""
-    from app.repositories.user import get_user_by_email
+    """Верификация 2FA кода при входе (поддерживает и OTP и TOTP)."""
     user = await get_user_by_email(db, verify_in.email)
     
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-    is_valid = await verify_otp(db, user.id, verify_in.code, OTPType.login)
+    # Сначала пробуем TOTP если он настроен
+    if user.totp_secret:
+        from app.services.auth_2fa_service import verify_totp_code
+        is_valid = verify_totp_code(user.totp_secret, verify_in.code)
+    else:
+        # Иначе пробуем OTP из таблицы
+        is_valid = await verify_otp(db, user.id, verify_in.code, OTPType.login)
     
     if not is_valid:
         raise HTTPException(status_code=400, detail="Неверный или просроченный код")
         
-    # Логируем успешный вход
     await audit_repo.create_audit_log(
         session=db,
         user_id=user.id,
@@ -153,17 +163,73 @@ async def change_password(
     return {"detail": "Пароль успешно изменен"}
 
 
+@router.post("/2fa/setup")
+async def setup_2fa(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    """Генерация секрета и QR-кода для настройки 2FA."""
+    from app.services.auth_2fa_service import generate_totp_secret, get_totp_uri, generate_qr_base64
+    
+    secret = generate_totp_secret()
+    # Сохраняем временно secret, но пока не включаем 2FA
+    await update_user(db, current_user, {"totp_secret": secret})
+    await db.commit()
+    
+    uri = get_totp_uri(current_user, secret)
+    qr_base64 = generate_qr_base64(uri)
+    
+    return {
+        "secret": secret,
+        "qr_code": f"data:image/png;base64,{qr_base64}"
+    }
+
+
+@router.post("/2fa/enable")
+async def enable_2fa(
+    code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    """Верификация первого кода и окончательное включение 2FA."""
+    from app.services.auth_2fa_service import verify_totp_code
+    
+    if not current_user.totp_secret:
+        raise HTTPException(status_code=400, detail="2FA не была инициализирована")
+        
+    if verify_totp_code(current_user.totp_secret, code):
+        await update_user(db, current_user, {"is_2fa_enabled": True})
+        await db.commit()
+        return {"detail": "2FA успешно включена"}
+    else:
+        raise HTTPException(status_code=400, detail="Неверный код")
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    """Отключение 2FA."""
+    await update_user(db, current_user, {"is_2fa_enabled": False, "totp_secret": None})
+    await db.commit()
+    return {"detail": "2FA отключена"}
+
+
 @router.post("/password-reset/request")
 async def request_password_reset(
     req: PasswordResetRequest,
     db: AsyncSession = Depends(get_session)
 ):
+    # Проверка существования пользователя
     user = await get_user_by_email(db, req.email)
     
     if user:
+        # Генерация кода сброса пароля (OTP)
         code = await create_otp(db, user.id, OTPType.password_reset)
         await db.commit()
         
+        # Отправка письма через MS Graph API
         await ms_graph.send_email(
             recipient=user.email,
             subject="Восстановление пароля Overtime Pro",
@@ -189,6 +255,10 @@ async def confirm_password_reset(
     req: PasswordResetConfirm,
     db: AsyncSession = Depends(get_session)
 ):
+    """
+    Подтверждение сброса пароля.
+    Проверяет переданный код OTP и устанавливает новый пароль.
+    """
     user = await get_user_by_email(db, req.email)
     
     if not user:
@@ -212,3 +282,64 @@ async def confirm_password_reset(
     await db.commit()
     
     return {"detail": "Пароль успешно сброшен. Теперь вы можете войти с новым паролем."}
+    
+
+@router.get("/microsoft/login")
+async def microsoft_login():
+    """Возвращает URL для входа через Microsoft."""
+    return {"login_url": ms_graph.get_login_url()}
+
+
+@router.get("/microsoft/callback", response_model=LoginResponse)
+async def microsoft_callback(
+    code: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Callback для обработки входа через Microsoft."""
+    ms_user = await ms_graph.get_user_info_from_code(code)
+    if not ms_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Не удалось получить данные пользователя от Microsoft"
+        )
+    
+    email = ms_user.get("mail") or ms_user.get("userPrincipalName")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email пользователя не найден в данных Microsoft"
+        )
+    
+    # Ищем пользователя в БД
+    user = await get_user_by_email(session, email)
+    
+    if not user:
+        # Автоматическое создание пользователя (Provisioning)
+        from app.core.security import get_random_string
+        
+        user_in = UserCreate(
+            email=email,
+            full_name=ms_user.get("displayName", "MS User"),
+            password=get_random_string(16), # Генерируем случайный пароль
+            role="employee"
+        )
+        user = await register_user(session, user_in)
+        
+        logger.info(f"Created new user from MS Auth: {email}")
+
+    # Логируем вход
+    await audit_repo.create_audit_log(
+        session=session,
+        user_id=user.id,
+        action="LOGIN_MICROSOFT",
+        details={"email": email}
+    )
+    await session.commit()
+    
+    token = create_access_token(data={"sub": str(user.id)})
+    return {
+        "status": "success", 
+        "access_token": token, 
+        "token_type": "bearer", 
+        "user": user
+    }

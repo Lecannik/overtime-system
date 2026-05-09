@@ -12,11 +12,13 @@ from sqlalchemy import (
     Date
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from typing import TYPE_CHECKING
 from app.core.database import Base
-from app.models.user import User
-from app.models.organization import Project
 from app.core.utils import calculate_overtime_hours
+
+if TYPE_CHECKING:
+    from app.models.user import User
+    from app.models.organization import Project
 
 
 class OvertimeStatus(str, PyEnum):
@@ -53,8 +55,8 @@ class Overtime(Base):
     """
     __tablename__ = "overtimes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
 
     # Геопозиция
     start_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -92,8 +94,8 @@ class Overtime(Base):
     )
 
     # Связи (Relationships) для удобного доступа к связанным данным
-    project: Mapped["Project"] = relationship("Project")
-    user: Mapped["User"] = relationship("User")
+    project: Mapped["Project"] = relationship("Project", back_populates="overtimes")
+    user: Mapped["User"] = relationship("User", back_populates="overtimes")
 
     @property
     def hours(self) -> float:

@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
+    Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import {
-    Clock, FileCheck, Activity,
-    Download, PieChart as PieIcon, ClipboardCheck, Calendar
+    Download, Calendar, DollarSign, TrendingUp, Briefcase, Clock, FileCheck
 } from 'lucide-react';
-import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
-import api, {
+import {
+    api,
     getAnalyticsSummary, getProjectAnalytics,
     getDepartmentAnalytics, exportAnalytics,
-    getUserAnalytics, getReviewAnalytics
+    getCompanyFinances
 } from '../../services/api';
 import { COMPANY_LABELS } from '../../constants/locale';
 
@@ -45,7 +44,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 {payload.map((p: any, i: number) => (
                     <div key={i}>
                         <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: p.color || 'var(--primary)', fontWeight: 600 }}>
-                            {p.name}: {p.value.toFixed(1)}ч
+                            {p.name}: {(p.value || 0).toFixed(1)}ч
                         </p>
                         {p.payload.project_name && (
                             <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -62,7 +61,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 const AnalyticsPage: React.FC = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState<any>(null);
     const [summary, setSummary] = useState<any>(null);
     const [projects, setProjects] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
@@ -73,8 +71,8 @@ const AnalyticsPage: React.FC = () => {
     const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users'>('projects');
     const [selectedCompany, setSelectedCompany] = useState<string>('all');
     const [selectedProject, setSelectedProject] = useState<string>('all');
-    const [userStats, setUserStats] = useState<any[]>([]);
-    const [reviewStats, setReviewStats] = useState<any>(null);
+    const [projectsList, setProjectsList] = useState<any[]>([]);
+    const [finances, setFinances] = useState<any>(null);
 
     const getFilterParams = () => {
         const params: any = {};
@@ -99,36 +97,26 @@ const AnalyticsPage: React.FC = () => {
     const fetchAll = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            if (!token) { navigate('/login'); return; }
-
-            const me = await api.get('/auth/me');
-            setUser(me.data);
-
             const params = getFilterParams();
-            const [sum, projData, deptData, uStats, revStats, allProjects] = await Promise.all([
+            const [sum, projData, deptData, allProjects, financeData] = await Promise.all([
                 getAnalyticsSummary(params),
                 getProjectAnalytics(params),
                 getDepartmentAnalytics(params).catch(() => []),
-                getUserAnalytics(params).catch(() => []),
-                getReviewAnalytics(params).catch(() => null),
-                api.get('/projects/').then(r => r.data).catch(() => [])
+                api.get('/projects/').then(r => r.data).catch(() => []),
+                getCompanyFinances().catch(() => null)
             ]);
 
             setSummary(sum);
             setProjects(projData);
             setDepartments(deptData);
-            setUserStats(uStats);
-            setReviewStats(revStats);
-            if (!projectsList.length) setProjectsList(allProjects); // Сохраняем список для фильтра
+            setFinances(financeData);
+            if (!projectsList.length) setProjectsList(allProjects);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
     };
-
-    const [projectsList, setProjectsList] = useState<any[]>([]);
 
     useEffect(() => {
         if (period !== 'custom' || (customDates.start && customDates.end)) {
@@ -145,7 +133,7 @@ const AnalyticsPage: React.FC = () => {
             const a = document.createElement('a'); a.href = url;
             a.download = `report_${new Date().toISOString().split('T')[0]}.xlsx`;
             document.body.appendChild(a); a.click();
-            window.URL.revokeObjectURL(url); document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         } catch { alert('Ошибка экспорта'); }
         finally { setExporting(false); }
     };
@@ -156,15 +144,13 @@ const AnalyticsPage: React.FC = () => {
         { name: 'Отклонено', value: summary.rejected_requests },
     ].filter(d => d.value > 0) : [];
 
-    if (loading && !summary) return <div className="page-container"><Skeleton height={800} /></div>;
+    if (loading && !summary) return <div style={{ padding: '40px' }}><Skeleton height={800} /></div>;
 
     return (
-        <div className="page-container animate-fade-in">
-            <Header user={user} />
-
+        <div className="animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
-                    <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>Аналитическая панель</h2>
+                    <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>Аналитика</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Обзор производительности и затрат ресурсов.</p>
                 </div>
                 <button className="primary" onClick={handleExport} disabled={exporting}>
@@ -174,157 +160,191 @@ const AnalyticsPage: React.FC = () => {
 
             {/* Filters */}
             <div className="glass-card" style={{ padding: '20px 24px', marginBottom: '32px', display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Calendar size={20} style={{ color: 'var(--primary)' }} />
-                    <select value={period} onChange={e => setPeriod(e.target.value)} style={{ minWidth: '180px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={18} color="var(--text-muted)" />
+                    <select className="modern-input" style={{ width: '160px', padding: '8px 12px' }} value={period} onChange={e => setPeriod(e.target.value)}>
                         <option value="all">За всё время</option>
-                        <option value="week">Последние 7 дней</option>
-                        <option value="month">Этот месяц</option>
-                        <option value="custom">Выбрать период...</option>
+                        <option value="week">Последняя неделя</option>
+                        <option value="month">Текущий месяц</option>
+                        <option value="custom">Указать период</option>
                     </select>
                 </div>
 
                 {period === 'custom' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input type="date" value={customDates.start} onChange={e => setCustomDates({ ...customDates, start: e.target.value })} />
+                        <input type="date" className="modern-input" style={{ padding: '6px 12px' }} value={customDates.start} onChange={e => setCustomDates({ ...customDates, start: e.target.value })} />
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
-                        <input type="date" value={customDates.end} onChange={e => setCustomDates({ ...customDates, end: e.target.value })} />
-                        <button className="primary" onClick={fetchAll}>Применить</button>
+                        <input type="date" className="modern-input" style={{ padding: '6px 12px' }} value={customDates.end} onChange={e => setCustomDates({ ...customDates, end: e.target.value })} />
                     </div>
                 )}
 
-                <div style={{ borderLeft: '1px solid var(--border)', height: '24px' }}></div>
+                <div style={{ width: '1px', height: '32px', background: 'var(--border)' }}></div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Компания:</span>
-                    <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} style={{ width: 'auto', border: 'none', background: 'transparent', padding: '4px 8px' }}>
-                        <option value="all">Все</option>
-                        {Object.entries(COMPANY_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
-                        ))}
-                    </select>
-                </div>
+                <select className="modern-input" style={{ width: '180px', padding: '8px 12px' }} value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)}>
+                    <option value="all">Все компании</option>
+                    {Object.entries(COMPANY_LABELS).map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                    ))}
+                </select>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Проект:</span>
-                    <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={{ width: 'auto', border: 'none', background: 'transparent', padding: '4px 8px' }}>
-                        <option value="all">Все проекты</option>
-                        {projectsList.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                    </select>
-                </div>
+                <select className="modern-input" style={{ width: '220px', padding: '8px 12px' }} value={selectedProject} onChange={e => setSelectedProject(e.target.value)}>
+                    <option value="all">Все проекты</option>
+                    {projectsList.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                </select>
             </div>
 
+            {/* Summary Cards */}
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
-                <StatCard title="Всего часов" value={`${summary?.total_hours?.toFixed(1) || 0}ч`} sub="Суммарная переработка" icon={Clock} color="var(--primary)" />
-                <StatCard title="Заявок" value={summary?.total_requests || 0} sub="Всего создано" icon={FileCheck} color="var(--success)" />
-                <StatCard title="Ожидает" value={summary?.pending_requests || 0} sub="Требуют внимания" icon={Activity} color="var(--warning)" />
+                <StatCard title="Всего часов" value={`${(summary?.total_hours || 0).toFixed(1)}ч`} sub="Учтено в системе" icon={Clock} color="#3b82f6" />
+                <StatCard title="Одобрено" value={`${(summary?.approved_hours || 0).toFixed(1)}ч`} sub="Подтверждено ГИПами" icon={FileCheck} color="#10b981" />
+
+                {finances && (
+                    <>
+                        <StatCard
+                            title="Оборот проектов"
+                            value={`${finances.total_turnover?.toLocaleString()} ₽`}
+                            sub="Активные контракты"
+                            icon={DollarSign}
+                            color="#10b981"
+                        />
+                        <StatCard
+                            title="Чистая прибыль"
+                            value={`${finances.total_profit?.toLocaleString()} ₽`}
+                            sub="С учетом переработок"
+                            icon={TrendingUp}
+                            color="#3b82f6"
+                        />
+                    </>
+                )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
-                <div className="glass-card">
-                    <h4 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
-                    </h4>
-                    <div style={{ height: '350px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={pieData} cx="50%" cy="50%" innerRadius={80} outerRadius={110} paddingAngle={5} dataKey="value" stroke="none">
-                                    {pieData.map((_entry: any, index: number) => (
-                                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[_entry.name] || COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                        <div>
-                            <h4 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Сравнение</h4>
-                            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                {selectedProject !== 'all'
-                                    ? `Проект: ${projectsList.find(p => String(p.id) === selectedProject)?.name || ''}`
-                                    : selectedCompany !== 'all' ? `Компания: ${selectedCompany}` : 'За выбранный период'}
-                            </p>
+            {/* Charts Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '32px' }}>
+                <div className="glass-card" style={{ padding: '24px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '24px' }}>Статус заявок</h3>
+                    <div style={{ height: '400px', minHeight: '400px', display: 'flex' }}>
+                        <div style={{ flex: 1.5 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={pieData} innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
+                                        {pieData.map((entry, index) => (
+                                            <Cell key={index} fill={STATUS_COLORS[entry.name] || COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomTooltip />} />
+                                </PieChart>
+                            </ResponsiveContainer>
                         </div>
-                        <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
-                            {['projects', 'departments', 'users'].map(mode => (
-                                <button
-                                    key={mode}
-                                    onClick={() => setCompareBy(mode as any)}
-                                    style={{
-                                        padding: '6px 16px', fontSize: '0.75rem', borderRadius: '8px', border: 'none',
-                                        background: compareBy === mode ? 'var(--bg-secondary)' : 'transparent',
-                                        color: compareBy === mode ? 'var(--primary)' : 'var(--text-secondary)',
-                                        boxShadow: compareBy === mode ? 'var(--card-shadow)' : 'none'
-                                    }}
-                                >
-                                    {mode === 'projects' ? 'Проекты' : mode === 'departments' ? 'Отделы' : 'Люди'}
-                                </button>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '16px', paddingLeft: '24px' }}>
+                            {pieData.map((d, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '12px', height: '12px', borderRadius: '4px', background: STATUS_COLORS[d.name] || COLORS[i % COLORS.length] }}></div>
+                                    <div style={{ fontSize: '0.85rem' }}>
+                                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{d.value}</span>
+                                        <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>{d.name}</span>
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     </div>
-                    <div style={{ height: '350px' }}>
+                </div>
+
+                <div className="glass-card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Сравнение показателей</h3>
+                        <div className="toggle-group">
+                            <button className={compareBy === 'projects' ? 'active' : ''} onClick={() => setCompareBy('projects')}>Проекты</button>
+                            <button className={compareBy === 'departments' ? 'active' : ''} onClick={() => setCompareBy('departments')}>Отделы</button>
+                        </div>
+                    </div>
+                    <div style={{ height: '400px', minHeight: '400px' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                data={(compareBy === 'projects' ? projects : compareBy === 'departments' ? departments : userStats)
-                                    .sort((a, b) => b.total_hours - a.total_hours)
-                                    .slice(0, compareBy === 'users' ? 8 : 12)}
-                                layout={compareBy === 'users' ? 'horizontal' : 'vertical'}
-                                margin={{ left: compareBy === 'users' ? 0 : 120, right: 30, top: 10, bottom: 20 }}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" vertical={compareBy !== 'users'} horizontal={compareBy === 'users'} stroke="var(--border)" opacity={0.4} />
+                            <BarChart data={compareBy === 'projects' ? projects.slice(0, 8) : departments}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
                                 <XAxis
-                                    type={compareBy === 'users' ? 'category' : 'number'}
-                                    dataKey={compareBy === 'users' ? "full_name" : undefined}
-                                    axisLine={false} tickLine={false}
+                                    dataKey="name"
+                                    axisLine={false}
+                                    tickLine={false}
                                     tick={{ fontSize: 9, fill: 'var(--text-secondary)' }}
                                     interval={0}
-                                    angle={compareBy === 'users' ? -45 : 0}
-                                    textAnchor={compareBy === 'users' ? "end" : "middle"}
-                                    height={compareBy === 'users' ? 80 : 30}
                                 />
-                                <YAxis
-                                    type={compareBy === 'users' ? 'number' : 'category'}
-                                    dataKey={compareBy !== 'users' ? (compareBy === 'projects' ? "project_name" : "department_name") : "total_hours"}
-                                    axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
-                                    width={compareBy === 'users' ? 40 : 120}
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Bar
+                                    dataKey="total_hours"
+                                    name="Всего"
+                                    fill="var(--primary)"
+                                    radius={[4, 4, 0, 0]}
+                                    onClick={(data) => data.id && navigate(`/projects/${data.id}`)}
+                                    style={{ cursor: 'pointer' }}
                                 />
-                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-tertiary)', opacity: 0.4 }} />
-                                <Bar dataKey="total_hours" fill="var(--primary)" radius={compareBy !== 'users' ? [0, 6, 6, 0] : [6, 6, 0, 0]} barSize={compareBy === 'users' ? 30 : 16} />
+                                <Bar
+                                    dataKey="approved_hours"
+                                    name="Одобрено"
+                                    fill="#10b981"
+                                    radius={[4, 4, 0, 0]}
+                                    onClick={(data) => data.id && navigate(`/projects/${data.id}`)}
+                                    style={{ cursor: 'pointer' }}
+                                />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
             </div>
 
-            {reviewStats && (
-                <div className="glass-card" style={{ padding: '32px', border: 'none', background: 'var(--primary)', color: 'white' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                        <ClipboardCheck size={32} />
-                        <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Качество согласования</h3>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px' }}>
-                        {[
-                            { l: 'Запрошено', v: reviewStats.total_requested_hours, u: 'ч' },
-                            { l: 'Утверждено', v: reviewStats.total_approved_hours, u: 'ч' },
-                            { l: 'Точно', v: reviewStats.exact_match_count, u: '' },
-                            { l: 'Срезано', v: reviewStats.less_than_requested_count, u: '' },
-                            { l: 'Добавлено', v: reviewStats.more_than_requested_count, u: '' },
-                        ].map((stat, i) => (
-                            <div key={i} style={{ background: 'rgba(255,255,255,0.12)', padding: '20px', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
-                                <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px', opacity: 0.9 }}>{stat.l}</p>
-                                <p style={{ fontSize: '1.75rem', fontWeight: 900 }}>{stat.v?.toFixed(stat.u ? 1 : 0)}<span style={{ fontSize: '1rem', marginLeft: '4px' }}>{stat.u}</span></p>
-                            </div>
-                        ))}
-                    </div>
+            {/* Project Profitability Table - Moved outside and expanded */}
+            <div className="glass-card" style={{ padding: '24px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+                    <Briefcase size={22} color="var(--accent)" />
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Рентабельность проектов</h3>
                 </div>
-            )}
+
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                                <th style={{ padding: '16px' }}>Проект</th>
+                                <th style={{ padding: '16px' }}>Оборот</th>
+                                <th style={{ padding: '16px' }}>Затраты (ОТ)</th>
+                                <th style={{ padding: '16px' }}>Чистая прибыль</th>
+                                <th style={{ padding: '16px' }}>Маржа</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {projectsList.filter(p => (p.turnover > 0 || p.extra_data?.total_overtime_cost > 0)).map(project => {
+                                const margin = project.turnover ? (project.net_profit / project.turnover * 100) : 0;
+                                return (
+                                    <tr key={project.id} style={{ borderBottom: '1px solid var(--border)' }} className="table-row-hover">
+                                        <td style={{ padding: '16px' }}>
+                                            <Link to={`/projects/${project.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                                <div style={{ fontWeight: 700 }} className="hover-link">{project.name}</div>
+                                            </Link>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {project.id}</div>
+                                        </td>
+                                        <td style={{ padding: '16px' }}>{project.turnover?.toLocaleString()} ₸</td>
+                                        <td style={{ padding: '16px', color: 'var(--text-muted)' }}>
+                                            {project.extra_data?.total_overtime_cost?.toLocaleString() || 0} ₸
+                                        </td>
+                                        <td style={{ padding: '16px', fontWeight: 700, color: project.net_profit > 0 ? '#10b981' : '#ef4444' }}>
+                                            {project.net_profit?.toLocaleString()} ₸
+                                        </td>
+                                        <td style={{ padding: '16px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ flex: 1, height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden', minWidth: '100px' }}>
+                                                    <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, margin))}%`, background: margin > 20 ? '#10b981' : (margin > 0 ? '#f59e0b' : '#ef4444') }}></div>
+                                                </div>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{margin.toFixed(1)}%</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 };

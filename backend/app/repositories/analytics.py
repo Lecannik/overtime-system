@@ -78,10 +78,15 @@ async def get_analytics_summary(
 
     query = select(
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
+        func.coalesce(
+            func.sum(Overtime.approved_hours).filter(Overtime.status == OvertimeStatus.APPROVED), 
+            0
+        ).label("approved_hours"),
         func.count(Overtime.id).label("total_requests"),
         func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.PENDING).label("pending"),
         func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.APPROVED).label("approved"),
-        func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.REJECTED).label("rejected")
+        func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.REJECTED).label("rejected"),
+        func.count(func.distinct(Overtime.user_id)).label("active_users")
     )
 
     if manager_id:
@@ -107,11 +112,13 @@ async def get_analytics_summary(
     row = result.fetchone()
     
     return {
-        "total_hours": float(row.total_hours),
-        "total_requests": row.total_requests,
-        "pending_requests": row.pending,
-        "approved_requests": row.approved,
-        "rejected_requests": row.rejected
+        "total_hours": float(row.total_hours or 0),
+        "approved_hours": float(row.approved_hours or 0),
+        "total_requests": row.total_requests or 0,
+        "pending_requests": row.pending or 0,
+        "approved_requests": row.approved or 0,
+        "rejected_requests": row.rejected or 0,
+        "active_users": row.active_users or 0
     }
 
 async def get_project_analytics(
@@ -134,7 +141,7 @@ async def get_project_analytics(
         Project.name,
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
         func.count(Overtime.id).label("request_count")
-    ).join(Overtime, Project.id == Overtime.project_id).group_by(Project.id, Project.name)
+    ).outerjoin(Overtime, Project.id == Overtime.project_id).group_by(Project.id, Project.name)
 
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
@@ -152,8 +159,8 @@ async def get_project_analytics(
         {
             "project_id": row.id,
             "project_name": row.name,
-            "total_hours": float(row.total_hours),
-            "request_count": row.request_count
+            "total_hours": float(row.total_hours or 0),
+            "request_count": row.request_count or 0
         } for row in result.all()
     ]
 
@@ -177,8 +184,8 @@ async def get_department_analytics(
         Department.name,
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
         func.count(Overtime.id).label("request_count")
-    ).join(User, Department.id == User.department_id)\
-     .join(Overtime, User.id == Overtime.user_id)\
+    ).outerjoin(User, Department.id == User.department_id)\
+     .outerjoin(Overtime, User.id == Overtime.user_id)\
      .group_by(Department.id, Department.name)
 
     if project_id:
@@ -194,8 +201,8 @@ async def get_department_analytics(
         {
             "department_id": row.id,
             "department_name": row.name,
-            "total_hours": float(row.total_hours),
-            "request_count": row.request_count
+            "total_hours": float(row.total_hours or 0),
+            "request_count": row.request_count or 0
         } for row in result.all()
     ]
 
@@ -249,8 +256,8 @@ async def get_user_analytics(
         {
             "user_id": row.user_id,
             "full_name": row.full_name,
-            "total_hours": float(row.total_hours),
-            "request_count": row.request_count,
+            "total_hours": float(row.total_hours or 0),
+            "request_count": row.request_count or 0,
             "project_name": row.project_name
         } for row in result.all()
     ]
@@ -398,7 +405,7 @@ async def get_company_comparison(
     rows = result.all()
     return [
         {
-            "company": row.company.value,
+            "company": row.company.value if row.company else "Unknown",
             "hours": float(row.hours),
             "requests": row.requests
         }

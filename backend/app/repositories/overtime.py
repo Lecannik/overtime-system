@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 from collections import defaultdict
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
-from app.models.user import User, UserRole
+from app.models.user import User
 
 async def create_overtime(session: AsyncSession, overtime_db: Overtime) -> Overtime:
     """Сохраняет новую модель переработки в базу данных."""
@@ -36,13 +36,13 @@ async def get_overtimes(
 
     # Ограничение видимости по ролям
     filters = []
-    if current_user.role == UserRole.admin:
+    if current_user.role_name.lower() == "admin":
         pass 
-    elif current_user.role == UserRole.employee:
+    elif current_user.role_name.lower() == "employee":
         filters.append(Overtime.user_id == current_user.id)
     else:
         # Для руководителей: свои + подчиненные
-        my_depts = select(Department.id).where(Department.head_id == current_user.id)
+        my_depts = select(Department.id).where(Department.manager_id == current_user.id)
         filters.append(
             or_(
                 Overtime.user_id == current_user.id,        # Свои
@@ -76,7 +76,9 @@ async def get_overtimes(
     query = base_query.order_by(Overtime.created_at.desc())
     query = query.options(
         selectinload(Overtime.project),
-        selectinload(Overtime.user)
+        selectinload(Overtime.user).selectinload(User.department),
+        selectinload(Overtime.user).selectinload(User.job_position),
+        selectinload(Overtime.user).selectinload(User.role_obj)
     )
     
     if page_size > 0:
@@ -101,7 +103,9 @@ async def get_overtime_by_id(session: AsyncSession, overtime_id: int) -> Overtim
         .where(Overtime.id == overtime_id)
         .options(
             selectinload(Overtime.project),
-            selectinload(Overtime.user),
+            selectinload(Overtime.user).selectinload(User.department),
+            selectinload(Overtime.user).selectinload(User.job_position),
+            selectinload(Overtime.user).selectinload(User.role_obj),
         )
     )
     result = await session.execute(query)

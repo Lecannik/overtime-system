@@ -1,7 +1,7 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator
 from app.models.overtime import OvertimeStatus
-from app.models.user import UserRole
+from app.models.user import User
 
 
 class OvertimeBase(BaseModel):
@@ -87,7 +87,7 @@ class OvertimeReview(BaseModel):
     """
     approved: bool
     comment: str | None = None
-    as_role: UserRole | None = None
+    as_role: str | None = None
     approved_hours: float | None = None
 
 

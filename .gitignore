@@ -5,9 +5,9 @@ Gemini.md_old
 AGENT_GUIDELINES.md
 
 # --- AI MODELS & WEIGHTS (НЕ ДЛЯ GIT) ---
-models/
-models/cache/
-models/gazeta/
+/models/
+/models/cache/
+/models/gazeta/
 *.pt
 *.bin
 

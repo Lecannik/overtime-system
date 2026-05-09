@@ -1,10 +1,21 @@
 # Этап 1: Сборка статики
 FROM node:20-alpine as build
 WORKDIR /app
+# Аргумент для быстрой сборки (пропуск проверки типов)
+ARG FAST_BUILD=false
+
+# Установка зависимостей с кешированием
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm npm install
+
 COPY . .
-RUN npm run build
+
+# Сборка: если FAST_BUILD=true, запускаем только vite build без tsc
+RUN if [ "$FAST_BUILD" = "true" ]; then \
+    npm run build-only; \
+    else \
+    npm run build; \
+    fi
 
 # Этап 2: Раздача статики через Nginx
 FROM nginx:stable-alpine

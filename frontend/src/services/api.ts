@@ -102,12 +102,17 @@ export const getMyStats = async () => {
   return response.data;
 };
 
-// Получить список проектов
 export const getProjects = async () => {
   const token = localStorage.getItem('token');
   const response = await api.get('/projects/', {
     headers: { Authorization: `Bearer ${token}` }
   });
+  return response.data;
+};
+
+// Получить детальную информацию о проекте по ID
+export const getProject = async (id: number) => {
+  const response = await api.get(`/projects/${id}`);
   return response.data;
 };
 
@@ -163,6 +168,12 @@ export const getUsers = async (params?: {
   const response = await api.get('/admin/users', { params });
   return response.data;
 };
+
+// Публичный список пользователей (для всех)
+export const getUsersList = async () => {
+  const response = await api.get('/users/list');
+  return response.data;
+};
 // Обновить пользователя (роль, отдел, активность)
 export const updateUser = async (userId: number, data: any) => {
   const token = localStorage.getItem('token');
@@ -175,6 +186,11 @@ export const updateUser = async (userId: number, data: any) => {
 // Сбросить пароль пользователя (только для админа)
 export const resetUserPassword = async (userId: number) => {
   const response = await api.post(`/admin/users/${userId}/reset-password`);
+  return response.data;
+};
+
+export const resetUser2FA = async (userId: number) => {
+  const response = await api.post(`/admin/users/${userId}/reset-2fa`);
   return response.data;
 };
 
@@ -214,27 +230,28 @@ export const changePassword = async (oldPassword: string, newPassword: string) =
   return response.data;
 };
 
+// ==================== 2FA ====================
+export const setup2FA = async () => {
+  const response = await api.post('/auth/2fa/setup');
+  return response.data;
+};
+
+export const enable2FA = async (code: string) => {
+  const response = await api.post('/auth/2fa/enable', null, { params: { code } });
+  return response.data;
+};
+
+export const disable2FA = async () => {
+  const response = await api.post('/auth/2fa/disable');
+  return response.data;
+};
+
+
 // ==================== ОТДЕЛЫ ====================
 
 export const getDepartments = async () => {
   const token = localStorage.getItem('token');
   const response = await api.get('/admin/departments', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const createDepartment = async (data: { name: string; head_id?: number | null }) => {
-  const token = localStorage.getItem('token');
-  const response = await api.post('/admin/departments', data, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const updateDepartment = async (deptId: number, data: any) => {
-  const token = localStorage.getItem('token');
-  const response = await api.patch(`/admin/departments/${deptId}`, data, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
@@ -264,6 +281,12 @@ export const updateProject = async (projectId: number, data: {
   name?: string;
   manager_id?: number | null;
   weekly_limit?: number;
+  status?: string;
+  stage_id?: number | null;
+  gip_id?: number | null;
+  lead_engineer_id?: number | null;
+  lead_programmer_id?: number | null;
+  extra_data?: any;
 }) => {
   const token = localStorage.getItem('token');
   const response = await api.patch(`/admin/projects/${projectId}`, data, {
@@ -379,3 +402,391 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// ==================== CRM (LEADS & DEALS) ====================
+
+export const getLeads = async () => {
+  const response = await api.get('/crm/leads');
+  return response.data;
+};
+
+// Получить лид по ID
+export const getLead = async (id: number) => {
+  const response = await api.get(`/crm/leads/${id}`);
+  return response.data;
+};
+
+export const createLead = async (data: any) => {
+  const response = await api.post('/crm/leads', data);
+  return response.data;
+};
+
+export const updateLead = async (id: number, data: any) => {
+  const response = await api.patch(`/crm/leads/${id}`, data);
+  return response.data;
+};
+
+export const deleteLead = async (id: number) => {
+  await api.delete(`/crm/leads/${id}`);
+};
+
+export const getDeals = async () => {
+  const response = await api.get('/crm/deals');
+  return response.data;
+};
+
+// Получить сделку по ID
+export const getDeal = async (id: number) => {
+  const response = await api.get(`/crm/deals/${id}`);
+  return response.data;
+};
+
+export const createDeal = async (data: any) => {
+  const response = await api.post('/crm/deals', data);
+  return response.data;
+};
+
+export const updateDeal = async (id: number, data: any) => {
+  const response = await api.patch(`/crm/deals/${id}`, data);
+  return response.data;
+};
+
+// ==================== TASK TYPES ====================
+
+export interface TaskType {
+  id: number;
+  name: string;
+  color: string;
+  icon?: string;
+  is_active: boolean;
+}
+
+export const getTaskTypes = async (): Promise<TaskType[]> => {
+  const response = await api.get('/tasks/types');
+  return response.data;
+};
+
+export interface TaskStatus {
+  id: number;
+  name: string;
+  color: string;
+  sort_order: number;
+}
+
+export const getTaskStatuses = async (): Promise<TaskStatus[]> => {
+  const response = await api.get('/tasks/statuses');
+  return response.data;
+};
+
+export const getAdminTaskTypes = async (): Promise<TaskType[]> => {
+  const response = await api.get('/admin/task-types');
+  return response.data;
+};
+
+export const createTaskType = async (data: Partial<TaskType>) => {
+  const response = await api.post('/admin/task-types', data);
+  return response.data;
+};
+
+export const updateTaskType = async (id: number, data: Partial<TaskType>) => {
+  const response = await api.patch(`/admin/task-types/${id}`, data);
+  return response.data;
+};
+
+export const deleteTaskType = async (id: number) => {
+  const response = await api.delete(`/admin/task-types/${id}`);
+  return response.data;
+};
+
+export const getAdminTaskStatuses = async (): Promise<TaskStatus[]> => {
+  const response = await api.get('/admin/task-statuses');
+  return response.data;
+};
+
+export const createTaskStatus = async (data: any) => {
+  const response = await api.post('/admin/task-statuses', data);
+  return response.data;
+};
+
+export const updateTaskStatus = async (id: number, data: any) => {
+  const response = await api.patch(`/admin/task-statuses/${id}`, data);
+  return response.data;
+};
+
+export const deleteTaskStatus = async (id: number) => {
+  const response = await api.delete(`/admin/task-statuses/${id}`);
+  return response.data;
+};
+
+// ==================== TASKS ====================
+
+export const getTasks = async () => {
+  const response = await api.get('/tasks/');
+  return response.data;
+};
+
+export const deleteTask = async (taskId: number) => {
+  const response = await api.delete(`/tasks/${taskId}`);
+  return response.data;
+};
+
+export const getTasksByProject = async (projectId: number) => {
+  const response = await api.get(`/tasks/project/${projectId}`);
+  return response.data;
+};
+
+export const createTask = async (data: any) => {
+  const response = await api.post('/tasks/', data);
+  return response.data;
+};
+
+export const createTaskComment = async (taskId: number, content: string) => {
+  const response = await api.post(`/tasks/${taskId}/comments`, { content });
+  return response.data;
+};
+
+export const updateTask = async (id: number, data: any) => {
+  const response = await api.patch(`/tasks/${id}`, data);
+  return response.data;
+};
+
+export const getAssignableUsers = async () => {
+  const response = await api.get('/tasks/assignable-users');
+  return response.data;
+};
+
+export const downloadTaskAttachment = async (attachmentId: number) => {
+  const response = await api.get(`/tasks/attachments/${attachmentId}`, {
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
+export const convertLeadToDeal = async (leadId: number) => {
+  const response = await api.post(`/crm/leads/${leadId}/convert`);
+  return response.data;
+};
+
+export const createProjectFromDeal = async (dealId: number) => {
+  const response = await api.post(`/crm/deals/${dealId}/create-project`);
+  return response.data;
+};
+
+// ==================== ORGANIZATION & DEPARTMENTS ====================
+
+export const getDepartmentTree = async () => {
+  const response = await api.get('/admin/departments/tree');
+  return response.data;
+};
+
+export const updateDepartment = async (id: number, data: any) => {
+  const response = await api.patch(`/admin/departments/${id}`, data);
+  return response.data;
+};
+
+export const createDepartment = async (data: any) => {
+  const response = await api.post('/admin/departments/', data);
+  return response.data;
+};
+
+
+// ==================== ROLES & PERMISSIONS ====================
+
+export const getRoles = async () => {
+  const response = await api.get('/admin/roles');
+  return response.data;
+};
+
+export const getPermissionList = async () => {
+  const response = await api.get('/admin/permissions/list');
+  return response.data;
+};
+
+export const getAllPermissions = async () => {
+  const response = await api.get('/admin/permissions/all');
+  return response.data;
+};
+
+export const syncRolePermissions = async (roleId: number, permissionIds: number[]) => {
+  const response = await api.post(`/admin/roles/${roleId}/permissions`, { permission_ids: permissionIds });
+  return response.data;
+};
+
+// Финансовая аналитика
+export const getCompanyFinances = async () => {
+  const response = await api.get('/analytics/finances');
+  return response.data;
+};
+
+// BPM
+export const getWorkflows = async () => {
+  const response = await api.get('/bpm/workflows');
+  return response.data;
+};
+
+export const createWorkflow = async (data: any) => {
+  const response = await api.post('/bpm/workflows', data);
+  return response.data;
+};
+
+export const deleteWorkflow = async (id: number) => {
+  const response = await api.delete(`/bpm/workflows/${id}`);
+  return response.data;
+};
+
+export const getBPMLogs = async (params: { limit?: number; entity_type?: string; entity_id?: number } = {}) => {
+  const response = await api.get('/bpm/logs', { params });
+  return response.data;
+};
+
+// ==================== CRM STAGES ====================
+
+export const getCRMStages = async (module?: string) => {
+  const response = await api.get('/admin/crm-stages', { params: { module } });
+  return response.data;
+};
+
+export const createCRMStage = async (data: any) => {
+  const response = await api.post('/admin/crm-stages', data);
+  return response.data;
+};
+
+export const updateCRMStage = async (id: number, data: any) => {
+  const response = await api.patch(`/admin/crm-stages/${id}`, data);
+  return response.data;
+};
+
+export const deleteCRMStage = async (id: number) => {
+  await api.delete(`/admin/crm-stages/${id}`);
+};
+
+// ==================== JOB POSITIONS ====================
+
+export const getJobPositions = async () => {
+  const response = await api.get('/admin/positions');
+  return response.data;
+};
+
+export const getJobPositionsHierarchy = async () => {
+  const response = await api.get('/admin/positions/hierarchy');
+  return response.data;
+};
+
+export const createJobPosition = async (data: any) => {
+  const response = await api.post('/admin/positions', data);
+  return response.data;
+};
+
+export const updateJobPosition = async (id: number, data: any) => {
+  const response = await api.patch(`/admin/positions/${id}`, data);
+  return response.data;
+};
+
+export const deleteJobPosition = async (id: number) => {
+  await api.delete(`/admin/positions/${id}`);
+};
+
+export const syncPositionPermissions = async (positionId: number, permissionIds: number[]) => {
+  const response = await api.post(`/admin/positions/${positionId}/permissions`, { permission_ids: permissionIds });
+  return response.data;
+};
+
+// ==================== SYSTEM SETTINGS ====================
+
+export const getSystemSettings = async () => {
+  const response = await api.get('/admin/settings');
+  return response.data;
+};
+
+export const updateSystemSetting = async (key: string, value: string) => {
+  const response = await api.post('/admin/settings', { key, value });
+  return response.data;
+};
+
+// ==================== NEW CRM ENTITIES ====================
+
+export const getCounterparties = async () => {
+  const response = await api.get('/crm/counterparties');
+  return response.data;
+};
+
+export const createCounterparty = async (data: any) => {
+  const response = await api.post('/crm/counterparties', data);
+  return response.data;
+};
+
+export const getCRMTasks = async (params: { lead_id?: number; deal_id?: number; project_id?: number } = {}) => {
+  const response = await api.get('/crm/tasks', { params });
+  return response.data;
+};
+
+export const createCRMTask = async (data: any) => {
+  const response = await api.post('/crm/tasks', data);
+  return response.data;
+};
+
+// ==================== STAGE PERMISSIONS ====================
+
+export const getPermissionsMatrix = async () => {
+  const response = await api.get('/admin/permissions/matrix');
+  return response.data;
+};
+
+export const syncStagePermissions = async (data: { position_id?: number; user_id?: number; allowed_stage_ids: number[] }) => {
+  const response = await api.post('/admin/permissions/sync', data);
+  return response.data;
+};
+
+// ==================== COUNTERPARTY UPDATE ====================
+
+export const updateCounterparty = async (id: number, data: any) => {
+  const response = await api.patch(`/crm/counterparties/${id}`, data);
+  return response.data;
+};
+
+// ==================== PROJECT DOCUMENTS ====================
+
+export const uploadProjectDoc = async (projectId: number, docType: string, file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/projects/${projectId}/upload-doc?doc_type=${docType}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+// ==================== TASK ATTACHMENTS ====================
+
+export const uploadTaskAttachment = async (taskId: number, file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/tasks/${taskId}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const getTask = async (id: number) => {
+  const response = await api.get(`/tasks/${id}`);
+  return response.data;
+};
+
+// ==================== TASK TYPES & STATUSES (ADMIN) ====================
+
+export const uploadProjectSpec = async (projectId: number, file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/projects/${projectId}/upload-spec`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const uploadGanttExcel = async (projectId: number, file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/projects/${projectId}/upload-gantt`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};

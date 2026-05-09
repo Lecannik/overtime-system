@@ -4,7 +4,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.audit import PaginatedAuditResponse
 from app.repositories import audit as audit_repo
 
@@ -21,7 +21,7 @@ async def get_audit_logs(
     Получить записи журнала аудита с пагинацией.
     Доступно только администраторам.
     """
-    if current_user.role != UserRole.admin:
+    if current_user.role != "admin":
         raise HTTPException(
             status_code=403,
             detail="Недостаточно прав для просмотра журналов аудита"

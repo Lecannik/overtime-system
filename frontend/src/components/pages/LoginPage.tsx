@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
 import { api, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Logo from '../atoms/Logo';
 
 type PageMode = 'login' | 'forgot' | 'reset-code' | '2fa';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +32,7 @@ const LoginPage: React.FC = () => {
   // 2FA state
   const [twoFaCode, setTwoFaCode] = useState('');
   const [twoFaEmail, setTwoFaEmail] = useState('');
+  const [twoFaMethod, setTwoFaMethod] = useState<'email' | 'totp'>('email');
 
   useEffect(() => {
     if (localStorage.getItem('token')) navigate('/dashboard');
@@ -47,10 +50,15 @@ const LoginPage: React.FC = () => {
 
       if (res.data.status === '2fa_required') {
         setTwoFaEmail(res.data.email);
+        setTwoFaMethod(res.data.method || 'email');
         setMode('2fa');
-        setSuccess('Код подтверждения отправлен на вашу почту.');
+        if (res.data.method === 'totp') {
+          setSuccess('Введите код из приложения Authenticator.');
+        } else {
+          setSuccess('Код подтверждения отправлен на вашу почту.');
+        }
       } else {
-        localStorage.setItem('token', res.data.access_token);
+        await login(res.data.access_token);
         navigate('/dashboard');
       }
     } catch (err: any) {
@@ -66,7 +74,7 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await verify2FA(twoFaEmail, twoFaCode);
-      localStorage.setItem('token', res.access_token);
+      await login(res.access_token);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Неверный код');
@@ -160,6 +168,7 @@ const LoginPage: React.FC = () => {
           <button type="submit" className="primary" disabled={loading} style={{ height: '56px', fontSize: '1rem', fontWeight: 800, borderRadius: '16px', marginTop: '12px' }}>
             {loading ? 'Вход...' : 'ВОЙТИ В СИСТЕМУ'} <ArrowRight size={20} style={{ marginLeft: '12px' }} />
           </button>
+
         </form>
       );
     }
@@ -225,7 +234,11 @@ const LoginPage: React.FC = () => {
       return (
         <form onSubmit={handle2FA} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>Подтверждение</h1>
-          <p style={{ color: 'var(--text-secondary)' }}>Введите 6-значный код из письма.</p>
+          <p style={{ color: 'var(--text-secondary)' }}>
+            {twoFaMethod === 'totp'
+              ? 'Введите 6-значный код из вашего приложения Authenticator.'
+              : 'Введите 6-значный код из письма, отправленного на вашу почту.'}
+          </p>
           <div style={{ position: 'relative' }}>
             <ShieldCheck size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input type="text" value={twoFaCode} onChange={e => setTwoFaCode(e.target.value)} placeholder="000000"

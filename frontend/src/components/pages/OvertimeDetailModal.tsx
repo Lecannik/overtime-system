@@ -173,7 +173,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Фактически</p>
-                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{rawHours.toFixed(2)}ч</p>
+                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{(rawHours || 0).toFixed(2)}ч</p>
                                     </div>
                                 </div>
                             </div>

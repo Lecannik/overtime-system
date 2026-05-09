@@ -1,13 +1,23 @@
 from sqlalchemy import select, or_, func, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.user import User, UserCompany
+from app.models.user import User, Role, UserCompany
 from typing import Optional
 
 
-async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
-    """Получить пользователя по email"""
+from sqlalchemy.orm import selectinload
 
-    result = await session.execute(select(User).where(User.email == email))
+async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
+    """Получить пользователя по email (регистронезависимо)"""
+    from app.models.organization import JobPosition
+    result = await session.execute(
+        select(User)
+        .options(
+            selectinload(User.role_obj).selectinload(Role.permissions),
+            selectinload(User.department),
+            selectinload(User.job_position).selectinload(JobPosition.permissions)
+        )
+        .where(func.lower(User.email) == email.lower())
+    )
     return result.scalar_one_or_none()
 
 
@@ -17,6 +27,7 @@ async def get_user_by_chat_id(session: AsyncSession, chat_id: str) -> User | Non
         select(User).where(User.telegram_chat_id == str(chat_id), User.is_active == True)
     )
     return result.scalars().first()
+
 
 async def create_user(session: AsyncSession, user: User) -> User:
     """Создать пользователя"""
@@ -29,7 +40,16 @@ async def create_user(session: AsyncSession, user: User) -> User:
 
 async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     """Получить пользователя по ID"""
-    result = await session.execute(select(User).where(User.id == user_id))
+    from app.models.organization import JobPosition
+    result = await session.execute(
+        select(User)
+        .options(
+            selectinload(User.role_obj).selectinload(Role.permissions),
+            selectinload(User.department),
+            selectinload(User.job_position).selectinload(JobPosition.permissions)
+        )
+        .where(User.id == user_id)
+    )
     return result.scalar_one_or_none()
 
 
@@ -60,7 +80,12 @@ async def get_all_users(
     """
     Получить пользователей с пагинацией, поиском и сортировкой.
     """
-    query = select(User)
+    from app.models.organization import JobPosition
+    query = select(User).options(
+        selectinload(User.role_obj).selectinload(Role.permissions),
+        selectinload(User.department),
+        selectinload(User.job_position).selectinload(JobPosition.permissions)
+    )
 
     if role:
         query = query.where(User.role == role)

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Shield, Building2, Globe, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react';
-import { createUser, updateUser, getDepartments } from '../../services/api';
+import { X, User as UserIcon, Mail, Shield, Building2, Globe, AlertCircle, Eye, EyeOff, Lock, Briefcase } from 'lucide-react';
+import { createUser, updateUser, getDepartments, getJobPositions } from '../../services/api';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
+import type { User, Department, JobPosition } from '../../types';
 
 interface UserModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
-    editData?: any;
+    editData?: User | null;
 }
 
 const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editData }) => {
@@ -16,21 +17,27 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
     const [role, setRole] = useState('employee');
     const [company, setCompany] = useState('Polymedia');
     const [departmentId, setDepartmentId] = useState<number | ''>('');
-    const [departments, setDepartments] = useState<any[]>([]);
+    const [positionId, setPositionId] = useState<number | ''>('');
+    const [departments, setDepartments] = useState<Department[]>([]);
+    const [positions, setPositions] = useState<JobPosition[]>([]);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [isActive, setIsActive] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
         if (isOpen) {
             getDepartments().then(setDepartments).catch(() => { });
+            getJobPositions().then(setPositions).catch(() => { });
             if (editData) {
                 setFullName(editData.full_name || '');
                 setEmail(editData.email || '');
                 setRole(editData.role || 'employee');
                 setCompany(editData.company || 'Polymedia');
                 setDepartmentId(editData.department_id || '');
+                setPositionId(editData.position_id || '');
+                setIsActive(editData.is_active ?? true);
                 setPassword(''); // Не нужно при редактировании
             } else {
                 setFullName('');
@@ -38,6 +45,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                 setRole('employee');
                 setCompany('Polymedia');
                 setDepartmentId('');
+                setIsActive(true);
                 setPassword('changeme123'); // Значение по умолчанию
             }
         }
@@ -53,7 +61,9 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                 email,
                 role,
                 company,
-                department_id: departmentId || undefined,
+                department_id: departmentId || null,
+                position_id: positionId || null,
+                is_active: isActive,
                 password: !editData ? password : undefined
             };
             if (editData) {
@@ -93,7 +103,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                     <div className="form-group">
                         <label>ФИО</label>
                         <div style={{ position: 'relative' }}>
-                            <User size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <UserIcon size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" style={{ paddingLeft: '44px' }} required />
                         </div>
                     </div>
@@ -151,15 +161,38 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                         </div>
                     </div>
 
-                    <div className="form-group">
-                        <label>Отдел</label>
-                        <div style={{ position: 'relative' }}>
-                            <Building2 size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <select value={departmentId} onChange={e => setDepartmentId(e.target.value ? Number(e.target.value) : '')} style={{ paddingLeft: '44px' }}>
-                                <option value="">Без отдела</option>
-                                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                            </select>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div className="form-group">
+                            <label>Отдел</label>
+                            <div style={{ position: 'relative' }}>
+                                <Building2 size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <select value={departmentId} onChange={e => setDepartmentId(e.target.value ? Number(e.target.value) : '')} style={{ paddingLeft: '44px' }}>
+                                    <option value="">Без отдела</option>
+                                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
                         </div>
+                        <div className="form-group">
+                            <label>Должность</label>
+                            <div style={{ position: 'relative' }}>
+                                <Briefcase size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <select value={positionId} onChange={e => setPositionId(e.target.value ? Number(e.target.value) : '')} style={{ paddingLeft: '44px' }}>
+                                    <option value="">Без должности</option>
+                                    {positions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'var(--bg-tertiary)', borderRadius: '16px' }}>
+                        <input
+                            type="checkbox"
+                            id="isActive"
+                            checked={isActive}
+                            onChange={e => setIsActive(e.target.checked)}
+                            style={{ width: '20px', height: '20px', borderRadius: '6px', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="isActive" style={{ fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Активен (разрешить вход в систему)</label>
                     </div>
 
                     <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>

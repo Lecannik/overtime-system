@@ -8,7 +8,9 @@ from alembic import context
 from app.core.database import Base
 from app.core.config import settings
 from app.models.user import User
-from app.models.organization import Department, Project
+from app.models.organization import Department, Project, ProjectStatus
+from app.models.crm import Lead, Deal
+from app.models.task import Task
 from app.models.overtime import Overtime
 from app.models.audit import AuditLog
 from app.models.settings import SystemSetting

@@ -4,7 +4,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats
 from app.services import overtime as overtime_service
 from app.repositories import overtime as overtime_repo
@@ -96,7 +96,7 @@ async def review_overtime(
     - Имеются промежуточные статусы MANAGER_APPROVED и HEAD_APPROVED.
     """
     # Проверка прав: только менеджеры, начальники или админы могут согласовывать
-    if current_user.role == UserRole.employee:
+    if current_user.role_name.lower() == "employee":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="У вас нет прав для согласования заявок"

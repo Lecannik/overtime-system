@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 from app.models.overtime import Overtime, OvertimeStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.overtime import OvertimeCreate, OvertimeReview, OvertimeUpdate
 from app.repositories import overtime as overtime_repo
 from app.models.audit import AuditLog
@@ -9,6 +9,7 @@ from app.repositories import audit as audit_repo
 from app.services import notifications
 from app.repositories import organization as org_repo
 from app.repositories import user as user_repo
+from app.services.analytics_service import AnalyticsService
 
 
 from datetime import datetime, time, timedelta, timezone
@@ -142,7 +143,7 @@ async def review_overtime(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
     # 1. Режим Супер-админа: если админ не указал роль, одобряем за обоих сразу
-    if current_user.role == UserRole.admin and not review.as_role:
+    if current_user.role_name.lower() == "admin" and not review.as_role:
         overtime.manager_approved = review.approved
         overtime.manager_comment = review.comment
         overtime.head_approved = review.approved
@@ -151,23 +152,23 @@ async def review_overtime(
         # 2. Обычный режим: определяем роль (с учетом as_role для админа)
         acting_role = (
             review.as_role
-            if (current_user.role == UserRole.admin and review.as_role)
-            else current_user.role
+            if (current_user.role_name.lower() == "admin" and review.as_role)
+            else current_user.role_name.lower()
         )
 
-        if acting_role == UserRole.manager:
+        if acting_role == "manager":
             # Проверяем, что это менеджер ЭТОГО проекта
-            if current_user.role != UserRole.admin and overtime.project.manager_id != current_user.id:
+            if current_user.role_name.lower() != "admin" and overtime.project.manager_id != current_user.id:
                 raise HTTPException(
                     status_code=403,
                     detail="Вы не являетесь менеджером этого проекта"
                 )
             overtime.manager_approved = review.approved
             overtime.manager_comment = review.comment
-        elif acting_role == UserRole.head:
+        elif acting_role == "head":
             # Проверяем, что это начальник отдела ЭТОГО проекта
             if (
-                current_user.role != UserRole.admin
+                current_user.role_name.lower() != "admin"
                 and overtime.user.department_id != current_user.department_id
             ):
                 raise HTTPException(
@@ -215,7 +216,7 @@ async def review_overtime(
     await audit_repo.create_audit_log(
         session=session,
         user_id=current_user.id,
-        action=f"REVIEW_{current_user.role.upper()}",
+        action=f"REVIEW_{current_user.role_name.upper()}",
         target_type="overtime",
         target_id=overtime.id,
         details={
@@ -237,6 +238,10 @@ async def review_overtime(
     # 6. Уведомляем сотрудника
     await notifications.notify_overtime_review(session, overtime, current_user)
 
+    # 7. ЕСЛИ ЗАЯВКА ОДОБРЕНА - ТРИГГЕРИМ ПЕРЕСЧЕТ АНАЛИТИКИ ПРОЕКТА
+    if overtime.status == OvertimeStatus.APPROVED:
+        await AnalyticsService.update_project_finances(session, overtime.project_id)
+
     return overtime
 
 async def cancel_overtime(
@@ -253,7 +258,7 @@ async def cancel_overtime(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
     # Проверка прав: только владелец или админ
-    if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
+    if current_user.role_name.lower() != "admin" and overtime.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Вы можете отменять только свои заявки")
 
     # Нельзя отменить уже отменённую
@@ -299,11 +304,7 @@ async def update_overtime(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
     # Только владелец или админ
-    if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Вы можете редактировать только свои заявки")
-
-    # Редактировать можно только PENDING (чтобы не менять уже согласованное или отмененное)
-    if current_user.role != UserRole.admin and overtime.status != OvertimeStatus.PENDING:
+    if current_user.role_name.lower() != "admin" and overtime.status != OvertimeStatus.PENDING:
         raise HTTPException(status_code=400, detail="Нельзя редактировать заявку, которая уже прошла согласование или отменена")
 
     update_data = overtime_in.model_dump(exclude_unset=True, exclude={"timezone_offset"})
@@ -333,7 +334,7 @@ async def update_overtime(
     if "end_time" in update_data: update_data["end_time"] = new_end
 
     # При изменении сбрасываем согласование и статус
-    if current_user.role != UserRole.admin:
+    if current_user.role_name.lower() != "admin":
         update_data["manager_approved"] = None
         update_data["head_approved"] = None
         update_data["status"] = OvertimeStatus.PENDING

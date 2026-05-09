@@ -13,9 +13,10 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole, UserCompany
-from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics
+from app.models.user import User, UserCompany
+from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics, ProjectFinanceResponse
 from app.repositories import analytics as analytics_repo
+from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
  
@@ -25,16 +26,30 @@ async def get_analytics_scope(current_user: User = Depends(get_current_user)) ->
     Зависимость для определения области видимости (scope) данных в аналитике.
     Возвращает словарь с фильтрами (manager_id, department_id), которые нужно применить.
     """
-    if current_user.role == UserRole.admin:
+    role = current_user.role_name.lower()
+    if role == "admin":
         return {"manager_id": None, "department_id": None}
     
-    if current_user.role == UserRole.manager:
+    if role == "manager":
         return {"manager_id": current_user.id, "department_id": None}
     
-    if current_user.role == UserRole.head:
+    if role == "head":
         return {"manager_id": None, "department_id": current_user.department_id}
         
     raise HTTPException(status_code=403, detail="Доступ запрещен. Требуется роль менеджера, начальника или админа.")
+    
+@router.get("/finances", response_model=ProjectFinanceResponse)
+async def get_company_finances(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить общую финансовую статистику по проектам компании.
+    Доступно только руководителям и администраторам.
+    """
+    if current_user.role_name.lower() not in ["admin", "manager", "head"]:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    return await AnalyticsService.get_company_wide_stats(db)
 
 @router.get("/reviews", response_model=ReviewAnalytics)
 async def get_reviews_stats(
@@ -77,7 +92,7 @@ async def get_companies_comparison(
     current_user: User = Depends(get_current_user)
 ):
     """Сравнительный отчет по компаниям (Доступно только Админам)."""
-    if current_user.role != UserRole.admin:
+    if current_user.role_name.lower() != "admin":
         raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администраторов.")
     
     return await analytics_repo.get_company_comparison(db, start_date=start_date, end_date=end_date)
@@ -145,6 +160,36 @@ async def export_my_analytics(
     return await generate_excel_response(
         db, current_user, scope, None, None, start_date, end_date, is_personal=True
     )
+
+@router.get("/export/finances")
+async def export_financial_analytics(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Экспорт финансовой аналитики по проектам."""
+    if current_user.role_name.lower() not in ["admin", "manager", "head"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+        
+    from app.services.excel_service import generate_finance_report
+    from app.services.analytics_service import AnalyticsService
+    
+    stats = await AnalyticsService.get_company_wide_stats(db)
+    # Преобразуем ProjectFinanceResponse в плоский список для Excel
+    data = []
+    for p in stats.projects:
+        data.append({
+            "name": p.project_name,
+            "stage": p.stage_name,
+            "turnover": p.turnover,
+            "labor_cost": p.labor_cost,
+            "net_profit": p.net_profit
+        })
+        
+    output = await generate_finance_report(data, current_user)
+    
+    filename = f"finance_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+    return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 async def generate_excel_response(
     db: AsyncSession,

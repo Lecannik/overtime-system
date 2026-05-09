@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     MS_CLIENT_SECRET: str | None = None
     MS_TENANT_ID: str | None = None
     MS_SENDER_EMAIL: str | None = None
+    MS_REDIRECT_URI: str = "http://localhost:8080/ms-callback"
 
     model_config = {
         "env_file": ".env",

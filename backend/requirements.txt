@@ -10,6 +10,8 @@ pydantic-settings==2.2.1
 python-dotenv==1.0.1
 passlib[bcrypt]==1.7.4
 PyJWT==2.8.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.2+cpu
 openai-whisper
 transformers
 sentencepiece
@@ -30,4 +32,6 @@ pandas==2.2.1
 openpyxl==3.1.2
 msal
 # AI / STT
-openai-whisper
+# openai-whisper (уже указан выше)
+pyotp==2.9.0
+qrcode[pil]==7.4.2

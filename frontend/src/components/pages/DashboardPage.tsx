@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Plus, Clock, CheckCircle, AlertCircle, TrendingUp,
-  MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown
+  Trash2, Search, FileDown
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics } from '../../services/api';
-import Header from '../layout/Header';
+import { Link } from 'react-router-dom';
+import { getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import CreateOvertimeModal from './CreateOvertimeModal';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -15,39 +15,24 @@ import { STATUS_LABELS } from '../../constants/locale';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 
 const DashboardPage: React.FC = () => {
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [overtimes, setOvertimes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editOvertime, setEditOvertime] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(10);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) { navigate('/login'); return; }
-
-      const userRes = await api.get('/auth/me');
-      setUser(userRes.data);
-
       const [ovRes, statsRes] = await Promise.all([
-        getMyOvertimes({ page: currentPage, page_size: pageSize }),
+        getMyOvertimes(),
         getMyStats()
       ]);
-      setOvertimes(ovRes.items || []);
-      setTotalPages(ovRes.pages || 1);
+      setOvertimes(Array.isArray(ovRes) ? ovRes : (ovRes.items || []));
       setStats(statsRes);
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
-      // Don't auto-navigate to login on every error, maybe just token error
     } finally {
       setLoading(false);
     }
@@ -55,7 +40,7 @@ const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage]);
+  }, []);
 
   const handleCancel = async (id: number) => {
     if (window.confirm('Отменить заявку?')) {
@@ -85,23 +70,20 @@ const DashboardPage: React.FC = () => {
     (ot.project?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (loading && !overtimes.length) return <LoadingOverlay />;
-
   return (
-    <div className="page-container animate-fade-in">
+    <div className="animate-fade-in">
       {loading && <LoadingOverlay />}
-      <Header user={user} />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Дашборд сотрудника</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Ваша активность и статус переработок за последнее время.</p>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Рабочий стол</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Добро пожаловать, {user?.full_name}.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={handleExport} style={{
+          <button onClick={handleExport} className="btn-secondary" style={{
             background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
             border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
-          }} className="btn-secondary">
+          }}>
             <FileDown size={18} /> ЭКСПОРТ (EXCEL)
           </button>
           <button onClick={() => setIsCreateModalOpen(true)} className="primary">
@@ -131,18 +113,61 @@ const DashboardPage: React.FC = () => {
         ))}
       </div>
 
+      {/* Admin/Manager Financial Widgets */}
+      {(user?.role === 'admin' || user?.role === 'manager') && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+          <div className="glass-card" style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h4 style={{ fontWeight: 800 }}>Воронка сделок (Стадии)</h4>
+              <Link to="/crm" style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>ВСЕ СДЕЛКИ</Link>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                { label: 'Новые', val: 12, color: '#60a5fa', p: 100 },
+                { label: 'ТКП', val: 8, color: '#fbbf24', p: 65 },
+                { label: 'Договор', val: 5, color: '#f97316', p: 40 },
+                { label: 'Оплата', val: 3, color: '#10b981', p: 25 }
+              ].map((s, idx) => (
+                <div key={idx}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.8rem' }}>
+                    <span style={{ fontWeight: 700 }}>{s.label}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{s.val} сделок</span>
+                  </div>
+                  <div style={{ height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px' }}>
+                    <div style={{ width: `${s.p}%`, height: '100%', background: s.color, borderRadius: '5px' }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass-card" style={{ padding: '24px' }}>
+            <h4 style={{ fontWeight: 800, marginBottom: '24px' }}>Эффективность производства</h4>
+            <div style={{ display: 'flex', gap: '20px', height: '180px' }}>
+              <div style={{ flex: 1, background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.0) 100%)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 800 }}>МАРЖИНАЛЬНОСТЬ (AVG)</div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--text-primary)' }}>32.4%</div>
+                <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>↑ 2.1% с прошлого мес</div>
+              </div>
+              <div style={{ flex: 1, background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.0) 100%)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 800 }}>ЧИСТАЯ ПРИБЫЛЬ</div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--text-primary)' }}>8.4M</div>
+                <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>В пределах плана</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Charts Section */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
         <div className="glass-card" style={{ padding: '24px' }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Активность за 30 дней (часы)</h4>
-          <div style={{ height: '200px' }}>
+          <div style={{ height: '300px', minHeight: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats?.daily_stats || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
-                <XAxis
-                  dataKey="date"
-                  hide
-                />
+                <XAxis dataKey="date" hide />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip
                   contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
@@ -156,7 +181,7 @@ const DashboardPage: React.FC = () => {
 
         <div className="glass-card" style={{ padding: '24px' }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
-          <div style={{ height: '200px', display: 'flex', alignItems: 'center' }}>
+          <div style={{ height: '300px', minHeight: '300px', display: 'flex', alignItems: 'center' }}>
             <div style={{ flex: 1, height: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -196,171 +221,73 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: '16px' }}>
-        {/* Left: Table */}
-        <div className="glass-card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontWeight: 700 }}>Мои переработки</h3>
-            <div style={{ position: 'relative', width: '250px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                placeholder="Найти по описанию..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)' }}
-              />
-            </div>
-          </div>
-          <div style={{ overflowX: 'auto', flex: 1 }}>
-            <table className="table-container">
-              <thead>
-                <tr>
-                  <th className="table-header">Дата</th>
-                  <th className="table-header">Проект</th>
-                  <th className="table-header">Часы</th>
-                  <th className="table-header">Статус</th>
-                  <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOvertimes.map((ot: any) => (
-                  <tr key={ot.id}>
-                    <td className="table-cell">{new Date(ot.start_time).toLocaleDateString()}</td>
-                    <td className="table-cell">
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ot.project?.name || 'Внутренний'}</div>
-                    </td>
-                    <td className="table-cell">{ot.hours}ч</td>
-                    <td className="table-cell">
-                      <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
-                        {STATUS_LABELS[ot.status] || ot.status}
-                      </span>
-                    </td>
-                    <td className="table-cell" style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        {(ot.status === 'PENDING' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
-                          ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
-                            <>
-                              <button
-                                onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
-                                className="action-button-modern"
-                                title="Редактировать"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleCancel(ot.id)}
-                                className="action-button-modern delete"
-                                title="Удалить/Отменить"
-                                style={{ color: 'var(--error)' }}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </>
-                          )}
-                        {ot.start_lat && ot.start_lng && (
-                          <a
-                            href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="action-button-modern"
-                            title="Точка начала (карта)"
-                            style={{ color: 'var(--success)' }}
-                          >
-                            <MapPin size={16} />
-                          </a>
-                        )}
-                        {ot.end_lat && ot.end_lng && (
-                          <a
-                            href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="action-button-modern"
-                            title="Точка финиша (карта)"
-                            style={{ color: 'var(--error)' }}
-                          >
-                            <MapPin size={16} />
-                          </a>
-                        )}
-                        {!ot.start_lat && ot.location_name && (
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="action-button-modern"
-                            title={ot.location_name}
-                            style={{ color: 'var(--accent)' }}
-                          >
-                            <MapPin size={16} />
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredOvertimes.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination UI */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Страница <b>{currentPage}</b> из <b>{totalPages}</b>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="action-button-modern"
-                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="action-button-modern"
-                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+      {/* Requests Table */}
+      <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontWeight: 700 }}>Мои переработки</h3>
+          <div style={{ position: 'relative', width: '250px' }}>
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              placeholder="Найти по описанию..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="modern-input"
+              style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)' }}
+            />
           </div>
         </div>
-
-        {/* Right: Info Widget */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="glass-card" style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', color: 'white', border: 'none' }}>
-            <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.8, marginBottom: '16px' }}>Текущий месяц</h4>
-            <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px' }}>{stats?.current_month_hours || 0}ч</div>
-            <p style={{ fontSize: '0.85rem', opacity: 0.9 }}>Всего одобренных часов за текущий месяц.</p>
-          </div>
-
-          <div className="glass-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)' }}>
-                <Clock size={20} />
-              </div>
-              <h4 style={{ fontWeight: 700 }}>Информация</h4>
-            </div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Не забывайте прикреплять геолокацию к заявкам для более быстрого согласования менеджером.
-            </p>
-          </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table-container" style={{ width: '100%' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Дата</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Проект</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Часы</th>
+                <th style={{ padding: '16px', textAlign: 'left' }}>Статус</th>
+                <th style={{ padding: '16px', textAlign: 'right' }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOvertimes.map((ot: any) => (
+                <tr key={ot.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '16px' }}>{new Date(ot.start_time).toLocaleDateString()}</td>
+                  <td style={{ padding: '16px' }}>
+                    {/* Link to project details page */}
+                    <Link to={`/projects/${ot.project?.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <span className="hover-link" style={{ fontWeight: 600 }}>{ot.project?.name || 'Внутренний'}</span>
+                    </Link>
+                  </td>
+                  <td style={{ padding: '16px', fontWeight: 700 }}>{ot.hours}ч</td>
+                  <td style={{ padding: '16px' }}>
+                    <span style={{
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      background: ot.status === 'APPROVED' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: ot.status === 'APPROVED' ? '#10b981' : '#f59e0b'
+                    }}>
+                      {STATUS_LABELS[ot.status] || ot.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '16px', textAlign: 'right' }}>
+                    {ot.status === 'PENDING' && (
+                      <button onClick={() => handleCancel(ot.id)} style={{ color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
       {isCreateModalOpen && (
         <CreateOvertimeModal
-          editData={editOvertime}
-          onClose={() => { setIsCreateModalOpen(false); setEditOvertime(null); }}
-          onCreated={() => {
-            setIsCreateModalOpen(false);
-            setEditOvertime(null);
-            fetchData();
-          }}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={fetchData}
         />
       )}
     </div>

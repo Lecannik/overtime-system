@@ -200,8 +200,13 @@ def setup_bot(token: str):
     return application
 
 async def run_bot_async(token: str):
-    app = setup_bot(token)
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    return app
+    try:
+        app = setup_bot(token)
+        await app.initialize()
+        await app.start()
+        logger.info("📡 Бот инициализирован. Запуск поллинга...")
+        await app.updater.start_polling(drop_pending_updates=True)
+        return app
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка в цикле бота: {e}")
+        raise

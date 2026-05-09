@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, BarChart3, ClipboardCheck, Settings,
-    LogOut, User, Bell, Sun, Moon
+    LogOut, User, Bell, Sun, Moon, Building2, CheckSquare
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,6 +33,8 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
 
     const navItems = [
         { path: '/dashboard', label: 'Главная', icon: LayoutDashboard },
+        { path: '/crm', label: 'CRM', icon: Building2 },
+        { path: '/tasks', label: 'Задачи', icon: CheckSquare },
         { path: '/analytics', label: 'Аналитика', icon: BarChart3 },
     ];
 

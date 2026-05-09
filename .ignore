@@ -1,0 +1,8 @@
+node_modules/
+models/
+dist/
+.git/
+backend/uploads/
+*.pt
+*.bin
+*.log

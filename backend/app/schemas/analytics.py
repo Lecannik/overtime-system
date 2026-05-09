@@ -9,10 +9,20 @@ class AnalyticsSummary(BaseModel):
     rejected_requests: int
 
 class ProjectAnalytics(BaseModel):
+    """Аналитика по количеству часов переработок в проекте."""
     project_id: int
     project_name: str
     total_hours: float
     request_count: int
+    turnover: float = 0.0
+    net_profit: float = 0.0
+
+class ProjectFinanceResponse(BaseModel):
+    """Финальная сводка по финансам компании."""
+    total_turnover: float
+    total_profit: float
+    active_projects_count: int
+    total_overtime_hours: float
 
 class DepartmentAnalytics(BaseModel):
     department_id: int

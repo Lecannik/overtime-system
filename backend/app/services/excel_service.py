@@ -115,3 +115,91 @@ async def generate_excel_file(
 
     output.seek(0)
     return output
+
+
+async def generate_finance_report(
+    data: list,
+    current_user: User
+) -> io.BytesIO:
+    """Генерирует Excel-отчет по финансам проектов."""
+    if not data:
+        return None
+        
+    df = pd.DataFrame(data)
+    
+    # Колонки: Проект, Стадия, Оборот, ФОТ, Прибыль, Маржа
+    cols_order = ["name", "stage", "turnover", "labor_cost", "net_profit"]
+    for col in cols_order:
+        if col not in df.columns:
+            df[col] = 0.0
+            
+    df = df[cols_order]
+    
+    # Расчет маржинальности
+    df['margin'] = df.apply(lambda x: (x['net_profit'] / x['turnover'] * 100) if x['turnover'] > 0 else 0, axis=1)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_export = df.rename(columns={
+            "name": "Проект",
+            "stage": "Стадия",
+            "turnover": "Оборот (руб.)",
+            "labor_cost": "ФОТ (руб.)",
+            "net_profit": "Чистая прибыль (руб.)",
+            "margin": "Маржинальность (%)"
+        })
+
+        df_export.to_excel(writer, index=False, sheet_name='Finance', startrow=3)
+        worksheet = writer.sheets['Finance']
+        
+        # Стилизация заголовка
+        title = f"ФИНАНСОВЫЙ ОТЧЕТ ПО ПРОЕКТАМ — {datetime.now().strftime('%d.%m.%Y')}"
+        worksheet.merge_cells('A1:F1')
+        worksheet['A1'] = title
+        worksheet['A1'].font = Font(size=14, bold=True, color="1e40af")
+        worksheet['A1'].alignment = Alignment(horizontal='center')
+        
+        # Заголовки таблицы
+        header_fill = PatternFill(start_color="1e40af", end_color="1e40af", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+        for col in range(1, 7):
+            cell = worksheet.cell(row=4, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center')
+
+        # Данные
+        for row_idx in range(5, 5 + len(df)):
+            for col_idx in range(1, 7):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.border = border
+                if col_idx >= 3: # Числовые колонки
+                    cell.alignment = Alignment(horizontal='right')
+                    cell.number_format = '#,##0.00'
+
+        # Итоги
+        total_row = 5 + len(df)
+        worksheet.cell(row=total_row, column=2).value = "ИТОГО:"
+        worksheet.cell(row=total_row, column=2).font = Font(bold=True)
+        
+        for col_idx in [3, 4, 5]:
+            total_val = df.iloc[:, col_idx-1].sum()
+            cell = worksheet.cell(row=total_row, column=col_idx)
+            cell.value = total_val
+            cell.font = Font(bold=True)
+            cell.number_format = '#,##0.00'
+            cell.border = border
+
+        # Средняя маржа
+        avg_margin = (df['net_profit'].sum() / df['turnover'].sum() * 100) if df['turnover'].sum() > 0 else 0
+        cell = worksheet.cell(row=total_row, column=6)
+        cell.value = avg_margin
+        cell.font = Font(bold=True)
+        cell.number_format = '#,##0.00'
+        cell.border = border
+
+    output.seek(0)
+    return output
