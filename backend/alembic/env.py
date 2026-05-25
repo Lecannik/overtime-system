@@ -7,7 +7,7 @@ from alembic import context
 
 from app.core.database import Base
 from app.core.config import settings
-from app.models.user import User
+from app.models.user import User, RefreshToken
 from app.models.organization import Department, Project
 from app.models.overtime import Overtime
 from app.models.audit import AuditLog

@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Building2, Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Briefcase
+    Building2, Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Briefcase, Download, X as XIcon
 } from 'lucide-react';
+
 import api, {
-    getUsers, getDepartments, getProjects, getAuditLogs, updateUser, resetUserPassword,
+    getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
-    updateDepartment, updateProject
+    updateDepartment, updateProject, getOdooProjects, importOdooProjects
 } from '../../services/api';
+
+import type { OdooProjectPreview } from '../../types';
 import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
 import ImportMSUsersModal from '../modals/ImportMSUsersModal';
 import UserModal from '../modals/UserModal';
 import ConfirmModal from '../modals/ConfirmModal';
-import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS } from '../../constants/locale';
+import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS, formatDateTime } from '../../constants/locale';
 
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -42,6 +45,95 @@ const UsersPage: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Состояние модала создания проекта
+    const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+    const [projectForm, setProjectForm] = useState({ name: '', code: '' });
+    const [projectFormError, setProjectFormError] = useState('');
+    const [projectFormLoading, setProjectFormLoading] = useState(false);
+
+    // Regex для валидации формата кода проекта YYYY-NNNNN
+    const PROJECT_CODE_RE = /^\d{4}-\d{5}$/;
+
+    // Инлайн редактирование отдела: id=null — ничего не редактируется
+    const [editDeptId, setEditDeptId] = useState<number | null>(null);
+    const [editDeptName, setEditDeptName] = useState('');
+
+    // Инлайн редактирование проекта
+    const [editProjectId, setEditProjectId] = useState<number | null>(null);
+    const [editProjectName, setEditProjectName] = useState('');
+    const [editProjectActive, setEditProjectActive] = useState(true);
+
+    // Локальные значения лимита для number input (чтобы не дергать API на каждый символ)
+    const [localLimits, setLocalLimits] = useState<Record<number, number>>({});
+
+    // ==================== Состояние Odoo-модала ====================
+    const [isOdooModalOpen, setIsOdooModalOpen] = useState(false);
+    const [odooProjects, setOdooProjects] = useState<OdooProjectPreview[]>([]);
+    const [odooLoading, setOdooLoading] = useState(false);
+    const [odooError, setOdooError] = useState('');
+    const [selectedOdooIds, setSelectedOdooIds] = useState<Set<number>>(new Set());
+    const [importLoading, setImportLoading] = useState(false);
+    const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+
+    /** Открыть Odoo-модал и загрузить список проектов из CRM. */
+    const handleOpenOdooModal = async () => {
+        setIsOdooModalOpen(true);
+        setOdooError('');
+        setImportResult(null);
+        setSelectedOdooIds(new Set());
+        setOdooLoading(true);
+        try {
+            const data = await getOdooProjects();
+            setOdooProjects(data.projects);
+        } catch (err: any) {
+            setOdooError(err.response?.data?.detail || 'Ошибка подключения к Odoo CRM');
+        } finally {
+            setOdooLoading(false);
+        }
+    };
+
+    /** Переключить выбор проекта в Odoo-модале. */
+    const toggleOdooProject = (id: number) => {
+        setSelectedOdooIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    /** Выбрать все / снять выбор. */
+    const toggleSelectAll = () => {
+        if (selectedOdooIds.size === odooProjects.length) {
+            setSelectedOdooIds(new Set());
+        } else {
+            setSelectedOdooIds(new Set(odooProjects.map(p => p.odoo_id)));
+        }
+    };
+
+    /** Запустить импорт выбранных проектов. */
+    const handleImportSelected = async () => {
+        const toImport = odooProjects
+            .filter(p => selectedOdooIds.has(p.odoo_id))
+            .map(p => ({
+                odoo_id: p.odoo_id,
+                name: p.name,
+                code: p.code,
+                manager_email: p.manager_email,
+            }));
+        if (!toImport.length) return;
+        setImportLoading(true);
+        try {
+            const result = await importOdooProjects(toImport);
+            setImportResult(result);
+            refreshData();
+        } catch (err: any) {
+            setOdooError(err.response?.data?.detail || 'Ошибка при импорте проектов');
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
     const refreshData = async () => {
         setLoading(true);
         try {
@@ -57,7 +149,7 @@ const UsersPage: React.FC = () => {
                 setUsers(res.items);
                 setTotalPages(res.pages);
             } else if (activeTab === 'audit') {
-                const res = await getAuditLogs(pageSize, (currentPage - 1) * pageSize);
+                const res = await getAuditLogs(pageSize, (currentPage - 1) * pageSize, searchQuery);
                 // Если бэкенд возвращает {items, total}, используем это
                 if (res.items) {
                     setAuditLogs(res.items);
@@ -76,7 +168,7 @@ const UsersPage: React.FC = () => {
                 setTotalPages(1);
             } else if (activeTab === 'projects') {
                 const [projRes, userRes] = await Promise.all([
-                    getProjects(),
+                    getAdminProjects(),
                     getUsers({ page_size: 1000 })
                 ]);
                 setProjects(projRes);
@@ -120,11 +212,29 @@ const UsersPage: React.FC = () => {
                 refreshData();
             }
         } else if (activeTab === 'projects') {
-            const name = window.prompt('Название проекта:');
-            if (name) {
-                await createProject({ name });
-                refreshData();
-            }
+            setProjectForm({ name: '', code: '' });
+            setProjectFormError('');
+            setIsProjectModalOpen(true);
+        }
+    };
+
+    /** Создать проект после прохождения валидации формы. */
+    const handleSubmitProject = async () => {
+        const { name, code } = projectForm;
+        if (!name.trim()) { setProjectFormError('Введите название проекта'); return; }
+        if (!PROJECT_CODE_RE.test(code.trim())) {
+            setProjectFormError('Номер должен быть в формате ГГГГ-ННННН, например: 2026-00001');
+            return;
+        }
+        setProjectFormLoading(true);
+        try {
+            await createProject({ name: name.trim(), code: code.trim() });
+            setIsProjectModalOpen(false);
+            refreshData();
+        } catch (err: any) {
+            setProjectFormError(err.response?.data?.detail || 'Ошибка при создании проекта');
+        } finally {
+            setProjectFormLoading(false);
         }
     };
 
@@ -178,12 +288,18 @@ const UsersPage: React.FC = () => {
         });
         setConfirmAction(() => async () => {
             setActionLoading(true);
-            if (type === 'user') await deleteUser(id);
-            if (type === 'dept') await deleteDepartment(id);
-            if (type === 'project') await deleteProject(id);
-            setActionLoading(false);
-            setIsConfirmOpen(false);
-            refreshData();
+            try {
+                if (type === 'user') await deleteUser(id);
+                if (type === 'dept') await deleteDepartment(id);
+                if (type === 'project') await deleteProject(id);
+                setIsConfirmOpen(false);
+                refreshData();
+            } catch (err: any) {
+                console.error(err);
+                alert(err.response?.data?.detail || 'Ошибка при удалении записи. Возможно, она связана с существующими переработками.');
+            } finally {
+                setActionLoading(false);
+            }
         });
         setIsConfirmOpen(true);
     };
@@ -191,6 +307,7 @@ const UsersPage: React.FC = () => {
     if (loading && currentPage === 1) return <div className="page-container"><Skeleton height={800} /></div>;
 
     return (
+        <>
         <div className="page-container animate-fade-in">
             <ConfirmModal
                 isOpen={isConfirmOpen}
@@ -215,12 +332,12 @@ const UsersPage: React.FC = () => {
 
             <Header user={currentUser} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
                 <div>
                     <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Система управления</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Администрирование пользователей, отделов и проектов организации.</p>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                     <button onClick={refreshData} className="secondary" style={{ padding: '0 11px', borderRadius: '12px' }}><RefreshCcw size={18} /></button>
                     <button onClick={() => setIsImportMSModalOpen(true)} className="secondary" style={{ color: 'var(--primary)', borderRadius: '12px' }}>
                         <Globe size={18} /> <span style={{ marginLeft: '8px' }}>Импорт MS</span>
@@ -231,11 +348,11 @@ const UsersPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '8px', display: 'flex', gap: '8px', marginBottom: '32px', background: 'var(--bg-tertiary)', borderRadius: '12px', width: 'fit-content' }}>
+            <div className="glass-card scrollbar-hidden" style={{ padding: '8px', display: 'flex', gap: '8px', marginBottom: '32px', background: 'var(--bg-tertiary)', borderRadius: '12px', width: '100%', overflowX: 'auto' }}>
                 {(['users', 'departments', 'projects', 'audit'] as const).map(tab => (
                     <button
                         key={tab}
-                        onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
+                        onClick={() => { setActiveTab(tab); setCurrentPage(1); setSearchQuery(''); }}
                         style={{
                             padding: '10px 24px',
                             borderRadius: '10px',
@@ -243,7 +360,8 @@ const UsersPage: React.FC = () => {
                             color: activeTab === tab ? 'var(--accent)' : 'var(--text-secondary)',
                             fontWeight: 600,
                             boxShadow: activeTab === tab ? 'var(--card-shadow)' : 'none',
-                            fontSize: '0.85rem'
+                            fontSize: '0.85rem',
+                            flexShrink: 0
                         }}
                     >
                         {tab === 'users' ? 'Пользователи' : tab === 'departments' ? 'Отделы' : tab === 'projects' ? 'Проекты' : 'История'}
@@ -263,11 +381,11 @@ const UsersPage: React.FC = () => {
                 </div>
                 {activeTab === 'users' && (
                     <>
-                        <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setCurrentPage(1); }} style={{ width: 'auto' }}>
+                        <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setCurrentPage(1); }} style={{ width: 'auto', flex: '1 1 150px' }}>
                             <option value="ALL">Все роли</option>
                             {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
-                        <select value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setCurrentPage(1); }} style={{ width: 'auto' }}>
+                        <select value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setCurrentPage(1); }} style={{ width: 'auto', flex: '1 1 150px' }}>
                             <option value="ALL">Все отделы</option>
                             {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
@@ -277,75 +395,74 @@ const UsersPage: React.FC = () => {
 
             <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
                 {activeTab === 'users' && (
-                    <table className="table-container">
-                        <thead>
-                            <tr>
-                                <th className="table-header">Пользователь</th>
-                                <th className="table-header">Роль / Компания</th>
-                                <th className="table-header">Отдел</th>
-                                <th className="table-header">Статус</th>
-                                <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map((u: any) => (
-                                <tr key={u.id}>
-                                    <td className="table-cell">
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <div className="icon-shape" style={{ width: '36px', height: '36px', fontSize: '0.9rem', color: 'white', background: `linear-gradient(310deg, ${ROLE_COLORS[u.role] || '#2152ff'}, #21d4fd)` }}>
-                                                {u.full_name?.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.full_name}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="table-cell">
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <span className="badge badge-info" style={{ width: 'fit-content' }}>{ROLE_LABELS[u.role]}</span>
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company]}</span>
-                                        </div>
-                                    </td>
-                                    <td className="table-cell">
-                                        {departments.find(d => d.id === u.department_id)?.name || '—'}
-                                    </td>
-                                    <td className="table-cell">
-                                        <div onClick={() => handleToggleStatus(u)} className={`badge ${u.is_active ? 'badge-success' : 'badge-danger'}`} style={{ cursor: 'pointer' }}>
-                                            {u.is_active ? 'Активен' : 'Отключен'}
-                                        </div>
-                                    </td>
-                                    <td className="table-cell" style={{ textAlign: 'right' }}>
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                            <button onClick={() => handleEditUser(u)} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
-                                            <button onClick={() => handleResetPasswordAction(u.id)} className="action-button-modern" title="Сбросить пароль"><Key size={16} /></button>
-                                            <button onClick={() => handleDeleteAction(u.id, 'user')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
-                                        </div>
-                                    </td>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="table-container" style={{ minWidth: '850px' }}>
+                            <thead>
+                                <tr>
+                                    <th className="table-header">Пользователь</th>
+                                    <th className="table-header">Роль / Компания</th>
+                                    <th className="table-header">Отдел</th>
+                                    <th className="table-header">Статус</th>
+                                    <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {users.map((u: any) => (
+                                    <tr key={u.id}>
+                                        <td className="table-cell">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div className="icon-shape" style={{ width: '36px', height: '36px', fontSize: '0.9rem', color: 'white', background: `linear-gradient(310deg, ${ROLE_COLORS[u.role] || '#2152ff'}, #21d4fd)` }}>
+                                                    {u.full_name?.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.full_name}</div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="table-cell">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <span className="badge badge-info" style={{ width: 'fit-content' }}>{ROLE_LABELS[u.role]}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company]}</span>
+                                            </div>
+                                        </td>
+                                        <td className="table-cell">
+                                            {departments.find(d => d.id === u.department_id)?.name || '—'}
+                                        </td>
+                                        <td className="table-cell">
+                                            <div onClick={() => handleToggleStatus(u)} className={`badge ${u.is_active ? 'badge-success' : 'badge-danger'}`} style={{ cursor: 'pointer' }}>
+                                                {u.is_active ? 'Активен' : 'Отключен'}
+                                            </div>
+                                        </td>
+                                        <td className="table-cell" style={{ textAlign: 'right' }}>
+                                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                <button onClick={() => handleEditUser(u)} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
+                                                <button onClick={() => handleResetPasswordAction(u.id)} className="action-button-modern" title="Сбросить пароль"><Key size={16} /></button>
+                                                <button onClick={() => handleDeleteAction(u.id, 'user')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
 
                 {activeTab === 'departments' && (
-                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                         {departments.map(d => (
                             <div key={d.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: 0 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: 'var(--primary)', borderRadius: '12px' }}><Building2 size={24} /></div>
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{d.name}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: 'var(--primary)', borderRadius: '12px', flexShrink: 0 }}><Building2 size={24} /></div>
+                                        <div style={{ minWidth: 0 }}>
+                                            <div style={{ fontWeight: 800, fontSize: '1.1rem', wordBreak: 'break-word' }}>{d.name}</div>
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {d.id}</div>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button onClick={() => {
-                                            const n = window.prompt('Имя отдела:', d.name);
-                                            if (n && n !== d.name) updateDepartment(d.id, { name: n }).then(refreshData);
-                                        }} className="action-button-modern"><Edit2 size={16} /></button>
-                                        <button onClick={() => handleDeleteAction(d.id, 'dept')} className="action-button-modern delete"><Trash2 size={16} /></button>
+                                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                                        <button onClick={() => { setEditDeptId(d.id); setEditDeptName(d.name); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
+                                        <button onClick={() => handleDeleteAction(d.id, 'dept')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
                                     </div>
                                 </div>
 
@@ -368,27 +485,47 @@ const UsersPage: React.FC = () => {
                 )}
 
                 {activeTab === 'projects' && (
-                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '16px' }}>
+                    <div style={{ padding: '16px 24px 0' }}>
+                        <button
+                            onClick={handleOpenOdooModal}
+                            className="secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', color: 'var(--accent)', border: '1px solid var(--accent)', padding: '10px 20px', fontWeight: 700 }}
+                        >
+                            <Download size={16} />
+                            Импорт из Odoo CRM
+                        </button>
+                    </div>
+                )}
+
+                {activeTab === 'projects' && (
+                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                         {projects.map(p => (
                             <div key={p.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: 0 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: 'var(--info)', borderRadius: '12px' }}><Briefcase size={24} /></div>
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{p.name}</div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Проект организации</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: p.is_active ? 'var(--info)' : 'var(--text-muted)', borderRadius: '12px', flexShrink: 0 }}><Briefcase size={24} /></div>
+                                        <div style={{ minWidth: 0 }}>
+                                            <div style={{ fontWeight: 800, fontSize: '1.1rem', wordBreak: 'break-word', color: p.is_active ? 'var(--text-primary)' : 'var(--text-muted)' }}>{p.name}</div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'monospace', letterSpacing: '0.05em', userSelect: 'all', cursor: 'default' }} title="Номер проекта нельзя изменить после создания">{p.code || '—'}</span>
+                                                <span 
+                                                    onClick={() => updateProject(p.id, { is_active: !p.is_active }).then(refreshData)}
+                                                    className={`badge ${p.is_active ? 'badge-success' : 'badge-danger'}`} 
+                                                    style={{ cursor: 'pointer', fontSize: '0.65rem', padding: '2px 8px', lineHeight: 'normal' }}
+                                                    title="Нажмите, чтобы изменить статус проекта"
+                                                >
+                                                    {p.is_active ? 'Активен' : 'Архив'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button onClick={() => {
-                                            const n = window.prompt('Имя проекта:', p.name);
-                                            if (n && n !== p.name) updateProject(p.id, { name: n }).then(refreshData);
-                                        }} className="action-button-modern"><Edit2 size={16} /></button>
-                                        <button onClick={() => handleDeleteAction(p.id, 'project')} className="action-button-modern delete"><Trash2 size={16} /></button>
+                                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                                        <button onClick={() => { setEditProjectId(p.id); setEditProjectName(p.name); setEditProjectActive(p.is_active); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
+                                        <button onClick={() => handleDeleteAction(p.id, 'project')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
                                     </div>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '16px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
                                     <div className="form-group" style={{ marginBottom: 0 }}>
                                         <label style={{ fontSize: '0.7rem', textTransform: 'uppercase' }}>Менеджер проекта</label>
                                         <select
@@ -406,8 +543,15 @@ const UsersPage: React.FC = () => {
                                         <label style={{ fontSize: '0.7rem', textTransform: 'uppercase' }}>Лимит (ч/нед)</label>
                                         <input
                                             type="number"
-                                            value={p.weekly_limit}
-                                            onChange={(e) => updateProject(p.id, { weekly_limit: Number(e.target.value) }).then(refreshData)}
+                                            value={localLimits[p.id] ?? p.weekly_limit}
+                                            onChange={e => setLocalLimits(prev => ({ ...prev, [p.id]: Number(e.target.value) }))}
+                                            onBlur={async e => {
+                                                const val = Number(e.target.value);
+                                                if (val !== p.weekly_limit && val > 0) {
+                                                    await updateProject(p.id, { weekly_limit: val });
+                                                    refreshData();
+                                                }
+                                            }}
                                             style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                                         />
                                     </div>
@@ -418,26 +562,28 @@ const UsersPage: React.FC = () => {
                 )}
 
                 {activeTab === 'audit' && (
-                    <table className="table-container">
-                        <thead>
-                            <tr>
-                                <th className="table-header">Дата</th>
-                                <th className="table-header">Кто</th>
-                                <th className="table-header">Действие</th>
-                                <th className="table-header">Объект</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {auditLogs.map((log: any) => (
-                                <tr key={log.id}>
-                                    <td className="table-cell" style={{ fontSize: '0.8rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
-                                    <td className="table-cell" style={{ fontWeight: 600 }}>{log.user?.full_name || 'System'}</td>
-                                    <td className="table-cell"><span className="badge badge-info">{log.action}</span></td>
-                                    <td className="table-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{log.target_type} ({log.target_id})</td>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="table-container" style={{ minWidth: '700px' }}>
+                            <thead>
+                                <tr>
+                                    <th className="table-header">Дата</th>
+                                    <th className="table-header">Кто</th>
+                                    <th className="table-header">Действие</th>
+                                    <th className="table-header">Объект</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {auditLogs.map((log: any) => (
+                                    <tr key={log.id}>
+                                        <td className="table-cell" style={{ fontSize: '0.8rem' }}>{formatDateTime(log.timestamp)}</td>
+                                        <td className="table-cell" style={{ fontWeight: 600 }}>{log.user?.full_name || 'System'}</td>
+                                        <td className="table-cell"><span className="badge badge-info">{log.action}</span></td>
+                                        <td className="table-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{log.target_type} ({log.target_id})</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
 
@@ -464,6 +610,384 @@ const UsersPage: React.FC = () => {
                 </div>
             )}
         </div>
+
+            {/* Модал создания проекта с валидацией формата кода */}
+            {isProjectModalOpen && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000, backdropFilter: 'blur(4px)'
+                }}>
+                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Новый проект</h3>
+                            <button onClick={() => setIsProjectModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Номер проекта <span style={{ color: 'var(--danger)' }}>*</span></label>
+                            <input
+                                type="text"
+                                placeholder="2026-00001"
+                                maxLength={10}
+                                value={projectForm.code}
+                                onChange={(e) => {
+                                    setProjectFormError('');
+                                    setProjectForm(f => ({ ...f, code: e.target.value }));
+                                }}
+                                style={{ fontFamily: 'monospace', letterSpacing: '0.1em', fontSize: '1rem' }}
+                            />
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                                Формат: ГГГГ-ННННН (например, 2026-00001). <strong>После создания изменить нельзя.</strong>
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Название проекта <span style={{ color: 'var(--danger)' }}>*</span></label>
+                            <input
+                                type="text"
+                                placeholder="Разработка модуля аналитики"
+                                value={projectForm.name}
+                                onChange={(e) => {
+                                    setProjectFormError('');
+                                    setProjectForm(f => ({ ...f, name: e.target.value }));
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitProject(); }}
+                            />
+                        </div>
+
+                        {projectFormError && (
+                            <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                {projectFormError}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                            <button
+                                onClick={handleSubmitProject}
+                                className="primary"
+                                disabled={projectFormLoading}
+                                style={{ flex: 1 }}
+                            >
+                                {projectFormLoading ? 'Создание...' : 'Создать проект'}
+                            </button>
+                            <button
+                                onClick={() => setIsProjectModalOpen(false)}
+                                style={{ padding: '12px 20px', borderRadius: '12px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                Отмена
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==================== Odoo CRM Модал импорта ==================== */}
+            {isOdooModalOpen && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1100, backdropFilter: 'blur(6px)'
+                }}>
+                    <div className="glass-card" style={{
+                        width: '680px', maxWidth: '95vw', maxHeight: '85vh',
+                        display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
+                    }}>
+                        {/* Заголовок */}
+                        <div style={{
+                            padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'var(--bg-secondary)'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                                    Импорт проектов из Odoo CRM
+                                </h3>
+                                {!odooLoading && !odooError && odooProjects.length > 0 && (
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        Найдено проектов: <strong>{odooProjects.length}</strong> · Выбрано: <strong>{selectedOdooIds.size}</strong>
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setIsOdooModalOpen(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                            >
+                                <XIcon size={22} />
+                            </button>
+                        </div>
+
+                        {/* Тело */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px' }}>
+                            {odooLoading && (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px' }}>
+                                    <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Подключение к Odoo CRM...</p>
+                                </div>
+                            )}
+
+                            {odooError && !odooLoading && (
+                                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600 }}>
+                                    ⚠️ {odooError}
+                                </div>
+                            )}
+
+                            {/* Результат импорта */}
+                            {importResult && (
+                                <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(34,197,94,0.08)', border: '1px solid var(--success)' }}>
+                                    <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                                        ✅ Импорт завершён
+                                    </div>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        Импортировано: <strong>{importResult.imported}</strong> · Пропущено (дубликаты): <strong>{importResult.skipped}</strong>
+                                    </div>
+                                    {importResult.errors.length > 0 && (
+                                        <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--warning)' }}>
+                                            {importResult.errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {!odooLoading && !odooError && odooProjects.length > 0 && (
+                                <>
+                                    {/* Строка «Выбрать все» */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedOdooIds.size === odooProjects.length}
+                                            onChange={toggleSelectAll}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                        />
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={toggleSelectAll}>
+                                            {selectedOdooIds.size === odooProjects.length ? 'Снять всё' : 'Выбрать все'}
+                                        </span>
+                                    </div>
+
+                                    {/* Список проектов */}
+                                    {odooProjects.map(p => (
+                                        <div
+                                            key={p.odoo_id}
+                                            onClick={() => toggleOdooProject(p.odoo_id)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '12px',
+                                                padding: '12px', borderRadius: '10px', cursor: 'pointer',
+                                                background: selectedOdooIds.has(p.odoo_id) ? 'rgba(59,130,246,0.07)' : 'transparent',
+                                                border: `1px solid ${selectedOdooIds.has(p.odoo_id) ? 'var(--accent)' : 'transparent'}`,
+                                                marginBottom: '6px', transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedOdooIds.has(p.odoo_id)}
+                                                onChange={() => toggleOdooProject(p.odoo_id)}
+                                                onClick={e => e.stopPropagation()}
+                                                style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', flexShrink: 0 }}
+                                            />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {p.name}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                    {p.code && (
+                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 700, background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
+                                                            {p.code}
+                                                        </span>
+                                                    )}
+                                                    {!p.code && (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontStyle: 'italic' }}>
+                                                            Без кода
+                                                        </span>
+                                                    )}
+                                                    {p.manager_name && (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            👤 {p.manager_name}
+                                                            {p.manager_email && <span style={{ color: 'var(--text-muted)', opacity: 0.7 }}> ({p.manager_email})</span>}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>
+                                                #{p.odoo_id}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
+
+                            {!odooLoading && !odooError && odooProjects.length === 0 && (
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                    <Download size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                                    <p>Проекты в Odoo не найдены или Odoo не настроен</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Футер с кнопками */}
+                        <div style={{
+                            padding: '16px 28px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'var(--bg-secondary)', gap: '12px'
+                        }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                {selectedOdooIds.size > 0
+                                    ? `Выбрано ${selectedOdooIds.size} из ${odooProjects.length} проектов`
+                                    : 'Выберите проекты для импорта'}
+                            </span>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button
+                                    onClick={() => setIsOdooModalOpen(false)}
+                                    style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                                >
+                                    Закрыть
+                                </button>
+                                <button
+                                    onClick={handleImportSelected}
+                                    disabled={selectedOdooIds.size === 0 || importLoading}
+                                    className="primary"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                                >
+                                    {importLoading ? (
+                                        <>Импорт...</>
+                                    ) : (
+                                        <><Download size={16} /> Импортировать ({selectedOdooIds.size})</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Модал редактирования отдела */}
+            {editDeptId !== null && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000, backdropFilter: 'blur(4px)'
+                }}>
+                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Редактировать отдел</h3>
+                            <button onClick={() => setEditDeptId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Название отдела <span style={{ color: 'var(--danger)' }}>*</span></label>
+                            <input
+                                type="text"
+                                value={editDeptName}
+                                onChange={(e) => setEditDeptName(e.target.value)}
+                                onKeyDown={async (e) => {
+                                    if (e.key === 'Enter') {
+                                        if (editDeptName.trim()) {
+                                            await updateDepartment(editDeptId, { name: editDeptName.trim() });
+                                            refreshData();
+                                            setEditDeptId(null);
+                                        }
+                                    }
+                                }}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                            <button
+                                onClick={async () => {
+                                    if (editDeptName.trim()) {
+                                        await updateDepartment(editDeptId, { name: editDeptName.trim() });
+                                        refreshData();
+                                        setEditDeptId(null);
+                                    }
+                                }}
+                                className="primary"
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Сохранить
+                            </button>
+                            <button
+                                onClick={() => setEditDeptId(null)}
+                                className="secondary"
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Отмена
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Модал редактирования проекта */}
+            {editProjectId !== null && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000, backdropFilter: 'blur(4px)'
+                }}>
+                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Редактировать проект</h3>
+                            <button onClick={() => setEditProjectId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Название проекта <span style={{ color: 'var(--danger)' }}>*</span></label>
+                            <input
+                                type="text"
+                                value={editProjectName}
+                                onChange={(e) => setEditProjectName(e.target.value)}
+                                onKeyDown={async (e) => {
+                                    if (e.key === 'Enter') {
+                                        if (editProjectName.trim()) {
+                                            await updateProject(editProjectId, { name: editProjectName.trim(), is_active: editProjectActive });
+                                            refreshData();
+                                            setEditProjectId(null);
+                                        }
+                                    }
+                                }}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                            <input
+                                type="checkbox"
+                                id="edit-project-active"
+                                checked={editProjectActive}
+                                onChange={(e) => setEditProjectActive(e.target.checked)}
+                                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                            />
+                            <label htmlFor="edit-project-active" style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                Проект активен
+                            </label>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                            <button
+                                onClick={async () => {
+                                    if (editProjectName.trim()) {
+                                        await updateProject(editProjectId, { name: editProjectName.trim(), is_active: editProjectActive });
+                                        refreshData();
+                                        setEditProjectId(null);
+                                    }
+                                }}
+                                className="primary"
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Сохранить
+                            </button>
+                            <button
+                                onClick={() => setEditProjectId(null)}
+                                className="secondary"
+                                style={{ flex: 1, justifyContent: 'center' }}
+                            >
+                                Отмена
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

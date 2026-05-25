@@ -197,6 +197,7 @@ tr:hover .table-cell {
   font-size: 0.75rem;
   font-weight: 600;
   display: inline-flex;
+  white-space: nowrap;
 }
 
 .badge-success {
@@ -335,7 +336,7 @@ input:focus {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -354,4 +355,142 @@ input:focus {
   -webkit-box-orient: vertical;
   line-clamp: 3;
   overflow: hidden;
+}
+
+/* Custom Flatpickr styles for Dark/Light theme */
+.flatpickr-calendar {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--card-shadow) !important;
+  border-radius: var(--radius-md) !important;
+  font-family: inherit !important;
+}
+
+.flatpickr-calendar::before,
+.flatpickr-calendar::after {
+  border-bottom-color: var(--border) !important;
+}
+
+.flatpickr-day {
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all 0.15s ease;
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+  color: var(--text-muted) !important;
+  opacity: 0.3;
+}
+
+.flatpickr-day:hover,
+.flatpickr-day.prevMonthDay:hover,
+.flatpickr-day.nextMonthDay:hover {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: transparent !important;
+}
+
+.flatpickr-day.today {
+  border-color: var(--accent) !important;
+  color: var(--text-primary) !important;
+}
+
+.flatpickr-day.today:hover {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: white !important;
+  font-weight: 600;
+}
+
+.flatpickr-months .flatpickr-month {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.flatpickr-current-month .numInputWrapper span.arrowUp:after {
+  border-bottom-color: var(--text-primary) !important;
+}
+
+.flatpickr-current-month .numInputWrapper span.arrowDown:after {
+  border-top-color: var(--text-primary) !important;
+}
+
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
+}
+
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover {
+  color: var(--primary) !important;
+}
+
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+  fill: var(--primary) !important;
+}
+
+.flatpickr-monthSelect-theme-light,
+.flatpickr-monthSelect-theme-dark {
+  background: var(--bg-secondary) !important;
+}
+
+.flatpickr-time {
+  border-top: 1px solid var(--border) !important;
+  background: var(--bg-secondary) !important;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.flatpickr-time input {
+  color: var(--text-primary) !important;
+  font-family: inherit !important;
+}
+
+.flatpickr-time input:hover,
+.flatpickr-time input:focus {
+  background: var(--bg-tertiary) !important;
+}
+
+.flatpickr-time .numInputWrapper span.arrowUp:after {
+  border-bottom-color: var(--text-primary) !important;
+}
+
+.flatpickr-time .numInputWrapper span.arrowDown:after {
+  border-top-color: var(--text-primary) !important;
+}
+
+.flatpickr-time .flatpickr-time-separator {
+  color: var(--text-primary) !important;
+}
+
+.flatpickr-time .flatpickr-am-pm {
+  color: var(--text-primary) !important;
+}
+
+.flatpickr-time .flatpickr-am-pm:hover {
+  background: var(--bg-tertiary) !important;
+}
+
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  color: var(--text-muted) !important;
+  opacity: 0.5;
+}
+
+.flatpickr-weekday {
+  color: var(--text-muted) !important;
+  font-weight: 600 !important;
+}
+
+/* Для input, которые flatpickr делает как altInput */
+input.datetime-input-custom {
+  cursor: pointer;
 }

@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -5,12 +6,39 @@ from typing import List
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User, UserRole
-from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats
+from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
+from app.models.overtime import OvertimeStatus
 from app.services import overtime as overtime_service
 from app.repositories import overtime as overtime_repo
 
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
+
+
+@router.get("/", response_model=PaginatedOvertimeResponse)
+async def list_overtimes(
+    page: int = 1,
+    page_size: int = 15,
+    status: OvertimeStatus | None = None,
+    project_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту и периоду дат.
+    """
+    return await overtime_repo.get_overtimes(
+        db, 
+        current_user, 
+        status=status, 
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size
+    )
 
 
 @router.get("/stats/me", response_model=PersonalStats)
@@ -38,30 +66,6 @@ async def create_overtime(
     """
     return await overtime_service.create_new_overtime(db, overtime_in, current_user.id)
 
-
-from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
-from app.models.overtime import OvertimeStatus
-
-@router.get("/", response_model=PaginatedOvertimeResponse)
-async def list_overtimes(
-    page: int = 1,
-    page_size: int = 15,
-    status: OvertimeStatus | None = None,
-    project_id: int | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Получить список заявок на переработку с пагинацией и фильтрами.
-    """
-    return await overtime_repo.get_overtimes(
-        db, 
-        current_user, 
-        status=status, 
-        project_id=project_id,
-        page=page,
-        page_size=page_size
-    )
 
 
 @router.get("/{overtime_id}", response_model=OvertimeResponse)
@@ -134,3 +138,45 @@ async def update_overtime_request(
     - Администратор может обновлять любые.
     """
     return await overtime_service.update_overtime(db, overtime_id, overtime_in, current_user)
+
+
+@router.delete("/{overtime_id}", status_code=204)
+async def delete_overtime_admin(
+    overtime_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Полностью удалить заявку на переработку.
+
+    Доступно только администраторам.
+    Используется в исключительных случаях (тест, дубликат и т.д.).
+    Действие логируется в аудит.
+    """
+    if current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Удаление заявок доступно только администраторам"
+        )
+
+    from sqlalchemy import select, delete as sql_delete
+    from app.models.overtime import Overtime
+    from app.repositories import audit as audit_repo
+
+    result = await db.execute(select(Overtime).where(Overtime.id == overtime_id))
+    overtime = result.scalar_one_or_none()
+    if not overtime:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    await audit_repo.create_audit_log(
+        db,
+        current_user.id,
+        "DELETE_OVERTIME",
+        "overtime",
+        overtime_id,
+        {"user_id": overtime.user_id, "status": str(overtime.status)}
+    )
+
+    await db.execute(sql_delete(Overtime).where(Overtime.id == overtime_id))
+    await db.commit()
+

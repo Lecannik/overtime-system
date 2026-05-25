@@ -40,9 +40,14 @@ dist-ssr/
 .env
 .env.test
 
-# --- СИСТЕМНЫЕ ФАЙЛЫ ---
-.DS_Store
-Thumbs.db
-*.swp
-*.bak
 *.xlsm
+*.xlsx
+test_report.xlsx
+error_screenshot/
+.antigravitycli/
+brain/
+check_logs.sh
+backend/check_db.py
+infra/project_audit*.md
+infra/database_security_options.md
+infra/gateway_architecture.md

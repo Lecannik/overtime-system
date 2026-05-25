@@ -1,6 +1,7 @@
 from enum import Enum as PyEnum
 from datetime import datetime, timezone
 import math
+# pyrefly: ignore [missing-import]
 from sqlalchemy import (
     Boolean,
     Integer,
@@ -101,13 +102,29 @@ class Overtime(Base):
         Метод-свойство. Рассчитывает длительность в часах 
         с применением бизнес-логики (например, округление).
         """
+        if self.status == OvertimeStatus.IN_PROGRESS:
+            return calculate_overtime_hours(self.start_time, datetime.now())
         return calculate_overtime_hours(self.start_time, self.end_time)
 
     @property
     def raw_hours(self) -> float:
         """
         Возвращает чистую разницу во времени без учета 
-        бизнес-правил округления.
+        бизнес-правил округления. Если сессия не завершена, возвращает 0.
         """
-        delta = self.end_time - self.start_time
-        return delta.total_seconds() / 3600.0
+        if not self.start_time:
+            return 0.0
+        if self.status == OvertimeStatus.IN_PROGRESS:
+            s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
+            e = datetime.now()
+            delta = e - s
+            return max(0.0, delta.total_seconds() / 3600.0)
+        
+        if not self.end_time:
+            return 0.0
+        s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
+        e = self.end_time.replace(tzinfo=None) if self.end_time.tzinfo else self.end_time
+        if e.year <= 1970:
+            return 0.0
+        delta = e - s
+        return max(0.0, delta.total_seconds() / 3600.0)

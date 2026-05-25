@@ -5,6 +5,7 @@
  */
 
 export const STATUS_LABELS: Record<string, string> = {
+    IN_PROGRESS: 'В процессе',
     PENDING: 'Ожидает',
     MANAGER_APPROVED: 'Менеджер ОК',
     HEAD_APPROVED: 'Начальник ОК',
@@ -14,6 +15,7 @@ export const STATUS_LABELS: Record<string, string> = {
 };
 
 export const STATUS_COLORS: Record<string, string> = {
+    IN_PROGRESS: '#6366f1',
     PENDING: '#b45309',
     MANAGER_APPROVED: '#0891b2',
     HEAD_APPROVED: '#2563eb',
@@ -69,3 +71,40 @@ export const getStatusLabel = (status: string): string =>
  */
 export const getStatusColor = (status: string): string =>
     STATUS_COLORS[status] || '#64748b';
+
+/** Локаль для форматирования дат по умолчанию */
+const DATE_LOCALE = 'ru-RU';
+
+/**
+ * Форматировать дату в формате дд.мм.гггг
+ * @example formatDate('2026-05-23T15:00:00') → '23.05.2026'
+ */
+export const formatDate = (date: string | Date | null | undefined): string => {
+    if (!date) return '—';
+    return new Date(date).toLocaleDateString(DATE_LOCALE, {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+    });
+};
+
+/**
+ * Форматировать дату и время: дд.мм.гггг, ЧЧ:ММ
+ * @example formatDateTime('2026-05-23T15:00:00') → '23.05.2026, 15:00'
+ */
+export const formatDateTime = (date: string | Date | null | undefined): string => {
+    if (!date) return '—';
+    return new Date(date).toLocaleString(DATE_LOCALE, {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+};
+
+/**
+ * Форматировать только время: ЧЧ:ММ
+ * @example formatTime('2026-05-23T15:30:00') → '15:30'
+ */
+export const formatTime = (date: string | Date | null | undefined): string => {
+    if (!date) return '—';
+    return new Date(date).toLocaleTimeString(DATE_LOCALE, {
+        hour: '2-digit', minute: '2-digit'
+    });
+};

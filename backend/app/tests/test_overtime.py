@@ -1,38 +1,44 @@
 import pytest
 from httpx import AsyncClient
-from app.models.user import UserRole
+from app.models.organization import Project
 
 @pytest.mark.asyncio
-async def test_create_overtime(client: AsyncClient, admin_token_headers):
-    # 1. Создаем департамент и проект (через БД или моки, но тут проще через API если были бы эндпоинты)
-    # Для теста предположим, что project_id=1 существует (в реальном тесте нужно создать заранее)
-    # Но для начала проверим просто структуру запроса
+async def test_create_overtime(client: AsyncClient, admin_token_headers, test_project: Project):
+    """Тест успешного создания переработки администратором."""
     overtime_data = {
-        "project_id": 1,
-        "start_time": "2024-03-01T18:00:00",
-        "end_time": "2024-03-01T20:30:00",
+        "project_id": test_project.id,
+        "start_time": "2026-03-01T18:00:00",
+        "end_time": "2026-03-01T20:30:00",
         "description": "Test Overtime",
         "start_lat": 10.0,
         "start_lng": 20.0
     }
     
-    # Пытаемся создать без проекта (должна быть ошибка FK, если проект не создан, 
-    # либо 200 если мы подготовим базу. Давай пока проверим логику прав)
     response = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
+    assert response.status_code == 200
     
-    # Если базы нет - будет 500/404, если есть - 200. 
-    # В идеале тут нужен conftest.py с фикстурами для организации.
-    assert response.status_code in [200, 404, 500] 
+    data = response.json()
+    assert data["project_id"] == test_project.id
+    assert data["description"] == "Test Overtime"
+    # 2.5 часа округляются вверх до целого (3.0 часа)
+    assert data["hours"] == 3.0
+
 
 @pytest.mark.asyncio
 async def test_rbac_list_overtimes(client: AsyncClient, normal_user_token_headers):
+    """Тест получения списка переработок обычным пользователем (поддерживающим пагинацию)."""
     response = await client.get("/api/v1/overtimes/", headers=normal_user_token_headers)
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert isinstance(data["items"], list)
+
 
 @pytest.mark.asyncio
 async def test_review_overtime_permission(client: AsyncClient, normal_user_token_headers):
-    # Сотрудник не может согласовывать
+    """Тест: обычный сотрудник не имеет прав согласовывать заявки."""
     review_data = {"approved": True, "comment": "I approve myself!"}
     response = await client.post("/api/v1/overtimes/1/review", json=review_data, headers=normal_user_token_headers)
     assert response.status_code == 403

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User as UserIcon, Shield, Mail, Building, Bell, MessageSquare, Key, Save, X, Edit3, AlertTriangle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import api, { updateMyProfile, getDepartments, changePassword } from '../../services/api';
 import Header from '../layout/Header';
+import { ROLE_LABELS } from '../../constants/locale';
 
 const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
@@ -126,12 +127,7 @@ const ProfilePage: React.FC = () => {
         </div>
     );
 
-    const ROLE_LABELS: Record<string, string> = {
-        admin: 'Администратор',
-        head: 'Руководитель',
-        manager: 'Менеджер',
-        employee: 'Сотрудник'
-    };
+
 
     return (
         <div className="page-container animate-fade-in">
@@ -156,7 +152,7 @@ const ProfilePage: React.FC = () => {
                 </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '32px', alignItems: 'start' }}>
+            <div className="profile-grid" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '32px', alignItems: 'start' }}>
                 {/* Information Card */}
                 <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
@@ -211,7 +207,7 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '32px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <div style={{ padding: '10px', borderRadius: '12px', background: 'var(--bg-tertiary)', color: 'var(--accent)' }}><UserIcon size={20} /></div>
@@ -346,6 +342,13 @@ const ProfilePage: React.FC = () => {
                     </div>
                 </div>
             </div>
+            <style>{`
+                @media (max-width: 900px) {
+                    .profile-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 };

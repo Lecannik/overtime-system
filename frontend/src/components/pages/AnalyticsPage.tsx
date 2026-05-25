@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -12,10 +12,14 @@ import Header from '../layout/Header';
 import Skeleton from '../common/Skeleton';
 import api, {
     getAnalyticsSummary, getProjectAnalytics,
-    getDepartmentAnalytics, exportAnalytics,
-    getUserAnalytics, getReviewAnalytics
+    getDepartmentAnalytics,
+    getUserAnalytics, getReviewAnalytics,
+    exportAnalytics
 } from '../../services/api';
 import { COMPANY_LABELS } from '../../constants/locale';
+import flatpickr from 'flatpickr';
+import 'flatpickr/dist/flatpickr.min.css';
+import { Russian } from 'flatpickr/dist/l10n/ru.js';
 
 const COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#0ea5e9', '#6366f1'];
 const STATUS_COLORS: Record<string, string> = {
@@ -67,7 +71,6 @@ const AnalyticsPage: React.FC = () => {
     const [projects, setProjects] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [exporting, setExporting] = useState(false);
     const [period, setPeriod] = useState<string>('all');
     const [customDates, setCustomDates] = useState({ start: '', end: '' });
     const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users'>('projects');
@@ -104,6 +107,10 @@ const AnalyticsPage: React.FC = () => {
 
             const me = await api.get('/auth/me');
             setUser(me.data);
+            if (me.data.role === 'employee') {
+                navigate('/dashboard');
+                return;
+            }
 
             const params = getFilterParams();
             const [sum, projData, deptData, uStats, revStats, allProjects] = await Promise.all([
@@ -130,24 +137,147 @@ const AnalyticsPage: React.FC = () => {
 
     const [projectsList, setProjectsList] = useState<any[]>([]);
 
+    const startInputRef = useRef<HTMLInputElement>(null);
+    const endInputRef = useRef<HTMLInputElement>(null);
+    const startFpRef = useRef<any>(null);
+    const endFpRef = useRef<any>(null);
+
+    const formatToYmd = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const parseToDate = (str: string) => {
+        if (!str) return null;
+        const parts = str.split('-');
+        if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            return new Date(year, month, day);
+        }
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
     useEffect(() => {
-        if (period !== 'custom' || (customDates.start && customDates.end)) {
+        if (period !== 'custom') {
             fetchAll();
         }
-    }, [period, selectedCompany, selectedProject, customDates.start, customDates.end]);
+    }, [period, selectedCompany, selectedProject]);
+
+    // Инициализация flatpickr при выборе кастомного периода
+    useEffect(() => {
+        if (period === 'custom') {
+            if (startInputRef.current && !startFpRef.current) {
+                startFpRef.current = flatpickr(startInputRef.current, {
+                    dateFormat: "d/m/Y",
+                    locale: Russian,
+                    allowInput: true,
+                    onChange: () => {},
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setCustomDates(prev => ({ ...prev, start: formatToYmd(selectedDates[0]) }));
+                        } else {
+                            setCustomDates(prev => ({ ...prev, start: '' }));
+                        }
+                    }
+                });
+            }
+            if (endInputRef.current && !endFpRef.current) {
+                endFpRef.current = flatpickr(endInputRef.current, {
+                    dateFormat: "d/m/Y",
+                    locale: Russian,
+                    allowInput: true,
+                    onChange: () => {},
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setCustomDates(prev => ({ ...prev, end: formatToYmd(selectedDates[0]) }));
+                        } else {
+                            setCustomDates(prev => ({ ...prev, end: '' }));
+                        }
+                    }
+                });
+            }
+        } else {
+            if (startFpRef.current) {
+                startFpRef.current.destroy();
+                startFpRef.current = null;
+            }
+            if (endFpRef.current) {
+                endFpRef.current.destroy();
+                endFpRef.current = null;
+            }
+        }
+
+        return () => {
+            if (startFpRef.current) {
+                startFpRef.current.destroy();
+                startFpRef.current = null;
+            }
+            if (endFpRef.current) {
+                endFpRef.current.destroy();
+                endFpRef.current = null;
+            }
+        };
+    }, [period]);
+
+    // Синхронизация стейта во flatpickr
+    useEffect(() => {
+        if (startFpRef.current && period === 'custom') {
+            const currentFpDate = startFpRef.current.selectedDates[0];
+            const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
+            if (formattedCurrent !== customDates.start) {
+                const parsed = parseToDate(customDates.start);
+                if (parsed) {
+                    startFpRef.current.setDate(parsed, false);
+                } else {
+                    startFpRef.current.clear();
+                }
+            }
+        }
+    }, [customDates.start, period]);
+
+    useEffect(() => {
+        if (endFpRef.current && period === 'custom') {
+            const currentFpDate = endFpRef.current.selectedDates[0];
+            const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
+            if (formattedCurrent !== customDates.end) {
+                const parsed = parseToDate(customDates.end);
+                if (parsed) {
+                    endFpRef.current.setDate(parsed, false);
+                } else {
+                    endFpRef.current.clear();
+                }
+            }
+        }
+    }, [customDates.end, period]);
 
     const handleExport = async () => {
-        setExporting(true);
         try {
+            setLoading(true);
             const params = getFilterParams();
             const blob = await exportAnalytics(params);
+            
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url;
-            a.download = `report_${new Date().toISOString().split('T')[0]}.xlsx`;
-            document.body.appendChild(a); a.click();
-            window.URL.revokeObjectURL(url); document.body.removeChild(a);
-        } catch { alert('Ошибка экспорта'); }
-        finally { setExporting(false); }
+            const link = document.createElement('a');
+            link.href = url;
+            
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+            link.setAttribute('download', `overtime_report_${dateStr}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error: any) {
+            console.error('Export error:', error);
+            alert(error.response?.data?.detail || 'Ошибка при экспорте отчета');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const pieData = summary ? [
@@ -162,12 +292,12 @@ const AnalyticsPage: React.FC = () => {
         <div className="page-container animate-fade-in">
             <Header user={user} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
                 <div>
                     <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>Аналитическая панель</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Обзор производительности и затрат ресурсов.</p>
                 </div>
-                <button className="primary" onClick={handleExport} disabled={exporting}>
+                <button className="primary" onClick={handleExport}>
                     <Download size={18} /> Экспорт (.xlsx)
                 </button>
             </div>
@@ -186,18 +316,18 @@ const AnalyticsPage: React.FC = () => {
 
                 {period === 'custom' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input type="date" value={customDates.start} onChange={e => setCustomDates({ ...customDates, start: e.target.value })} />
+                        <input ref={startInputRef} type="text" placeholder="дд/мм/гггг" style={{ width: '110px', textAlign: 'center' }} />
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
-                        <input type="date" value={customDates.end} onChange={e => setCustomDates({ ...customDates, end: e.target.value })} />
+                        <input ref={endInputRef} type="text" placeholder="дд/мм/гггг" style={{ width: '110px', textAlign: 'center' }} />
                         <button className="primary" onClick={fetchAll}>Применить</button>
                     </div>
                 )}
 
-                <div style={{ borderLeft: '1px solid var(--border)', height: '24px' }}></div>
+                <div className="filter-divider" style={{ borderLeft: '1px solid var(--border)', height: '24px' }}></div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Компания:</span>
-                    <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} style={{ width: 'auto', border: 'none', background: 'transparent', padding: '4px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)', maxWidth: '100%' }}>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, whiteSpace: 'nowrap' }}>Компания:</span>
+                    <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} style={{ width: 'auto', maxWidth: '130px', border: 'none', background: 'transparent', padding: '4px 8px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         <option value="all">Все</option>
                         {Object.entries(COMPANY_LABELS).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
@@ -205,9 +335,9 @@ const AnalyticsPage: React.FC = () => {
                     </select>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Проект:</span>
-                    <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={{ width: 'auto', border: 'none', background: 'transparent', padding: '4px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '100px', border: '1px solid var(--border)', maxWidth: '100%' }}>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, whiteSpace: 'nowrap' }}>Проект:</span>
+                    <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={{ width: 'auto', maxWidth: '130px', border: 'none', background: 'transparent', padding: '4px 8px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         <option value="all">Все проекты</option>
                         {projectsList.map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
@@ -222,7 +352,7 @@ const AnalyticsPage: React.FC = () => {
                 <StatCard title="Ожидает" value={summary?.pending_requests || 0} sub="Требуют внимания" icon={Activity} color="var(--warning)" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+            <div className="analytics-charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
                 <div className="glass-card">
                     <h4 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
@@ -243,7 +373,7 @@ const AnalyticsPage: React.FC = () => {
                 </div>
 
                 <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '24px' }}>
                         <div>
                             <h4 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Сравнение</h4>
                             <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
@@ -325,6 +455,16 @@ const AnalyticsPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            <style>{`
+                @media (max-width: 900px) {
+                    .filter-divider {
+                        display: none !important;
+                    }
+                    .analytics-charts-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 };

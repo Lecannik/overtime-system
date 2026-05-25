@@ -8,11 +8,14 @@ logger = logging.getLogger(__name__)
 
 
 async def send_telegram_message(session: AsyncSession, chat_id: str, text: str):
-    """Отправляет сообщение в Telegram, используя токен из БД."""
+    """Отправляет сообщение в Telegram, используя токен из БД с fallback на env."""
+    import os
     # 1. Получаем актуальный токен
     token = await settings_repo.get_setting(session, "telegram_bot_token")
     if not token:
-        logger.warning("Telegram Bot Token не настроен в system_settings. Пропуск отправки.")
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        logger.warning("Telegram Bot Token не настроен в system_settings и не найден в .env. Пропуск отправки.")
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"

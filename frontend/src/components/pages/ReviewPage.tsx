@@ -1,14 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     CheckCircle2, Search, Filter, Calendar, ShieldCheck, ChevronDown, CheckCircle, Info, MapPin, Clock, XCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { api, getOvertimes, reviewOvertime } from '../../services/api';
 import Header from '../layout/Header';
-import Skeleton from '../common/Skeleton';
+import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
 import { STATUS_LABELS } from '../../constants/locale';
+import flatpickr from 'flatpickr';
+import 'flatpickr/dist/flatpickr.min.css';
+import { Russian } from 'flatpickr/dist/l10n/ru.js';
 
+
+const formatToYmd = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const parseToDate = (str: string) => {
+    if (!str) return null;
+    const parts = str.split('-');
+    if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        return new Date(year, month, day);
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+};
 
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
@@ -20,14 +43,69 @@ const ReviewPage: React.FC = () => {
     const [asRole, setAsRole] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [selectedOvertime, setSelectedOvertime] = useState<any | null>(null);
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const [approvedHours, setApprovedHours] = useState<string>('');
+
+    const startFpRef = useRef<any>(null);
+    const endFpRef = useRef<any>(null);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [pageSize] = useState(10);
+
+    const startInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
+        if (node) {
+            if (!startFpRef.current) {
+                startFpRef.current = flatpickr(node, {
+                    dateFormat: "d/m/Y",
+                    locale: Russian,
+                    allowInput: true,
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setStartDate(formatToYmd(selectedDates[0]));
+                        } else {
+                            setStartDate('');
+                        }
+                        setCurrentPage(1);
+                    }
+                });
+            }
+        } else {
+            if (startFpRef.current) {
+                startFpRef.current.destroy();
+                startFpRef.current = null;
+            }
+        }
+    }, []);
+
+    const endInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
+        if (node) {
+            if (!endFpRef.current) {
+                endFpRef.current = flatpickr(node, {
+                    dateFormat: "d/m/Y",
+                    locale: Russian,
+                    allowInput: true,
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setEndDate(formatToYmd(selectedDates[0]));
+                        } else {
+                            setEndDate('');
+                        }
+                        setCurrentPage(1);
+                    }
+                });
+            }
+        } else {
+            if (endFpRef.current) {
+                endFpRef.current.destroy();
+                endFpRef.current = null;
+            }
+        }
+    }, []);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -35,34 +113,96 @@ const ReviewPage: React.FC = () => {
         if (s) setSearchQuery(s);
     }, []);
 
-    const fetchData = async () => {
+    // 1. Загрузка данных пользователя (один раз при монтировании)
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) { navigate('/login'); return; }
+                const userRes = await api.get('/auth/me');
+                setUser(userRes.data);
+            } catch (err) {
+                console.error('Fetch user error:', err);
+            }
+        };
+        fetchUser();
+    }, [navigate]);
+
+    // 2. Функция загрузки списка овертаймов
+    const fetchOvertimes = useCallback(async (showLoader = true) => {
         try {
-            setLoading(true);
+            if (showLoader) setLoading(true);
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
 
-            const [userRes, ovtRes] = await Promise.all([
-                api.get('/auth/me'),
-                getOvertimes({
-                    page: currentPage,
-                    page_size: pageSize,
-                    status: statusFilter !== 'ALL' ? statusFilter : undefined
-                })
-            ]);
+            const ovtRes = await getOvertimes({
+                page: currentPage,
+                page_size: pageSize,
+                status: statusFilter !== 'ALL' ? statusFilter : undefined,
+                start_date: startDate || undefined,
+                end_date: endDate || undefined
+            });
 
-            setUser(userRes.data);
             setOvertimes(ovtRes.items || []);
             setTotalPages(ovtRes.pages || 1);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
-            setLoading(false);
+            if (showLoader) setLoading(false);
         }
-    };
+    }, [currentPage, pageSize, statusFilter, startDate, endDate, navigate]);
+
+    // 3. Загрузка овертаймов при изменении пагинации, статуса или триггера обновления (с лоадером)
+    useEffect(() => {
+        fetchOvertimes(true);
+    }, [currentPage, statusFilter, updateTrigger, fetchOvertimes]);
+
+    // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
+    useEffect(() => {
+        fetchOvertimes(false);
+    }, [startDate, endDate, fetchOvertimes]);
+
+    // 5. Подписка на обновление данных овертаймов
+    useEffect(() => {
+        const handleUpdate = () => {
+            fetchOvertimes(false);
+        };
+        window.addEventListener('overtime_update', handleUpdate);
+        return () => {
+            window.removeEventListener('overtime_update', handleUpdate);
+        };
+    }, [fetchOvertimes]);
+
+    // 6. Синхронизация стейта во flatpickr
+    useEffect(() => {
+        if (startFpRef.current) {
+            const currentFpDate = startFpRef.current.selectedDates[0];
+            const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
+            if (formattedCurrent !== startDate) {
+                const parsed = parseToDate(startDate);
+                if (parsed) {
+                    startFpRef.current.setDate(parsed, false);
+                } else {
+                    startFpRef.current.clear();
+                }
+            }
+        }
+    }, [startDate]);
 
     useEffect(() => {
-        fetchData();
-    }, [currentPage, statusFilter, updateTrigger]);
+        if (endFpRef.current) {
+            const currentFpDate = endFpRef.current.selectedDates[0];
+            const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
+            if (formattedCurrent !== endDate) {
+                const parsed = parseToDate(endDate);
+                if (parsed) {
+                    endFpRef.current.setDate(parsed, false);
+                } else {
+                    endFpRef.current.clear();
+                }
+            }
+        }
+    }, [endDate]);
 
     const handleReview = async (overtimeId: number, approved: boolean) => {
         try {
@@ -73,7 +213,7 @@ const ReviewPage: React.FC = () => {
                 asRole || undefined,
                 approved ? parseFloat(approvedHours) : undefined
             );
-            fetchData();
+            fetchOvertimes(true);
             setReviewingId(null);
             setComment('');
             setAsRole('');
@@ -96,10 +236,11 @@ const ReviewPage: React.FC = () => {
             return empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
         });
 
-    if (loading) return <div className="page-container"><Skeleton height={800} /></div>;
+    if (loading && !overtimes.length) return <LoadingOverlay />;
 
     return (
         <div className="page-container animate-fade-in">
+            {loading && <LoadingOverlay />}
             <Header user={user} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
@@ -112,8 +253,8 @@ const ReviewPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '16px', display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
+            <div className="glass-card" style={{ padding: '16px', display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <input
                         placeholder="Поиск по ФИО или проекту..."
@@ -122,17 +263,45 @@ const ReviewPage: React.FC = () => {
                         style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
                     />
                 </div>
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', minWidth: '180px' }}>
                     <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <select
                         value={statusFilter}
-                        onChange={e => setStatusFilter(e.target.value)}
-                        style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', minWidth: '180px' }}
+                        onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+                        style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
                     >
                         <option value="ALL">Все статусы</option>
                         {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                </div>
+                {/* Фильтр по датам */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                        ref={startInputCallbackRef}
+                        type="text"
+                        placeholder="дд/мм/гггг"
+                        style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
+                        title="Начало периода"
+                    />
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    <input
+                        ref={endInputCallbackRef}
+                        type="text"
+                        placeholder="дд/мм/гггг"
+                        style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
+                        title="Конец периода"
+                    />
+                    {(startDate || endDate) && (
+                        <button
+                            onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
+                            className="action-button-modern"
+                            title="Сбросить даты"
+                            style={{ height: '44px', width: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            ×
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -68,6 +68,7 @@ class MSGraphService:
         """Отправляет письмо через Microsoft Graph API."""
         token = await self._get_access_token()
         if not token or not settings.MS_SENDER_EMAIL:
+            logger.error("MS Graph Send Email Config/Token missing")
             return False
 
         email_data = {
@@ -89,12 +90,21 @@ class MSGraphService:
         }
 
         url = f"https://graph.microsoft.com/v1.0/users/{settings.MS_SENDER_EMAIL}/sendMail"
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json=email_data
-            )
-            return response.status_code == 202
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=email_data
+                )
+                if response.status_code == 202:
+                    logger.info(f"MS Graph successfully accepted email to {recipient}")
+                    return True
+                else:
+                    logger.error(f"MS Graph API sendMail failed: {response.status_code} - {response.text}")
+                    return False
+        except Exception as e:
+            logger.error(f"HTTP client error while sending MS Graph email: {str(e)}", exc_info=True)
+            return False
 
 ms_graph = MSGraphService()

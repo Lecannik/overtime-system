@@ -272,6 +272,8 @@ async def get_export_data(
     query = select(
         Overtime.id,
         User.full_name.label("employee"),
+        User.company.label("employee_company"),
+        Department.name.label("department"),
         Project.name.label("project"),
         Overtime.start_time,
         Overtime.end_time,
@@ -279,6 +281,7 @@ async def get_export_data(
         Overtime.status,
         Overtime.approved_hours
     ).join(User, Overtime.user_id == User.id)\
+     .outerjoin(Department, User.department_id == Department.id)\
      .join(Project, Overtime.project_id == Project.id)
 
     if user_id:
@@ -303,7 +306,26 @@ async def get_export_data(
     data = []
     for row in result.all():
         d = dict(row._asdict())
-        d['hours'] = calculate_overtime_hours(d['start_time'], d['end_time'])
+        status_val = d['status']
+        is_active = False
+        if isinstance(status_val, OvertimeStatus):
+            is_active = (status_val == OvertimeStatus.IN_PROGRESS)
+        else:
+            try:
+                is_active = (OvertimeStatus(status_val) == OvertimeStatus.IN_PROGRESS)
+            except ValueError:
+                pass
+
+        if is_active:
+            d['hours'] = calculate_overtime_hours(d['start_time'], datetime.now())
+        else:
+            d['hours'] = calculate_overtime_hours(d['start_time'], d['end_time'])
+
+        if d.get('employee_company') is not None:
+            if hasattr(d['employee_company'], 'value'):
+                d['employee_company'] = d['employee_company'].value
+            else:
+                d['employee_company'] = str(d['employee_company'])
         status_obj = d['status']
         if isinstance(status_obj, OvertimeStatus):
             d['status'] = status_obj.russian_label

@@ -16,7 +16,7 @@ async def list_projects(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список всех проектов.
-    Доступно любому авторизованному пользователю.
+    Получить список активных проектов.
+    Доступно любому авторизованному пользователю при создании заявок.
     """
-    return await org_repo.get_projects(db)
+    return await org_repo.get_projects(db, only_active=True)

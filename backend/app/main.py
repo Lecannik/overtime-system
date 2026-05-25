@@ -14,8 +14,11 @@ from app.api.v1.projects import router as projects_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.health import router as health_router
+from app.api.v1.websocket import router as websocket_router
 
 from app.services.bot_service import run_bot_async
+from app.core.config import settings
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,14 +43,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Overtime System", lifespan=lifespan)
 
-# CORS
+# CORS — origins берутся из ALLOWED_ORIGINS в .env (через запятую)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Раздача статики
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -60,4 +64,5 @@ app.include_router(admin_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(websocket_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1/audit", tags=["Audit"])

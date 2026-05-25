@@ -238,8 +238,8 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(450px, 1fr) 1.5fr', minHeight: '100vh', background: 'var(--bg-main)' }}>
-      <div style={{ background: 'var(--bg-secondary)', padding: '60px 50px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: '1px solid var(--border)' }}>
+    <div className="login-container">
+      <div className="login-left-section">
         <div style={{ marginBottom: '60px' }}>
           <Logo size="md" />
         </div>
@@ -254,15 +254,7 @@ const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{
-        background: 'linear-gradient(rgba(2, 6, 23, 0.85), rgba(2, 6, 23, 0.6)), url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '60px'
-      }}>
+      <div className="login-right-section">
         <div style={{ maxWidth: '600px' }}>
           <div style={{ textAlign: 'center', marginBottom: '40px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
@@ -283,6 +275,45 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <style>{`
+        .login-container {
+          display: grid;
+          grid-template-columns: minmax(450px, 1fr) 1.5fr;
+          min-height: 100vh;
+          background: var(--bg-main);
+        }
+        .login-left-section {
+          background: var(--bg-secondary);
+          padding: 60px 50px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          border-right: 1px solid var(--border);
+        }
+        .login-right-section {
+          background: linear-gradient(rgba(2, 6, 23, 0.85), rgba(2, 6, 23, 0.6)), url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80");
+          background-size: cover;
+          background-position: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 60px;
+        }
+        @media (max-width: 900px) {
+          .login-container {
+            grid-template-columns: 1fr;
+          }
+          .login-right-section {
+            display: none !important;
+          }
+          .login-left-section {
+            padding: 40px 24px;
+            border-right: none;
+            min-height: 100vh;
+          }
+        }
+      `}</style>
     </div>
   );
 };

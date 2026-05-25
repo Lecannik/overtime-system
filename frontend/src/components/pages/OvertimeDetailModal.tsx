@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Clock, Calendar, Briefcase, User, CheckCircle2, XCircle, Info, MessageSquare, ShieldCheck, MapPin, ExternalLink } from 'lucide-react';
 import { reviewOvertime } from '../../services/api';
-import { getStatusLabel, getStatusColor } from '../../constants/locale';
+import { getStatusLabel, getStatusColor, formatDateTime } from '../../constants/locale';
 
 interface OvertimeDetailModalProps {
     overtime: any;
@@ -49,14 +49,16 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
         }
     };
 
-    const formatDate = (date: string) => {
-        return new Date(date).toLocaleString('ru', {
-            day: 'numeric', month: 'long', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-    };
+    /** Форматировать дату начала/конца: для null/«В процессе» возвращает метку */
+    const formatOvertimeDate = (date: string | null | undefined) =>
+        !date ? 'В процессе' : formatDateTime(date);
 
-    const rawHours = overtime.raw_hours || (new Date(overtime.end_time).getTime() - new Date(overtime.start_time).getTime()) / 3600000;
+    const isEndTimeEpoch = overtime.end_time && new Date(overtime.end_time).getFullYear() <= 1970;
+    const isProgress = overtime.status === 'IN_PROGRESS' || !overtime.end_time || isEndTimeEpoch;
+
+    const rawHours = isProgress
+        ? (new Date().getTime() - new Date(overtime.start_time).getTime()) / 3600000
+        : (overtime.raw_hours !== undefined && overtime.raw_hours !== null ? overtime.raw_hours : (new Date(overtime.end_time).getTime() - new Date(overtime.start_time).getTime()) / 3600000);
 
     return (
         <div className="modal-overlay animate-fade-in" onClick={onClose}>
@@ -116,18 +118,20 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, cur
                                 </div>
                             )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '24px', borderRadius: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', padding: '24px', borderRadius: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
                                         <Calendar size={14} /> Начало
                                     </div>
-                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatDate(overtime.start_time)}</p>
+                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatOvertimeDate(overtime.start_time)}</p>
                                 </div>
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
                                         <Calendar size={14} /> Окончание
                                     </div>
-                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatDate(overtime.end_time)}</p>
+                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                        {isProgress ? 'В процессе' : formatOvertimeDate(overtime.end_time)}
+                                    </p>
                                 </div>
                             </div>
 

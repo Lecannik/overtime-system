@@ -11,8 +11,8 @@ from app.repositories import organization as org_repo
 from app.repositories import user as user_repo
 
 
-from datetime import datetime
-from app.core.utils import calculate_overtime_hours
+from datetime import datetime, timedelta, timezone
+from app.core.utils import calculate_overtime_hours, strip_timezone
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
@@ -34,20 +34,18 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     end_time = overtime_in.end_time
     
     # 0. Валидация порядка времени (защита от "отрицательных" часов)
-    if end_time <= start_time:
+    if end_time and start_time and end_time <= start_time:
         raise HTTPException(
             status_code=400,
             detail="Время окончания должно быть позже времени начала."
         )
 
-    # Убираем таймзоны для корректного сравнения
-    if start_time.tzinfo:
-        start_time = start_time.replace(tzinfo=None)
-    if end_time.tzinfo:
-        end_time = end_time.replace(tzinfo=None)
+    # Убираем таймзоны для корректного сравнения (с предварительным переводом в UTC)
+    start_time = strip_timezone(start_time)
+    end_time = strip_timezone(end_time)
 
-    # 1. Запрет на будущее время
-    if start_time > datetime.now():
+    # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
+    if start_time > datetime.now() + timedelta(minutes=5):
         raise HTTPException(
             status_code=400, 
             detail="Нельзя создавать заявку на будущее время."
@@ -242,6 +240,9 @@ async def cancel_overtime(
     if overtime.status == OvertimeStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Заявка уже отменена")
 
+    # Сохраняем предыдущий статус ДО изменения (для корректного аудит-лога)
+    previous_status = overtime.status
+
     # Меняем статус
     overtime.status = OvertimeStatus.CANCELLED
 
@@ -254,11 +255,12 @@ async def cancel_overtime(
         target_id=overtime.id,
         details={
             "cancelled_by": current_user.email,
-            "previous_status": overtime.status,
+            "previous_status": previous_status,
             "is_own": overtime.user_id == current_user.id,
             "description": overtime.description
         }
     )
+
 
     await session.commit()
     await session.refresh(overtime)
@@ -284,8 +286,8 @@ async def update_overtime(
     if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Вы можете редактировать только свои заявки")
 
-    # Редактировать можно только PENDING (чтобы не менять уже согласованное или отмененное)
-    if current_user.role != UserRole.admin and overtime.status != OvertimeStatus.PENDING:
+    # Редактировать можно только PENDING или IN_PROGRESS (чтобы не менять уже согласованное или отмененное)
+    if current_user.role != UserRole.admin and overtime.status not in (OvertimeStatus.PENDING, OvertimeStatus.IN_PROGRESS):
         raise HTTPException(status_code=400, detail="Нельзя редактировать заявку, которая уже прошла согласование или отменена")
 
     update_data = overtime_in.model_dump(exclude_unset=True)
@@ -294,10 +296,10 @@ async def update_overtime(
     new_start = update_data.get("start_time", overtime.start_time)
     new_end = update_data.get("end_time", overtime.end_time)
     
-    if new_start.tzinfo: new_start = new_start.replace(tzinfo=None)
-    if new_end.tzinfo: new_end = new_end.replace(tzinfo=None)
+    new_start = strip_timezone(new_start)
+    new_end = strip_timezone(new_end)
 
-    if new_end <= new_start:
+    if new_end and new_end.year > 1970 and new_start and new_end <= new_start:
         raise HTTPException(
             status_code=400,
             detail="Время окончания должно быть позже времени начала."
@@ -322,6 +324,9 @@ async def update_overtime(
     if current_user.role != UserRole.admin:
         update_data["manager_approved"] = None
         update_data["head_approved"] = None
-        update_data["status"] = OvertimeStatus.PENDING
+        if overtime.status == OvertimeStatus.IN_PROGRESS:
+            update_data["status"] = OvertimeStatus.IN_PROGRESS
+        else:
+            update_data["status"] = OvertimeStatus.PENDING
 
     return await overtime_repo.update_overtime(session, overtime, update_data)

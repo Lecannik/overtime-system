@@ -51,9 +51,13 @@ async def create_project(session: AsyncSession, project: Project) -> Project:
     return project
 
 
-async def get_projects(session: AsyncSession) -> list[Project]:
-    """Получить все проекты."""
-    result = await session.execute(select(Project).order_by(Project.id))
+async def get_projects(session: AsyncSession, only_active: bool = False) -> list[Project]:
+    """Получить проекты (опционально только активные)."""
+    stmt = select(Project)
+    if only_active:
+        stmt = stmt.where(Project.is_active == True)
+    stmt = stmt.order_by(Project.id)
+    result = await session.execute(stmt)
     return result.scalars().all()
 
 

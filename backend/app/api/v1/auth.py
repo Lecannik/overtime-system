@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.core.security import create_access_token
 from app.api.deps import get_current_user
 from app.models.user import User, OTPType
 from app.repositories.user import update_user, get_user_by_email
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -29,6 +30,7 @@ async def register(user_in: UserCreate, session: AsyncSession = Depends(get_sess
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_session)
 ):
@@ -66,7 +68,21 @@ async def login(
         action="LOGIN",
         details={"email": user.email}
     )
+    
+    # Создаем Refresh Token
+    from app.services.refresh_token import create_refresh_token
+    refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
+    
+    # Устанавливаем куку
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
     
     token = create_access_token(data={"sub": str(user.id)})
     return {"status": "success", "access_token": token, "token_type": "bearer", "user": user}
@@ -74,6 +90,7 @@ async def login(
 
 @router.post("/verify-2fa", response_model=LoginResponse)
 async def verify_login_2fa(
+    response: Response,
     verify_in: OTPVerify,
     db: AsyncSession = Depends(get_session)
 ):
@@ -96,10 +113,75 @@ async def verify_login_2fa(
         action="LOGIN_2FA",
         details={"email": user.email}
     )
+    
+    # Создаем Refresh Token
+    from app.services.refresh_token import create_refresh_token
+    refresh_token = await create_refresh_token(db, user.id)
     await db.commit()
+    
+    # Устанавливаем куку
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
     
     token = create_access_token(data={"sub": str(user.id)})
     return {"status": "success", "access_token": token, "token_type": "bearer", "user": user}
+
+
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh_session(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Обновление Access Token с использованием Refresh Token в Cookie.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Отсутствует сессионный токен"
+        )
+        
+    from app.services.refresh_token import verify_and_rotate_refresh_token
+    new_refresh_token, user = await verify_and_rotate_refresh_token(session, refresh_token)
+    
+    # Устанавливаем новую куку (ротация)
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
+    
+    new_access_token = create_access_token(data={"sub": str(user.id)})
+    return {"status": "success", "access_token": new_access_token, "token_type": "bearer", "user": user}
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Выход из системы, отзыв Refresh Token.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        from app.services.refresh_token import revoke_refresh_token
+        await revoke_refresh_token(session, refresh_token)
+        
+    response.delete_cookie(key="refresh_token")
+    return {"detail": "Успешный выход из системы"}
 
 
 @router.get("/me", response_model=UserResponse)

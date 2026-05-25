@@ -27,6 +27,7 @@ from app.repositories import settings as settings_repo
 from app.repositories import audit as audit_repo
 from app.services.ms_graph import ms_graph
 from app.repositories.user import get_user_by_email
+from app.services.odoo_service import odoo_service
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -221,8 +222,11 @@ async def update_project(
         raise HTTPException(status_code=403, detail="Только менеджер этого проекта или администратор могут вносить изменения.")
 
     update_data = project_in.model_dump(exclude_unset=True)
+    # Номер проекта (code) иммутабелен после создания — исключаем на уровне API
+    update_data.pop("code", None)
 
     # Менеджер не может менять самого менеджера проекта (только админ)
+
     if current_user.role != UserRole.admin and "manager_id" in update_data:
         del update_data["manager_id"]
 
@@ -504,3 +508,172 @@ async def test_microsoft_email(
     if success:
         return {"status": "success", "message": f"Письмо отправлено на {current_user.email}"}
     raise HTTPException(status_code=500, detail="Ошибка при отправке письма через MS Graph")
+
+
+# ==================== ODOO CRM INTEGRATION ====================
+
+@router.get("/odoo/status")
+async def odoo_integration_status(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Проверить статус интеграции с Odoo CRM.
+
+    Возвращает флаг наличия настроек без попытки подключения.
+    Доступно только администраторам.
+    """
+    require_admin(current_user)
+    return {
+        "configured": odoo_service.is_configured,
+        "url": odoo_service.url or None,
+        "db": odoo_service.db or None,
+    }
+
+
+@router.get("/odoo/projects")
+async def list_odoo_projects(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список активных проектов из Odoo CRM.
+
+    Возвращает по каждому проекту:
+    - odoo_id: ID в Odoo
+    - name: название проекта
+    - code: номер проекта (YYYY-NNNNN, если задан в аналитическом счёте)
+    - manager_name: имя менеджера
+    - manager_email: email менеджера (для маппинга)
+
+    Доступно только администраторам.
+    """
+    require_admin(current_user)
+
+    if not odoo_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Odoo CRM не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env"
+        )
+
+    try:
+        projects = await odoo_service.get_projects()
+        return {"projects": [p.to_dict() for p in projects], "total": len(projects)}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Ошибка подключения к Odoo: {str(e)}"
+        )
+
+
+class OdooImportRequest(list):
+    """Schema: список проектов для импорта."""
+    pass
+
+
+from pydantic import BaseModel as PydanticBaseModel
+
+class OdooProjectImportItem(PydanticBaseModel):
+    """
+    Один проект для импорта из Odoo.
+
+    Attributes:
+        odoo_id:       ID в Odoo (для связи и повторного импорта).
+        name:          Название проекта.
+        code:          Номер проекта (YYYY-NNNNN). Может быть None.
+        manager_email: Email менеджера для маппинга на локального User.
+    """
+    odoo_id: int
+    name: str
+    code: str | None = None
+    manager_email: str | None = None
+
+
+@router.post("/odoo/import")
+async def import_odoo_projects(
+    projects_to_import: List[OdooProjectImportItem],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Импортировать выбранные проекты из Odoo CRM в локальную БД.
+
+    Логика импорта:
+    1. Если проект с таким номером (code) уже есть — пропускаем (skip).
+    2. Если нет кода — проверяем по названию.
+    3. Менеджер маппируется по email из локальной БД Users.
+    4. все действия логируются в аудит-лог.
+
+    Returns:
+        JSON с количеством импортированных и пропущенных проектов.
+
+    Доступно только администраторам.
+    """
+    require_admin(current_user)
+
+    from sqlalchemy import select
+    from app.models.organization import Project
+
+    imported = 0
+    skipped = 0
+    errors: list[str] = []
+
+    for item in projects_to_import:
+        try:
+            # Проверяем существование проекта с таким code
+            if item.code:
+                existing = await db.execute(
+                    select(Project).where(Project.code == item.code)
+                )
+                if existing.scalar_one_or_none():
+                    skipped += 1
+                    continue
+
+            # Маппинг менеджера по email
+            manager_id: int | None = None
+            if item.manager_email:
+                manager_user = await get_user_by_email(db, item.manager_email)
+                if manager_user:
+                    manager_id = manager_user.id
+                else:
+                    errors.append(
+                        f"Менеджер '{item.manager_email}' не найден в системе — проект '{item.name}' создан без менеджера"
+                    )
+
+            # Создаём проект
+            new_project = Project(
+                name=item.name,
+                code=item.code,
+                manager_id=manager_id,
+            )
+            db.add(new_project)
+            await db.flush()  # получаем ID до commit
+
+            await audit_repo.create_audit_log(
+                db,
+                current_user.id,
+                "IMPORT_PROJECT_ODOO",
+                "project",
+                new_project.id,
+                {
+                    "name": item.name,
+                    "code": item.code,
+                    "odoo_id": item.odoo_id,
+                    "manager_email": item.manager_email,
+                }
+            )
+            imported += 1
+
+        except Exception as e:
+            errors.append(f"Ошибка при импорте '{item.name}': {str(e)}")
+            skipped += 1
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors,
+    }
+

@@ -1,15 +1,31 @@
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
+    """
+    Настройки приложения из переменных окружения (.env).
+
+    Все поля без значения по умолчанию обязательны.
+    Приложение не запустится, если они не заданы в .env.
+    """
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
     POSTGRES_HOST: str
     POSTGRES_PORT: int
-    SECRET_KEY: str = "super-secret-key-123"
+
+    # Безопасность: SECRET_KEY ОБЯЗАТЕЛЕН — не имеет дефолта.
+    # Генерировать: python -c "import secrets; print(secrets.token_hex(32))"
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # CORS: список разрешённых источников через запятую.
+    # Например: "http://localhost:8090,https://overtime.company.kz"
+    # Для разработки можно оставить "*", но НЕ в продакшне.
+    ALLOWED_ORIGINS: str = "*"
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str | None = None
 
@@ -19,9 +35,23 @@ class Settings(BaseSettings):
     MS_TENANT_ID: str | None = None
     MS_SENDER_EMAIL: str | None = None
 
+    # Odoo CRM Integration Settings
+    # Документация: https://www.odoo.com/documentation/16.0/developer/api/external_api.html
+    ODOO_URL: str | None = None       # Например: https://crm.company.kz
+    ODOO_DB: str | None = None        # Название базы данных Odoo
+    ODOO_USER: str | None = None      # Email пользователя Odoo
+    ODOO_PASSWORD: str | None = None  # Пароль пользователя Odoo
+
     model_config = {
         "env_file": ".env",
         "extra": "ignore"
     }
 
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        """Возвращает список CORS-origins из строки с разделителем ','."""
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+
 settings = Settings()
+

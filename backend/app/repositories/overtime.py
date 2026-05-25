@@ -24,6 +24,8 @@ async def get_overtimes(
     current_user: User,
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     page: int = 1,
     page_size: int = 15
 ):
@@ -56,6 +58,12 @@ async def get_overtimes(
         filters.append(Overtime.status == status)
     if project_id:
         filters.append(Overtime.project_id == project_id)
+    if start_date:
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        filters.append(Overtime.start_time >= start_datetime)
+    if end_date:
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        filters.append(Overtime.start_time <= end_datetime)
 
     # Применяем фильтры
     if filters:
@@ -215,17 +223,28 @@ async def check_overlapping_overtimes(
     session: AsyncSession, 
     user_id: int, 
     start_time: datetime, 
-    end_time: datetime,
+    end_time: datetime | None,
     exclude_id: int | None = None
 ) -> bool:
     """
     Проверяет пересечение периодов. 
     Алгоритм: если (Начало1 < Конец2) и (Конец1 > Начало2), то есть пересечение.
+    Учитывает, что конец периода может быть None (активная сессия).
     """
+    is_active_session = end_time is None or end_time.year <= 1970
+    db_active_condition = (Overtime.end_time.is_(None)) | (Overtime.end_time <= datetime(1970, 1, 2))
+
+    if is_active_session:
+        overlap_condition = db_active_condition | (Overtime.end_time > start_time)
+    else:
+        overlap_condition = (Overtime.start_time < end_time) & (
+            db_active_condition | (Overtime.end_time > start_time)
+        )
+
     query = select(Overtime).where(
         Overtime.user_id == user_id,
         Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
-        (Overtime.start_time < end_time) & (Overtime.end_time > start_time)
+        overlap_condition
     )
     if exclude_id:
         query = query.where(Overtime.id != exclude_id)

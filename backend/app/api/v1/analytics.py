@@ -173,10 +173,13 @@ async def generate_excel_response(
     output = await generate_excel_file(data, current_user, is_personal=is_personal)
     
     filename = f"personal_report_{datetime.now().strftime('%Y%m%d')}.xlsx" if is_personal else f"overtime_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
-    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
-    return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-    output.seek(0)
-    filename = f"personal_report_{datetime.now().strftime('%Y%m%d')}.xlsx" if is_personal else f"overtime_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
-    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
-    return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition'
+    }
+    from fastapi import Response
+    return Response(
+        content=output.getvalue(),
+        headers=headers,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )

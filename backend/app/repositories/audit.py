@@ -27,14 +27,26 @@ async def create_audit_log(
 async def get_audit_logs(
     session: AsyncSession,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
+    search: str | None = None
 ):
-    """Получает список логов аудита с инфо о пользователях со счетчиком total."""
+    """Получает список логов аудита с инфо о пользователях со счетчиком total и фильтрацией по поисковой строке."""
     
+    # Строим условие фильтрации
+    filters = []
+    if search:
+        filters.append(
+            (User.full_name.ilike(f"%{search}%")) |
+            (AuditLog.action.ilike(f"%{search}%")) |
+            (AuditLog.target_type.ilike(f"%{search}%"))
+        )
+
     # 1. Считаем общее количество
-    total_query = select(func.count(AuditLog.id))
+    total_query = select(func.count(AuditLog.id)).join(User, AuditLog.user_id == User.id)
+    if filters:
+        total_query = total_query.where(*filters)
     total_result = await session.execute(total_query)
-    total = total_result.scalar()
+    total = total_result.scalar() or 0
 
     # 2. Получаем данные
     query = select(
@@ -46,10 +58,12 @@ async def get_audit_logs(
         AuditLog.target_id,
         AuditLog.details,
         AuditLog.created_at
-    ).join(User, AuditLog.user_id == User.id)\
-     .order_by(AuditLog.created_at.desc())\
-     .limit(limit)\
-     .offset(offset)
+    ).join(User, AuditLog.user_id == User.id)
+
+    if filters:
+        query = query.where(*filters)
+
+    query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
     
     result = await session.execute(query)
     

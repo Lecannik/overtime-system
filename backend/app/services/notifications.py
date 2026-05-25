@@ -5,6 +5,7 @@ from app.services.telegram import send_telegram_message
 from app.services.ms_graph import ms_graph
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories import notification as notif_repo
+from app.services.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,23 +35,30 @@ async def notify_new_overtime(
     # Отправляем менеджеру
     if manager:
         await notif_repo.create_notification(session, manager.id, "Новая заявка", msg_plain)
+        await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
         if manager.telegram_chat_id and manager.notification_level > 0:
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
 
     # Отправляем нач. отдела
     if head:
         await notif_repo.create_notification(session, head.id, "Новая заявка", msg_plain)
+        await ws_manager.broadcast_to_user(head.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
         if head.telegram_chat_id and head.notification_level > 0:
             await send_telegram_message(session, head.telegram_chat_id, msg_html)
+
+    await ws_manager.broadcast_to_all({"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
 
 
 async def notify_overtime_review(session: AsyncSession, overtime: Overtime, reviewer: User):
     """Уведомляет сотрудника о результате проверки (in-app + Telegram + Email)."""
     status_map = {
+        OvertimeStatus.IN_PROGRESS: "⏳ В процессе",
+        OvertimeStatus.PENDING: "🕒 Ожидает",
         OvertimeStatus.APPROVED: "✅ Одобрена",
         OvertimeStatus.REJECTED: "❌ Отклонена",
         OvertimeStatus.MANAGER_APPROVED: "👨‍💼 Одобрена менеджером",
-        OvertimeStatus.HEAD_APPROVED: "🏫 Одобрена нач. отдела"
+        OvertimeStatus.HEAD_APPROVED: "🏫 Одобрена нач. отдела",
+        OvertimeStatus.CANCELLED: "⏹ Отменена"
     }
 
     # Подгружаем проект и сотрудника
@@ -85,6 +93,8 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
 
     # 1. In-app — всегда
     await notif_repo.create_notification(session, employee.id, status_text, msg_plain)
+    await ws_manager.broadcast_to_user(employee.id, {"type": "NEW_NOTIFICATION", "title": status_text, "message": msg_plain})
+    await ws_manager.broadcast_to_all({"type": "OVERTIME_UPDATED", "overtime_id": overtime.id, "status": overtime.status})
 
     # 2. Telegram — с фильтром по уровню
     if employee.telegram_chat_id and should_notify_tg:
@@ -176,15 +186,18 @@ async def _send_review_email(
     subject = f"{status_emoji} Заявка #{overtime.id} — {status_label}"
 
     try:
-        await ms_graph.send_email(
+        success = await ms_graph.send_email(
             recipient=employee.email,
             subject=subject,
             body_content=body
         )
-        logger.info(f"Email sent to {employee.email} for overtime #{overtime.id} ({status_label})")
+        if success:
+            logger.info(f"Email sent successfully to {employee.email} for overtime #{overtime.id} ({status_label})")
+        else:
+            logger.error(f"Failed to send email to {employee.email} for overtime #{overtime.id} ({status_label})")
     except Exception as e:
         # Email не должен ломать основной флоу — логируем и идём дальше
-        logger.error(f"Failed to send email to {employee.email}: {e}")
+        logger.error(f"Unexpected error sending email to {employee.email}: {e}")
 async def notify_limit_exceeded(
     session: AsyncSession,
     overtime: Overtime,
@@ -212,5 +225,6 @@ async def notify_limit_exceeded(
 
     if manager:
         await notif_repo.create_notification(session, manager.id, "Превышение лимита", msg_plain)
+        await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Превышение лимита", "message": msg_plain})
         if manager.telegram_chat_id and manager.notification_level > 0:
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)

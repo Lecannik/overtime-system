@@ -1,0 +1,91 @@
+# =======================================================
+# Docker Compose — PRODUCTION (для развертывания на сервере)
+# =======================================================
+# Этот файл НЕ собирает образы локально, а скачивает их из DockerHub.
+# Используйте на продакшн-сервере:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Перед первым запуском:
+#   1. Скопируйте .env.prod.example → .env и заполните все значения
+#   2. Скопируйте infra/gateway/nginx.conf рядом с этим файлом
+#   3. Создайте директорию для бэкапов: mkdir -p backups
+# =======================================================
+
+services:
+  # 1. База данных PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: overtime_postgres
+    restart: always
+    env_file: [.env]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks: [overtime_network]
+
+  # 2. Бэкенд (FastAPI) — образ из DockerHub
+  backend:
+    image: lecannik/overtime-backend:latest
+    container_name: overtime_backend
+    restart: always
+    env_file: [.env]
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - uploads_data:/app/uploads
+      - whisper_cache:/root/.cache/whisper
+    networks: [overtime_network]
+
+  # 3. Фронтенд (React → Nginx) — образ из DockerHub
+  frontend:
+    image: lecannik/overtime-frontend:latest
+    container_name: overtime_frontend
+    restart: always
+    networks: [overtime_network]
+
+  # 4. Внутренний роутер (Nginx Gateway)
+  nginx-router:
+    image: nginx:stable-alpine
+    container_name: overtime_router
+    restart: always
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    networks: [overtime_network]
+
+  # 5. Автоматическое резервное копирование БД
+  db-backup:
+    image: prodrigestivill/postgres-backup-local:15
+    container_name: overtime_db_backup
+    restart: always
+    env_file: [.env]
+    environment:
+      - POSTGRES_HOST=postgres
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=14
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [overtime_network]
+
+volumes:
+  postgres_data:
+  uploads_data:
+  whisper_cache:
+
+networks:
+  overtime_network:
+    driver: bridge

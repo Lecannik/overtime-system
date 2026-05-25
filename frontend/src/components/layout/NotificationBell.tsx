@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check } from 'lucide-react';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/api';
+import { formatTime } from '../../constants/locale';
 
 const NotificationBell: React.FC = () => {
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -21,7 +22,53 @@ const NotificationBell: React.FC = () => {
     useEffect(() => {
         fetchNotifications();
         const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
-        return () => clearInterval(interval);
+
+        let ws: WebSocket | null = null;
+        let reconnectTimeout: any = null;
+
+        const connectWebSocket = () => {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('WebSocket event received:', data);
+                    if (data.type === 'NEW_NOTIFICATION' || data.type === 'OVERTIME_UPDATED' || data.type === 'OVERTIME_CREATED') {
+                        fetchNotifications();
+                        window.dispatchEvent(new CustomEvent('overtime_update', { detail: data }));
+                    }
+                } catch (e) {
+                    console.error('WebSocket message error:', e);
+                }
+            };
+
+            ws.onclose = (e) => {
+                console.log('WebSocket connection closed. Attempting reconnect in 5s...', e);
+                reconnectTimeout = setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (e) => {
+                console.error('WebSocket error:', e);
+                ws?.close();
+            };
+        };
+
+        connectWebSocket();
+
+        return () => {
+            clearInterval(interval);
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (ws) {
+                ws.onclose = null; // Prevent reconnect on unmount
+                ws.close();
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -48,18 +95,19 @@ const NotificationBell: React.FC = () => {
         <div style={{ position: 'relative' }} ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
+                className="action-button-modern"
                 style={{
-                    width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: 'none', background: 'var(--bg-primary)',
-                    color: unreadCount > 0 ? 'var(--accent)' : 'var(--text-primary)', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                    position: 'relative', transition: 'all 0.2s'
+                    position: 'relative',
+                    color: unreadCount > 0 ? 'var(--accent)' : 'var(--text-secondary)',
+                    padding: 0
                 }}
             >
-                <Bell size={20} fill={unreadCount > 0 ? 'var(--accent)' : 'none'} fillOpacity={0.2} />
+                <Bell size={18} fill={unreadCount > 0 ? 'var(--accent)' : 'none'} fillOpacity={0.2} />
                 {unreadCount > 0 && (
                     <span style={{
                         position: 'absolute', top: '-4px', right: '-4px', background: 'var(--danger)', color: 'white',
-                        fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: '10px', border: '2px solid var(--bg-secondary)'
+                        fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: '10px', border: '2px solid var(--bg-secondary)',
+                        lineHeight: 1
                     }}>
                         {unreadCount}
                     </span>
@@ -101,7 +149,7 @@ const NotificationBell: React.FC = () => {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                         <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: n.is_read ? 'var(--text-secondary)' : 'var(--text-primary)' }}>{n.title}</p>
                                         <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                            {new Date(n.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                                            {formatTime(n.created_at)}
                                         </span>
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{n.message}</p>

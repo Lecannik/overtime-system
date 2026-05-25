@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  # Настройки для локальной разработки
+  frontend:
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html
+
+  backend:
+    volumes:
+      # Монтируем локальный код для автоперезапуска (hot-reload)
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+      - ./models/cache:/root/.cache/whisper
+      - ./models/gazeta:/app/models/gazeta
+    # Запуск uvicorn с флагом --reload для разработки и автоматический запуск миграций
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"

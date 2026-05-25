@@ -14,11 +14,12 @@ router = APIRouter()
 async def get_audit_logs(
     limit: int = 100,
     offset: int = 0,
+    search: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Получить записи журнала аудита с пагинацией.
+    Получить записи журнала аудита с пагинацией и поиском.
     Доступно только администраторам.
     """
     if current_user.role != UserRole.admin:
@@ -27,5 +28,5 @@ async def get_audit_logs(
             detail="Недостаточно прав для просмотра журналов аудита"
         )
     
-    logs_data = await audit_repo.get_audit_logs(db, limit, offset)
+    logs_data = await audit_repo.get_audit_logs(db, limit, offset, search)
     return logs_data
