@@ -224,8 +224,8 @@ export interface UserStats {
     total_requests: number;
     active_requests: number;
     projects_count: number;
-    daily_stats: any[];
-    by_project: any[];
+    daily_stats: Record<string, unknown>[];
+    by_project: Record<string, unknown>[];
     current_month_hours: number;
 }
 

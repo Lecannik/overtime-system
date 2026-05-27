@@ -89,9 +89,9 @@ jobs:
         if: needs.build-backend.result == 'success' && needs.build-frontend.result == 'success'
         run: |
           cd /opt/overtime
-          sudo docker compose pull
-          sudo docker compose up -d
-          sudo docker image prune -f
+          docker compose pull
+          docker compose up -d
+          docker image prune -f
 
       - name: Send Telegram Notification
         if: always()
