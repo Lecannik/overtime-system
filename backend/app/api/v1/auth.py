@@ -294,3 +294,156 @@ async def confirm_password_reset(
     await db.commit()
     
     return {"detail": "Пароль успешно сброшен. Теперь вы можете войти с новым паролем."}
+
+
+# --- Authentik OIDC Integration ---
+
+from urllib.parse import urlencode
+import httpx
+from fastapi.responses import RedirectResponse
+from app.models.user import UserRole, UserCompany
+
+@router.get("/microsoft/login")
+async def microsoft_login_redirect():
+    """
+    1. Перенаправление пользователя на авторизацию в Authentik
+    """
+    if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_REDIRECT_URI]):
+        raise HTTPException(
+            status_code=500,
+            detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
+        )
+        
+    params = urlencode({
+        "client_id": settings.AUTHENTIK_CLIENT_ID,
+        "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+    })
+    
+    # Редиректим на эндпоинт авторизации Authentik
+    auth_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/authorize/?{params}"
+    return RedirectResponse(auth_url)
+
+
+@router.get("/microsoft/callback")
+async def microsoft_callback(
+    code: str,
+    response: Response,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    2. Callback-обработчик OIDC от Authentik.
+    Принимает code, обменивает на JWT, авторизует или создает пользователя в локальной БД.
+    """
+    if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_CLIENT_SECRET, settings.AUTHENTIK_REDIRECT_URI]):
+         raise HTTPException(
+            status_code=500,
+            detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
+        )
+
+    # Шаг 2.1: Обмен authorization code на JWT токены Authentik
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            f"{settings.AUTHENTIK_BASE_URL}/application/o/token/",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
+                "client_id": settings.AUTHENTIK_CLIENT_ID,
+                "client_secret": settings.AUTHENTIK_CLIENT_SECRET,
+            }
+        )
+    
+    if token_resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Не удалось получить токен от Authentik: {token_resp.text}"
+        )
+    
+    tokens = token_resp.json()
+    access_token = tokens.get("access_token")
+    
+    # Шаг 2.2: Запрос информации о пользователе (User Info) из Authentik
+    async with httpx.AsyncClient() as client:
+        userinfo_resp = await client.get(
+            f"{settings.AUTHENTIK_BASE_URL}/application/o/userinfo/",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        
+    if userinfo_resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Не удалось получить данные о пользователе от Authentik."
+        )
+        
+    user_data = userinfo_resp.json()
+    email = user_data.get("email")
+    full_name = user_data.get("name") or user_data.get("preferred_username") or email
+    
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Адрес электронной почты (email) не передан провайдером Authentik."
+        )
+
+    # Шаг 2.3: Поиск пользователя в локальной базе данных
+    user = await get_user_by_email(session, email)
+    
+    # Авто-создание (Provisioning), если пользователь заходит впервые
+    if not user:
+        # Пароль для SSO-пользователей оставляем пустым, войти по паролю они не смогут
+        user = User(
+            email=email,
+            full_name=full_name,
+            hashed_password="",
+            role=UserRole.employee, # Дефолтная роль
+            company=UserCompany.Polymedia,
+            is_active=True,
+            must_change_password=False,
+            is_2fa_enabled=False
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ваша учетная запись заблокирована в локальной системе."
+        )
+
+    # Шаг 2.4: Логирование успешного входа
+    await audit_repo.create_audit_log(
+        session=session,
+        user_id=user.id,
+        action="LOGIN_SSO",
+        details={"email": user.email, "provider": "Authentik/Microsoft"}
+    )
+
+    # Шаг 2.5: Генерация локального JWT-токена доступа и сессионной куки
+    from app.services.refresh_token import create_refresh_token
+    refresh_token = await create_refresh_token(session, user.id)
+    await session.commit()
+    
+    # Установка сессионного токена в HTTPOnly Cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
+    
+    local_access_token = create_access_token(data={"sub": str(user.id)})
+    
+    # Перенаправляем пользователя на фронтенд-страницу успешного входа
+    # ВАЖНО: Базовый домен должен совпадать с настройками фронтенда
+    frontend_url = settings.ALLOWED_ORIGINS.split(",")[0] if settings.ALLOWED_ORIGINS != "*" else "http://localhost:8090"
+    if "overtime.polymedia.kz" in settings.ALLOWED_ORIGINS:
+        frontend_url = "https://overtime.polymedia.kz"
+
+    return RedirectResponse(
+        url=f"{frontend_url}/auth/success?token={local_access_token}"
+    )

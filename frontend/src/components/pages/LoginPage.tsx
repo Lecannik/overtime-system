@@ -160,6 +160,41 @@ const LoginPage: React.FC = () => {
           <button type="submit" className="primary" disabled={loading} style={{ height: '56px', fontSize: '1rem', fontWeight: 800, borderRadius: '16px', marginTop: '12px' }}>
             {loading ? 'Вход...' : 'ВОЙТИ В СИСТЕМУ'} <ArrowRight size={20} style={{ marginLeft: '12px' }} />
           </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', margin: '8px 0', gap: '10px' }}>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 800 }}>ИЛИ</span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => window.location.href = `${import.meta.env.VITE_API_URL || ''}/api/v1/auth/microsoft/login`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              height: '56px',
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              borderRadius: '16px',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              width: '100%',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 21 21">
+              <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+              <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+              <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            ВОЙТИ ЧЕРЕЗ MICROSOFT
+          </button>
         </form>
       );
     }

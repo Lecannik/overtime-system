@@ -10,6 +10,7 @@ import UsersPage from './components/pages/UsersPage';
 import ProfilePage from './components/pages/ProfilePage';
 import AnalyticsPage from './components/pages/AnalyticsPage';
 import ChangePasswordPage from './components/pages/ChangePasswordPage';
+import AuthSuccessPage from './components/pages/AuthSuccessPage';
 
 // Компонент-обертка для защиты маршрутов
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -63,6 +64,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/success" element={<AuthSuccessPage />} />
 
           {/* Защищенные маршруты */}
           <Route path="/change-password" element={<ChangePasswordPage />} />

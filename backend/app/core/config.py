@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     ODOO_USER: str | None = None      # Email пользователя Odoo
     ODOO_PASSWORD: str | None = None  # Пароль пользователя Odoo
 
+    # Authentik OIDC Integration
+    AUTHENTIK_BASE_URL: str | None = None
+    AUTHENTIK_CLIENT_ID: str | None = None
+    AUTHENTIK_CLIENT_SECRET: str | None = None
+    AUTHENTIK_REDIRECT_URI: str | None = None
+
     model_config = {
         "env_file": ".env",
         "extra": "ignore"
