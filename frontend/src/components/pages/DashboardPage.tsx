@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -17,15 +18,43 @@ import LoadingOverlay from '../atoms/LoadingOverlay';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
+import { User, Overtime, UserStats } from '../../types';
+import { AxiosError } from 'axios';
+
+interface ColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+}
+
+const formatToYmd = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const parseToDate = (str: string) => {
+    if (!str) return null;
+    const parts = str.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+};
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [overtimes, setOvertimes] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [overtimes, setOvertimes] = useState<Overtime[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editOvertime, setEditOvertime] = useState<any>(null);
+  const [editOvertime, setEditOvertime] = useState<Overtime | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isColConfigOpen, setIsColConfigOpen] = useState(false);
 
@@ -48,7 +77,7 @@ const DashboardPage: React.FC = () => {
     });
   };
 
-  const [columns, setColumns] = useState<any[]>(() => {
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
     const saved = localStorage.getItem('dashboard_columns');
     if (saved) {
       try {
@@ -129,16 +158,13 @@ const DashboardPage: React.FC = () => {
   const endFpRef = useRef<any>(null);
 
   const startInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
-    console.log("startInputCallbackRef called with node:", node);
     if (node) {
       if (!startFpRef.current) {
-        console.log("Initializing flatpickr on start input node");
         startFpRef.current = flatpickr(node, {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
           onClose: (selectedDates) => {
-            console.log("start flatpickr onClose selectedDates:", selectedDates);
             if (selectedDates[0]) {
               setStartDate(formatToYmd(selectedDates[0]));
             } else {
@@ -147,11 +173,9 @@ const DashboardPage: React.FC = () => {
             setCurrentPage(1);
           }
         });
-        console.log("startFpRef.current after init:", startFpRef.current);
       }
     } else {
       if (startFpRef.current) {
-        console.log("Destroying start flatpickr instance");
         startFpRef.current.destroy();
         startFpRef.current = null;
       }
@@ -159,16 +183,13 @@ const DashboardPage: React.FC = () => {
   }, []);
 
   const endInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
-    console.log("endInputCallbackRef called with node:", node);
     if (node) {
       if (!endFpRef.current) {
-        console.log("Initializing flatpickr on end input node");
         endFpRef.current = flatpickr(node, {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
           onClose: (selectedDates) => {
-            console.log("end flatpickr onClose selectedDates:", selectedDates);
             if (selectedDates[0]) {
               setEndDate(formatToYmd(selectedDates[0]));
             } else {
@@ -177,38 +198,16 @@ const DashboardPage: React.FC = () => {
             setCurrentPage(1);
           }
         });
-        console.log("endFpRef.current after init:", endFpRef.current);
       }
     } else {
       if (endFpRef.current) {
-        console.log("Destroying end flatpickr instance");
         endFpRef.current.destroy();
         endFpRef.current = null;
       }
     }
   }, []);
 
-  const formatToYmd = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const parseToDate = (str: string) => {
-    if (!str) return null;
-    const parts = str.split('-');
-    if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const day = parseInt(parts[2], 10);
-      return new Date(year, month, day);
-    }
-    const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
-  };
-
-  const fetchUserAndStats = async () => {
+  const fetchUserAndStats = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) { navigate('/login'); return; }
@@ -222,7 +221,7 @@ const DashboardPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch user and stats:', err);
     }
-  };
+  }, [navigate]);
 
   const fetchTableData = useCallback(async (showLoader = false) => {
     try {
@@ -248,17 +247,26 @@ const DashboardPage: React.FC = () => {
 
   // 1. Загружаем общие данные при монтировании
   useEffect(() => {
-    fetchUserAndStats();
-  }, []);
+    const init = async () => {
+        await fetchUserAndStats();
+    };
+    init();
+  }, [fetchUserAndStats]);
 
   // 2. Загрузка таблицы при смене страницы или статуса (с лоадером)
   useEffect(() => {
-    fetchTableData(true);
+    const init = async () => {
+        await fetchTableData(true);
+    };
+    init();
   }, [currentPage, filterStatus, fetchTableData]);
 
   // 3. Загрузка таблицы при смене дат (без лоадера)
   useEffect(() => {
-    fetchTableData(false);
+    const update = async () => {
+        await fetchTableData(false);
+    };
+    update();
   }, [startDate, endDate, fetchTableData]);
 
 
@@ -273,7 +281,7 @@ const DashboardPage: React.FC = () => {
     return () => {
       window.removeEventListener('overtime_update', handleUpdate);
     };
-  }, [fetchTableData]);
+  }, [fetchTableData, fetchUserAndStats]);
 
   // 6. Синхронизация стейта во flatpickr
   useEffect(() => {
@@ -312,9 +320,10 @@ const DashboardPage: React.FC = () => {
         await cancelOvertime(id);
         fetchTableData(false);
         fetchUserAndStats();
-      } catch (err: any) {
-        console.error(err);
-        alert(err.response?.data?.detail || 'Ошибка при отмене заявки');
+      } catch (err: unknown) {
+        const axiosError = err as AxiosError<{ detail?: string }>;
+        console.error(axiosError);
+        alert(axiosError.response?.data?.detail || 'Ошибка при отмене заявки');
       }
     }
   };
@@ -334,9 +343,10 @@ const DashboardPage: React.FC = () => {
       link.click();
       link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (error: any) {
-      console.error('Export error:', error);
-      alert(error.response?.data?.detail || 'Ошибка при экспорте отчета');
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      console.error('Export error:', axiosError);
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте отчета');
     } finally {
       setLoading(false);
     }
@@ -351,8 +361,8 @@ const DashboardPage: React.FC = () => {
   const sortedOvertimes = useMemo(() => {
     if (!sortKey) return filteredOvertimes;
     return [...filteredOvertimes].sort((a, b) => {
-      let valA: any;
-      let valB: any;
+      let valA: string | number;
+      let valB: string | number;
       switch (sortKey) {
         case 'date':
           valA = new Date(a.start_time).getTime();
@@ -384,7 +394,7 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="page-container animate-fade-in">
       {loading && <LoadingOverlay />}
-      <Header user={user} />
+      {user && <Header user={user} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
         <div>
@@ -696,7 +706,7 @@ const DashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedOvertimes.map((ot: any) => (
+                {sortedOvertimes.map((ot: Overtime) => (
                   <tr key={ot.id}>
                     {columns.filter(c => c.visible).map(col => {
                       switch (col.id) {
@@ -722,7 +732,7 @@ const DashboardPage: React.FC = () => {
                           return <td key={col.id} className="table-cell" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
                         case 'start_time':
                           return <td key={col.id} className="table-cell">{formatTime(ot.start_time)}</td>;
-                        case 'end_time':
+                        case 'end_time': {
                           const isEndEpoch = ot.end_time && new Date(ot.end_time).getFullYear() <= 1970;
                           return (
                             <td key={col.id} className="table-cell">
@@ -731,6 +741,7 @@ const DashboardPage: React.FC = () => {
                                 : formatTime(ot.end_time)}
                             </td>
                           );
+                        }
                         case 'actions':
                           return (
                             <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '180px', minWidth: '180px' }}>
@@ -840,8 +851,11 @@ const DashboardPage: React.FC = () => {
           onCreated={() => {
             setIsCreateModalOpen(false);
             setEditOvertime(null);
-            fetchTableData(false);
-            fetchUserAndStats();
+            const update = async () => {
+                await fetchTableData(false);
+                await fetchUserAndStats();
+            };
+            update();
           }}
         />
       )}

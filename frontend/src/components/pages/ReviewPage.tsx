@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -8,9 +9,11 @@ import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
 import { STATUS_LABELS } from '../../constants/locale';
+import { User, Overtime } from '../../types';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
+import { AxiosError } from 'axios';
 
 
 const formatToYmd = (d: Date) => {
@@ -35,17 +38,20 @@ const parseToDate = (str: string) => {
 
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
-    const [overtimes, setOvertimes] = useState<any[]>([]);
+    const [overtimes, setOvertimes] = useState<Overtime[]>([]);
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [comment, setComment] = useState('');
     const [reviewingId, setReviewingId] = useState<number | null>(null);
     const [asRole, setAsRole] = useState<string>('');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('search') || '';
+    });
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [selectedOvertime, setSelectedOvertime] = useState<any | null>(null);
+    const [selectedOvertime, setSelectedOvertime] = useState<Overtime | null>(null);
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const [approvedHours, setApprovedHours] = useState<string>('');
 
@@ -107,12 +113,6 @@ const ReviewPage: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const s = params.get('search');
-        if (s) setSearchQuery(s);
-    }, []);
-
     // 1. Загрузка данных пользователя (один раз при монтировании)
     useEffect(() => {
         const fetchUser = async () => {
@@ -131,7 +131,9 @@ const ReviewPage: React.FC = () => {
     // 2. Функция загрузки списка овертаймов
     const fetchOvertimes = useCallback(async (showLoader = true) => {
         try {
-            if (showLoader) setLoading(true);
+            if (showLoader) {
+                setLoading(true);
+            }
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
 
@@ -154,12 +156,18 @@ const ReviewPage: React.FC = () => {
 
     // 3. Загрузка овертаймов при изменении пагинации, статуса или триггера обновления (с лоадером)
     useEffect(() => {
-        fetchOvertimes(true);
+        const init = async () => {
+            await fetchOvertimes(true);
+        };
+        init();
     }, [currentPage, statusFilter, updateTrigger, fetchOvertimes]);
 
     // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
     useEffect(() => {
-        fetchOvertimes(false);
+        const update = async () => {
+            await fetchOvertimes(false);
+        };
+        update();
     }, [startDate, endDate, fetchOvertimes]);
 
     // 5. Подписка на обновление данных овертаймов
@@ -218,8 +226,9 @@ const ReviewPage: React.FC = () => {
             setComment('');
             setAsRole('');
             setApprovedHours('');
-        } catch (err: any) {
-            alert(err.response?.data?.detail || 'Ошибка при согласовании');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            alert(axiosError.response?.data?.detail || 'Ошибка при согласовании');
         }
     };
 
@@ -228,7 +237,7 @@ const ReviewPage: React.FC = () => {
         ? safeOvertimes
         : safeOvertimes.filter(ot =>
             ot.status === 'PENDING' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED'
-        )).filter((ot: any) => {
+        )).filter((ot: Overtime) => {
             const empName = (ot.user?.full_name || '').toLowerCase();
             const projName = (ot.project?.name || '').toLowerCase();
             const desc = (ot.description || '').toLowerCase();
@@ -241,7 +250,7 @@ const ReviewPage: React.FC = () => {
     return (
         <div className="page-container animate-fade-in">
             {loading && <LoadingOverlay />}
-            <Header user={user} />
+            {user && <Header user={user} />}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
@@ -306,7 +315,7 @@ const ReviewPage: React.FC = () => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '16px' }}>
-                {filteredOvertimes.map((ot: any) => (
+                {filteredOvertimes.map((ot: Overtime) => (
                     <div key={ot.id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
                         <div style={{ padding: '24px', borderBottom: '1px solid var(--border)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>

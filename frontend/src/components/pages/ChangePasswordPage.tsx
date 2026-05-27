@@ -1,140 +1,170 @@
-import React, { useState } from 'react';
+/* eslint-disable */
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import api from '../../services/api';
+import { Lock, ArrowRight, Eye, EyeOff, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { api, changePassword } from '../../services/api';
+import Logo from '../atoms/Logo';
+import { User } from '../../types';
+import { AxiosError } from 'axios';
 
 const ChangePasswordPage: React.FC = () => {
-    const navigate = useNavigate();
-    const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
-    const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setPasswords({ ...passwords, [e.target.name]: e.target.value });
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await api.get('/auth/me');
+        setUser(res.data);
+      } catch (err) {
+        navigate('/login');
+      }
     };
+    fetchUser();
+  }, [navigate]);
 
-    const toggleShow = (field: 'current' | 'new' | 'confirm') => {
-        setShowPasswords(prev => ({ ...prev, [field]: !prev[field] }));
-    };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (newPassword !== confirmPassword) {
+      setError('Пароли не совпадают');
+      return;
+    }
+    setLoading(true);
+    try {
+      await changePassword({ old_password: oldPassword, new_password: newPassword });
+      setSuccess(true);
+      setTimeout(() => navigate('/dashboard'), 2000);
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Ошибка при смене пароля');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (passwords.new !== passwords.confirm) {
-            setError('Пароли не совпадают');
-            return;
-        }
-        if (passwords.new.length < 6) {
-            setError('Пароль должен быть не менее 6 символов');
-            return;
-        }
+  if (!user) return null;
 
-        setLoading(true);
-        setError('');
+  return (
+    <div className="login-container">
+      <div className="login-left-section">
+        <div style={{ marginBottom: '40px' }}>
+          <Logo size="md" />
+        </div>
 
-        try {
-            await api.post('/auth/change-password', {
-                old_password: passwords.current,
-                new_password: passwords.new
-            });
-            alert('Пароль успешно изменен! Войдите снова.');
-            localStorage.removeItem('token');
-            navigate('/login');
-        } catch (err: any) {
-            const detail = err.response?.data?.detail;
-            if (Array.isArray(detail)) {
-                setError(detail[0]?.msg || 'Ошибка валидации');
-            } else {
-                setError(typeof detail === 'string' ? detail : 'Ошибка при смене пароля');
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-            <div className="glass-card animate-scale-in" style={{ maxWidth: '450px', width: '100%', padding: '40px' }}>
-                <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <div className="icon-shape" style={{ width: '64px', height: '64px', margin: '0 auto 20px', background: 'var(--accent-gradient)', color: 'white' }}>
-                        <Lock size={32} />
+        {success ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }} className="animate-fade-in">
+            <CheckCircle2 size={64} style={{ color: 'var(--success)', marginBottom: '24px' }} />
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '8px' }}>Пароль изменен!</h2>
+            <p style={{ color: 'var(--text-secondary)' }}>Перенаправление на главную страницу...</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ShieldCheck size={24} />
                     </div>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '8px' }}>Смена пароля</h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>Ваш пароль был сброшен администратором. Пожалуйста, установите новый.</p>
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Безопасность</h1>
                 </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Пожалуйста, смените временный пароль на новый для защиты вашего аккаунта.</p>
+            </div>
 
-                {error && (
-                    <div className="badge badge-danger" style={{ width: '100%', padding: '12px', marginBottom: '24px', display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center' }}>
-                        <AlertCircle size={16} /> {error}
-                    </div>
-                )}
+            {error && <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', fontSize: '0.85rem', fontWeight: 600 }}>{error}</div>}
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Временный пароль</label>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                name="current"
-                                type={showPasswords.current ? "text" : "password"}
-                                required
-                                placeholder="Введите временный или текущий пароль"
-                                value={passwords.current}
-                                onChange={handleChange}
-                                style={{ width: '100%', paddingRight: '44px' }}
-                            />
-                            <button type="button" onClick={() => toggleShow('current')} className="eye-button" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                                {showPasswords.current ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Старый пароль</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showOld ? 'text' : 'password'} value={oldPassword} onChange={e => setOldPassword(e.target.value)}
+                    placeholder="••••••••" required />
+                  <button type="button" onClick={() => setShowOld(!showOld)}
+                    style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                    {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Новый пароль</label>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                name="new"
-                                type={showPasswords.new ? "text" : "password"}
-                                required
-                                placeholder="Придумайте надежный пароль"
-                                value={passwords.new}
-                                onChange={handleChange}
-                                style={{ width: '100%', paddingRight: '44px' }}
-                            />
-                            <button type="button" onClick={() => toggleShow('new')} className="eye-button" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                                {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Новый пароль</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showNew ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Придумайте надежный пароль" required />
+                  <button type="button" onClick={() => setShowNew(!showNew)}
+                    style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                    {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Подтвердите пароль</label>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                name="confirm"
-                                type={showPasswords.confirm ? "text" : "password"}
-                                required
-                                placeholder="Повторите новый пароль"
-                                value={passwords.confirm}
-                                onChange={handleChange}
-                                style={{ width: '100%', paddingRight: '44px' }}
-                            />
-                            <button type="button" onClick={() => toggleShow('confirm')} className="eye-button" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                                {showPasswords.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                    </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Подтверждение</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Повторите новый пароль" required />
+              </div>
+            </div>
 
-                    <button className="primary" style={{ height: '48px', marginTop: '12px' }} disabled={loading}>
-                        {loading ? 'Секунду...' : (
-                            <>
-                                <ShieldCheck size={18} style={{ marginRight: '8px' }} /> Сохранить пароль
-                            </>
-                        )}
-                    </button>
-                </form>
+            <button type="submit" className="primary" disabled={loading} style={{ height: '54px', fontSize: '1rem', fontWeight: 800, marginTop: '12px' }}>
+              {loading ? 'СОХРАНЕНИЕ...' : 'ОБНОВИТЬ ПАРОЛЬ'} <ArrowRight size={20} style={{ marginLeft: '12px' }} />
+            </button>
+          </form>
+        )}
+
+        <div style={{ marginTop: 'auto', paddingTop: '40px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+          © 2026 Polymedia Overtime Pro
+        </div>
+      </div>
+
+      <div className="login-right-section">
+        <div style={{ maxWidth: '500px', textAlign: 'center' }}>
+            <div style={{ padding: '40px', borderRadius: '32px', background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+                    <Lock size={32} />
+                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '16px' }}>Безопасность прежде всего</h3>
+                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>Мы заботимся о сохранности ваших данных. Смена пароля — обязательный шаг при первом входе или сбросе доступа администратором.</p>
             </div>
         </div>
-    );
+      </div>
+
+      <style>{`
+        .login-container {
+          display: grid;
+          grid-template-columns: 500px 1fr;
+          min-height: 100vh;
+          background: var(--bg-main);
+        }
+        .login-left-section {
+          background: var(--bg-secondary);
+          padding: 60px;
+          display: flex;
+          flex-direction: column;
+          border-right: 1px solid var(--border);
+        }
+        .login-right-section {
+          background: linear-gradient(rgba(2, 6, 23, 0.8), rgba(2, 6, 23, 0.5)), url("https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80");
+          background-size: cover;
+          background-position: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 60px;
+        }
+        @media (max-width: 900px) {
+          .login-container { grid-template-columns: 1fr; }
+          .login-right-section { display: none; }
+        }
+      `}</style>
+    </div>
+  );
 };
 
 export default ChangePasswordPage;

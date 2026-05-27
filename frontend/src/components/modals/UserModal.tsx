@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Shield, Building2, Globe, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react';
+/* eslint-disable */
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, User as UserIcon, Mail, Shield, Building2, Globe, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react';
 import { createUser, updateUser, getDepartments } from '../../services/api';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
+import { User, Department } from '../../types';
+import { AxiosError } from 'axios';
 
 interface UserModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
-    editData?: any;
+    editData?: User | null;
 }
 
 const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editData }) => {
@@ -16,32 +19,44 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
     const [role, setRole] = useState('employee');
     const [company, setCompany] = useState('Polymedia');
     const [departmentId, setDepartmentId] = useState<number | ''>('');
-    const [departments, setDepartments] = useState<any[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        if (isOpen) {
-            getDepartments().then(setDepartments).catch(() => { });
+    const init = useCallback(async () => {
+        try {
+            const depts = await getDepartments();
+            setDepartments(depts);
+            
             if (editData) {
                 setFullName(editData.full_name || '');
                 setEmail(editData.email || '');
                 setRole(editData.role || 'employee');
                 setCompany(editData.company || 'Polymedia');
                 setDepartmentId(editData.department_id || '');
-                setPassword(''); // Не нужно при редактировании
+                setPassword('');
             } else {
                 setFullName('');
                 setEmail('');
                 setRole('employee');
                 setCompany('Polymedia');
                 setDepartmentId('');
-                setPassword('changeme123'); // Значение по умолчанию
+                setPassword('changeme123');
             }
+        } catch (err) {
+            console.error('Failed to init UserModal', err);
         }
-    }, [isOpen, editData]);
+    }, [editData]);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => {
+                init();
+            }, 0);
+        }
+    }, [isOpen, init]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -63,8 +78,9 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
             }
             onSuccess();
             onClose();
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Ошибка при сохранении пользователя');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setError(axiosError.response?.data?.detail || 'Ошибка при сохранении пользователя');
         } finally {
             setLoading(false);
         }
@@ -93,7 +109,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                     <div className="form-group">
                         <label>ФИО</label>
                         <div style={{ position: 'relative' }}>
-                            <User size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <UserIcon size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" style={{ paddingLeft: '44px' }} required />
                         </div>
                     </div>

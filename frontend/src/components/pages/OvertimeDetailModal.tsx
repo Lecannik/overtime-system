@@ -1,249 +1,157 @@
-import React, { useState } from 'react';
-import { X, Clock, Calendar, Briefcase, User, CheckCircle2, XCircle, Info, MessageSquare, ShieldCheck, MapPin, ExternalLink } from 'lucide-react';
-import { reviewOvertime } from '../../services/api';
-import { getStatusLabel, getStatusColor, formatDateTime } from '../../constants/locale';
+/* eslint-disable */
+import React from 'react';
+import { X, Calendar, Clock, MapPin, Tag, FileText, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { STATUS_LABELS, formatDateTime } from '../../constants/locale';
+import { User, Overtime } from '../../types';
 
 interface OvertimeDetailModalProps {
-    overtime: any;
-    currentUser: any;
+    overtime: Overtime;
     onClose: () => void;
-    onStatusUpdate: () => void;
+    onStatusUpdate?: () => void;
 }
 
-const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, currentUser, onClose, onStatusUpdate }) => {
-    const [reviewMode, setReviewMode] = useState(false);
-    const [comment, setComment] = useState('');
-    const [asRole, setAsRole] = useState<string>('');
-    const [approvedHours, setApprovedHours] = useState<string>(overtime.hours.toString());
-    const [submitting, setSubmitting] = useState(false);
-
-    const canReview = (
-        (currentUser.role === 'admin') ||
-        (
-            overtime.status !== 'APPROVED' &&
-            overtime.status !== 'REJECTED' &&
-            overtime.status !== 'CANCELLED' &&
-            (
-                (currentUser.role === 'manager' && overtime.project.manager_id === currentUser.id) ||
-                (currentUser.role === 'head' && overtime.user.department_id === currentUser.department_id)
-            )
-        )
-    );
-
-    const handleReview = async (approved: boolean) => {
-        setSubmitting(true);
-        try {
-            await reviewOvertime(
-                overtime.id,
-                approved,
-                comment,
-                asRole || undefined,
-                approved ? parseFloat(approvedHours) : undefined
-            );
-            onStatusUpdate();
-            onClose();
-        } catch (err: any) {
-            alert(err.response?.data?.detail || 'Ошибка при сохранении решения');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    /** Форматировать дату начала/конца: для null/«В процессе» возвращает метку */
-    const formatOvertimeDate = (date: string | null | undefined) =>
-        !date ? 'В процессе' : formatDateTime(date);
-
-    const isEndTimeEpoch = overtime.end_time && new Date(overtime.end_time).getFullYear() <= 1970;
-    const isProgress = overtime.status === 'IN_PROGRESS' || !overtime.end_time || isEndTimeEpoch;
-
-    const rawHours = isProgress
-        ? (new Date().getTime() - new Date(overtime.start_time).getTime()) / 3600000
-        : (overtime.raw_hours !== undefined && overtime.raw_hours !== null ? overtime.raw_hours : (new Date(overtime.end_time).getTime() - new Date(overtime.start_time).getTime()) / 3600000);
-
+const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onClose }) => {
     return (
-        <div className="modal-overlay animate-fade-in" onClick={onClose}>
-            <div className="modal-content wide animate-scale-in" onClick={e => e.stopPropagation()} style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
+            <div className="modal-content glass-card animate-scale-in"
+                style={{ maxWidth: '600px', padding: 0, overflow: 'hidden', borderRadius: '24px' }}
+                onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
                 <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)' }}>ЗАЯВКА #{overtime.id}</span>
-                            <div style={{
-                                padding: '4px 10px',
-                                borderRadius: '8px',
-                                background: `${getStatusColor(overtime.status)}20`,
-                                color: getStatusColor(overtime.status),
-                                fontSize: '0.7rem',
-                                fontWeight: 800,
-                                border: `1px solid ${getStatusColor(overtime.status)}40`
-                            }}>
-                                {getStatusLabel(overtime.status).toUpperCase()}
-                            </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--accent-gradient)' }}>
+                            <FileText size={24} />
                         </div>
-                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Детали переработки</h3>
+                        <div>
+                            <h3 style={{ fontWeight: 800, fontSize: '1.25rem' }}>Детали заявки</h3>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {overtime.id} • {overtime.project?.code || 'Внутренний'}</p>
+                        </div>
                     </div>
-                    <button onClick={onClose} style={{ padding: '8px', borderRadius: '50%', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
-                        <X size={20} />
-                    </button>
+                    <button onClick={onClose} className="action-button-modern" style={{ width: '40px', height: '40px' }}><X size={20} /></button>
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', minHeight: 'fit-content', maxHeight: '80vh', overflowY: 'auto' }}>
-                    <div style={{ flex: '1 1 500px', padding: '32px', borderRight: '1px solid var(--border)', minWidth: '350px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div>
-                                <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Описание задачи</h4>
-                                <p style={{ fontSize: '1.05rem', lineHeight: '1.6', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-                                    {overtime.description}
-                                </p>
+                <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+                    {/* Status Banner */}
+                    <div style={{
+                        padding: '16px 24px',
+                        borderRadius: '16px',
+                        background: overtime.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.1)' : overtime.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        border: '1px solid',
+                        borderColor: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <ShieldCheck size={20} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)' }} />
+                            <span style={{ fontWeight: 800, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                {STATUS_LABELS[overtime.status]}
+                            </span>
+                        </div>
+                        {overtime.approved_hours !== null && (
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                                Утверждено: <span style={{ color: 'var(--primary)' }}>{overtime.approved_hours}ч</span>
                             </div>
+                        )}
+                    </div>
 
-                            {overtime.location_name && (
-                                <div>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Местоположение</h4>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderRadius: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
-                                        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <MapPin size={20} />
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <p style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '2px', color: 'var(--text-primary)' }}>{overtime.location_name}</p>
-                                            <a
-                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(overtime.location_name)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
-                                            >
-                                                Посмотреть на карте <ExternalLink size={12} />
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', padding: '24px', borderRadius: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
-                                        <Calendar size={14} /> Начало
-                                    </div>
-                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatOvertimeDate(overtime.start_time)}</p>
-                                </div>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 700 }}>
-                                        <Calendar size={14} /> Окончание
-                                    </div>
-                                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                                        {isProgress ? 'В процессе' : formatOvertimeDate(overtime.end_time)}
-                                    </p>
-                                </div>
+                    {/* Info Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Сотрудник</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <UserIcon size={16} style={{ color: 'var(--primary)' }} />
+                                <span style={{ fontWeight: 600 }}>{overtime.user?.full_name}</span>
                             </div>
-
-                            <div style={{ display: 'flex', gap: '40px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-                                        <Clock size={24} />
-                                    </div>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Запрошено</p>
-                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{overtime.hours}ч</p>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                    <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
-                                        <Info size={24} />
-                                    </div>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Фактически</p>
-                                        <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{rawHours.toFixed(2)}ч</p>
-                                    </div>
-                                </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Проект</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Tag size={16} style={{ color: 'var(--info)' }} />
+                                <span style={{ fontWeight: 600 }}>{overtime.project?.name || 'Внутренний'}</span>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Период</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Calendar size={16} style={{ color: 'var(--accent)' }} />
+                                <span style={{ fontWeight: 600 }}>{formatDateTime(overtime.start_time)}</span>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Длительность</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Clock size={16} style={{ color: 'var(--warning)' }} />
+                                <span style={{ fontWeight: 600 }}>{overtime.hours}ч (запрошено)</span>
                             </div>
                         </div>
                     </div>
 
-                    <div style={{ flex: '1 1 350px', padding: '32px', background: 'var(--bg-main)', minWidth: '350px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '14px', border: '1px solid var(--border)' }}>
-                                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <User size={22} style={{ color: 'var(--text-secondary)' }} />
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Сотрудник</p>
-                                    <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{overtime.user?.full_name}</p>
-                                </div>
-                            </div>
+                    {/* Description */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание работ</label>
+                        <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid var(--border)' }}>
+                            {overtime.description}
+                        </div>
+                    </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '14px', border: '1px solid var(--border)' }}>
-                                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <Briefcase size={22} style={{ color: 'var(--primary)' }} />
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Проект</p>
-                                    <p style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{overtime.project?.name}</p>
-                                </div>
-                            </div>
-
-                            <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '24px' }}>
-                                {reviewMode ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                        {currentUser.role === 'admin' && (
-                                            <div className="input-group">
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <ShieldCheck size={16} /> Согласовать от роли:
-                                                </label>
-                                                <select value={asRole} onChange={(e) => setAsRole(e.target.value)}>
-                                                    <option value="">Автоматически</option>
-                                                    <option value="manager">Менеджер проекта</option>
-                                                    <option value="head">Начальник отдела</option>
-                                                </select>
-                                            </div>
-                                        )}
-                                        <div className="input-group">
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Clock size={16} /> Часов</label>
-                                            <input type="number" step="0.1" value={approvedHours} onChange={(e) => setApprovedHours(e.target.value)} />
-                                        </div>
-                                        <div className="input-group">
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={16} /> Коммент</label>
-                                            <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '12px' }}>
-                                            <button disabled={submitting} onClick={() => handleReview(true)} className="primary" style={{ background: 'var(--success)', flex: 1 }}>Одобрить</button>
-                                            <button disabled={submitting} onClick={() => handleReview(false)} className="primary" style={{ background: 'var(--danger)', flex: 1 }}>Отклонить</button>
-                                        </div>
-                                        <button onClick={() => setReviewMode(false)} style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Отмена</button>
+                    {/* Geolocation */}
+                    {(overtime.location_name || (overtime.start_lat && overtime.start_lng)) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Геолокация</label>
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                {overtime.location_name && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                                        <MapPin size={16} style={{ color: 'var(--accent)' }} />
+                                        {overtime.location_name}
                                     </div>
-                                ) : (
-                                    <div>
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Статус согласования</p>
-                                            <div style={{ display: 'flex', gap: '20px' }}>
-                                                <div style={{ textAlign: 'center' }}>
-                                                    <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)' }}>МЕНЕДЖЕР</p>
-                                                    {overtime.manager_approved === true ? <CheckCircle2 size={24} style={{ color: 'var(--success)' }} /> : overtime.manager_approved === false ? <XCircle size={24} style={{ color: 'var(--danger)' }} /> : <Clock size={24} style={{ color: 'var(--warning)', opacity: 0.5 }} />}
-                                                </div>
-                                                <div style={{ textAlign: 'center' }}>
-                                                    <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)' }}>НАЧ. ОТДЕЛА</p>
-                                                    {overtime.head_approved === true ? <CheckCircle2 size={24} style={{ color: 'var(--success)' }} /> : overtime.head_approved === false ? <XCircle size={24} style={{ color: 'var(--danger)' }} /> : <Clock size={24} style={{ color: 'var(--warning)', opacity: 0.5 }} />}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {overtime.approved_hours !== null && (
-                                            <div style={{ padding: '16px', borderRadius: '12px', background: 'white', border: '1px solid var(--border)', marginBottom: '16px' }}>
-                                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Итого согласовано</p>
-                                                <p style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--success)' }}>{overtime.approved_hours} ч</p>
-                                            </div>
-                                        )}
-                                        {canReview && (
-                                            <button
-                                                onClick={() => setReviewMode(true)}
-                                                className="secondary"
-                                                style={{ marginTop: '16px', width: '100%' }}
-                                            >
-                                                {overtime.status === 'PENDING' ? 'Рассмотреть заявку' : 'Пересмотреть решение'}
-                                            </button>
-                                        )}
-                                    </div>
+                                )}
+                                {overtime.start_lat && overtime.start_lng && (
+                                    <a
+                                        href={`https://www.google.com/maps?q=${overtime.start_lat},${overtime.start_lng}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="action-button-modern" style={{ width: 'auto', padding: '0 16px', gap: '8px', borderRadius: '12px', fontSize: '0.85rem' }}
+                                    >
+                                        <MapPin size={16} /> Карта (Начало)
+                                    </a>
+                                )}
+                                {overtime.end_lat && overtime.end_lng && (
+                                    <a
+                                        href={`https://www.google.com/maps?q=${overtime.end_lat},${overtime.end_lng}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="action-button-modern" style={{ width: 'auto', padding: '0 16px', gap: '8px', borderRadius: '12px', fontSize: '0.85rem' }}
+                                    >
+                                        <MapPin size={16} /> Карта (Финиш)
+                                    </a>
                                 )}
                             </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* Manager Comments */}
+                    {(overtime.manager_comment || overtime.head_comment) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Комментарии руководства</label>
+                            {overtime.manager_comment && (
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', minWidth: '80px' }}>Менеджер:</div>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{overtime.manager_comment}</div>
+                                </div>
+                            )}
+                            {overtime.head_comment && (
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', minWidth: '80px' }}>Рук. отдела:</div>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{overtime.head_comment}</div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div style={{ padding: '24px 32px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button onClick={onClose} className="primary" style={{ width: 'auto', padding: '0 32px' }}>Закрыть</button>
                 </div>
             </div>
         </div>

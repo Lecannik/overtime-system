@@ -1,30 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Building2, Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Briefcase, Download, X as XIcon
 } from 'lucide-react';
 
-import api, {
+import {
     getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
     updateDepartment, updateProject, getOdooProjects, importOdooProjects
 } from '../../services/api';
 
-import type { OdooProjectPreview } from '../../types';
+import type { OdooProjectPreview, User, Department, Project, AuditLog } from '../../types';
 import Header from '../layout/Header';
+
 import Skeleton from '../common/Skeleton';
 import ImportMSUsersModal from '../modals/ImportMSUsersModal';
 import UserModal from '../modals/UserModal';
 import ConfirmModal from '../modals/ConfirmModal';
 import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS, formatDateTime } from '../../constants/locale';
+import { AxiosError } from 'axios';
 
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'projects' | 'audit'>('users');
-    const [users, setUsers] = useState<any[]>([]);
-    const [departments, setDepartments] = useState<any[]>([]);
-    const [projects, setProjects] = useState<any[]>([]);
-    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState('ALL');
@@ -39,10 +41,10 @@ const UsersPage: React.FC = () => {
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const [confirmAction, setConfirmAction] = useState<() => void>(() => { });
-    const [confirmInfo, setConfirmInfo] = useState({ title: '', message: '', type: 'warning' as any });
+    const [confirmInfo, setConfirmInfo] = useState<{ title: string; message: string; type: 'warning' | 'danger' | 'info' }>({ title: '', message: '', type: 'warning' });
 
-    const [editUserData, setEditUserData] = useState<any>(null);
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [editUserData, setEditUserData] = useState<User | null>(null);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
 
     // Состояние модала создания проекта
@@ -75,6 +77,55 @@ const UsersPage: React.FC = () => {
     const [importLoading, setImportLoading] = useState(false);
     const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
 
+    const refreshData = useCallback(async () => {
+        setLoading(true);
+        try {
+            if (activeTab === 'users') {
+                const res = await getUsers({
+                    page: currentPage,
+                    page_size: pageSize,
+                    search: searchQuery,
+                    role: roleFilter !== 'ALL' ? roleFilter : undefined,
+                    department_id: deptFilter !== 'ALL' ? parseInt(deptFilter) : undefined,
+                    company: companyFilter !== 'ALL' ? companyFilter : undefined
+                });
+                setUsers(res.items);
+                setTotalPages(res.pages);
+            } else if (activeTab === 'audit') {
+                const res = await getAuditLogs(pageSize, (currentPage - 1) * pageSize, searchQuery);
+                if (res.items) {
+                    setAuditLogs(res.items);
+                    setTotalPages(Math.ceil(res.total / pageSize));
+                } else {
+                    // Fallback if backend returns simple list
+                    const logs = res as unknown as AuditLog[];
+                    setAuditLogs(logs);
+                    setTotalPages(1);
+                }
+            } else if (activeTab === 'departments') {
+                const [deptRes, userRes] = await Promise.all([
+                    getDepartments(),
+                    getUsers({ page_size: 1000 })
+                ]);
+                setDepartments(deptRes);
+                setUsers(userRes.items || []);
+                setTotalPages(1);
+            } else if (activeTab === 'projects') {
+                const [projRes, userRes] = await Promise.all([
+                    getAdminProjects(),
+                    getUsers({ page_size: 1000 })
+                ]);
+                setProjects(projRes);
+                setUsers(userRes.items || []);
+                setTotalPages(1);
+            }
+        } catch (err) {
+            console.error('Refresh error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [activeTab, currentPage, pageSize, searchQuery, roleFilter, deptFilter, companyFilter]);
+
     /** Открыть Odoo-модал и загрузить список проектов из CRM. */
     const handleOpenOdooModal = async () => {
         setIsOdooModalOpen(true);
@@ -85,8 +136,9 @@ const UsersPage: React.FC = () => {
         try {
             const data = await getOdooProjects();
             setOdooProjects(data.projects);
-        } catch (err: any) {
-            setOdooError(err.response?.data?.detail || 'Ошибка подключения к Odoo CRM');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setOdooError(axiosError.response?.data?.detail || 'Ошибка подключения к Odoo CRM');
         } finally {
             setOdooLoading(false);
         }
@@ -127,64 +179,17 @@ const UsersPage: React.FC = () => {
             const result = await importOdooProjects(toImport);
             setImportResult(result);
             refreshData();
-        } catch (err: any) {
-            setOdooError(err.response?.data?.detail || 'Ошибка при импорте проектов');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setOdooError(axiosError.response?.data?.detail || 'Ошибка при импорте проектов');
         } finally {
             setImportLoading(false);
         }
     };
 
-    const refreshData = async () => {
-        setLoading(true);
-        try {
-            if (activeTab === 'users') {
-                const res = await getUsers({
-                    page: currentPage,
-                    page_size: pageSize,
-                    search: searchQuery,
-                    role: roleFilter !== 'ALL' ? roleFilter : undefined,
-                    department_id: deptFilter !== 'ALL' ? parseInt(deptFilter) : undefined,
-                    company: companyFilter !== 'ALL' ? companyFilter : undefined
-                });
-                setUsers(res.items);
-                setTotalPages(res.pages);
-            } else if (activeTab === 'audit') {
-                const res = await getAuditLogs(pageSize, (currentPage - 1) * pageSize, searchQuery);
-                // Если бэкенд возвращает {items, total}, используем это
-                if (res.items) {
-                    setAuditLogs(res.items);
-                    setTotalPages(Math.ceil(res.total / pageSize));
-                } else {
-                    setAuditLogs(res);
-                    setTotalPages(1);
-                }
-            } else if (activeTab === 'departments') {
-                const [deptRes, userRes] = await Promise.all([
-                    getDepartments(),
-                    getUsers({ page_size: 1000 })
-                ]);
-                setDepartments(deptRes);
-                setUsers(userRes.items || []);
-                setTotalPages(1);
-            } else if (activeTab === 'projects') {
-                const [projRes, userRes] = await Promise.all([
-                    getAdminProjects(),
-                    getUsers({ page_size: 1000 })
-                ]);
-                setProjects(projRes);
-                setUsers(userRes.items || []);
-                setTotalPages(1);
-            }
-        } catch (err) {
-            console.error('Refresh error:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     // Загрузка отделов для фильтра один раз
     useEffect(() => {
-        getDepartments().then(setDepartments);
+        getDepartments().then(setDepartments).catch(err => console.error(err));
     }, []);
 
     useEffect(() => {
@@ -199,7 +204,7 @@ const UsersPage: React.FC = () => {
             } catch { navigate('/login'); }
         };
         checkAuth();
-    }, [currentPage, pageSize, searchQuery, roleFilter, deptFilter, companyFilter, activeTab, navigate]);
+    }, [refreshData, navigate]);
 
     const handleAdd = async () => {
         if (activeTab === 'users') {
@@ -231,19 +236,20 @@ const UsersPage: React.FC = () => {
             await createProject({ name: name.trim(), code: code.trim() });
             setIsProjectModalOpen(false);
             refreshData();
-        } catch (err: any) {
-            setProjectFormError(err.response?.data?.detail || 'Ошибка при создании проекта');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setProjectFormError(axiosError.response?.data?.detail || 'Ошибка при создании проекта');
         } finally {
             setProjectFormLoading(false);
         }
     };
 
-    const handleEditUser = (user: any) => {
+    const handleEditUser = (user: User) => {
         setEditUserData(user);
         setIsUserModalOpen(true);
     };
 
-    const handleToggleStatus = (user: any) => {
+    const handleToggleStatus = (user: User) => {
         setConfirmInfo({
             title: 'Изменить статус?',
             message: `Вы действительно хотите ${user.is_active ? 'отключить' : 'активировать'} пользователя ${user.full_name}?`,
@@ -251,10 +257,15 @@ const UsersPage: React.FC = () => {
         });
         setConfirmAction(() => async () => {
             setActionLoading(true);
-            await updateUser(user.id, { is_active: !user.is_active });
-            setActionLoading(false);
-            setIsConfirmOpen(false);
-            refreshData();
+            try {
+                await updateUser(user.id, { is_active: !user.is_active });
+                refreshData();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setActionLoading(false);
+                setIsConfirmOpen(false);
+            }
         });
         setIsConfirmOpen(true);
     };
@@ -270,8 +281,9 @@ const UsersPage: React.FC = () => {
             try {
                 const res = await resetUserPassword(id);
                 alert(res.detail || 'Пароль сброшен успешно.');
-            } catch (err: any) {
-                alert('Ошибка: ' + (err.response?.data?.detail || err.message));
+            } catch (err: unknown) {
+                const axiosError = err as AxiosError<{ detail?: string }>;
+                alert('Ошибка: ' + (axiosError.response?.data?.detail || axiosError.message));
             } finally {
                 setActionLoading(false);
                 setIsConfirmOpen(false);
@@ -292,13 +304,14 @@ const UsersPage: React.FC = () => {
                 if (type === 'user') await deleteUser(id);
                 if (type === 'dept') await deleteDepartment(id);
                 if (type === 'project') await deleteProject(id);
-                setIsConfirmOpen(false);
                 refreshData();
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error(err);
-                alert(err.response?.data?.detail || 'Ошибка при удалении записи. Возможно, она связана с существующими переработками.');
+                const axiosError = err as AxiosError<{ detail?: string }>;
+                alert(axiosError.response?.data?.detail || 'Ошибка при удалении записи. Возможно, она связана с существующими переработками.');
             } finally {
                 setActionLoading(false);
+                setIsConfirmOpen(false);
             }
         });
         setIsConfirmOpen(true);
@@ -330,7 +343,7 @@ const UsersPage: React.FC = () => {
                 />
             )}
 
-            <Header user={currentUser} />
+            {currentUser && <Header user={currentUser} />}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
                 <div>
@@ -407,7 +420,7 @@ const UsersPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {users.map((u: any) => (
+                                {users.map((u) => (
                                     <tr key={u.id}>
                                         <td className="table-cell">
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -573,7 +586,7 @@ const UsersPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {auditLogs.map((log: any) => (
+                                {auditLogs.map((log) => (
                                     <tr key={log.id}>
                                         <td className="table-cell" style={{ fontSize: '0.8rem' }}>{formatDateTime(log.timestamp)}</td>
                                         <td className="table-cell" style={{ fontWeight: 600 }}>{log.user?.full_name || 'System'}</td>

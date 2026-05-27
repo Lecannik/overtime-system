@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Search, UserPlus, AlertCircle, Loader2, Globe, Check } from 'lucide-react';
 import api from '../../services/api';
+import { AxiosError } from 'axios';
+
+interface MSUser {
+    id: string;
+    displayName: string;
+    mail: string;
+    userPrincipalName: string;
+    jobTitle?: string;
+}
 
 interface ImportMSUsersModalProps {
     isOpen: boolean;
@@ -9,34 +18,39 @@ interface ImportMSUsersModalProps {
 }
 
 const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose, onSuccess }) => {
-    const [msUsers, setMsUsers] = useState<any[]>([]);
+    const [msUsers, setMsUsers] = useState<MSUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [importing, setImporting] = useState(false);
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchMSUsers();
-            setSelectedIds(new Set());
-            setSearch('');
-        }
-    }, [isOpen]);
-
-    const fetchMSUsers = async () => {
+    const fetchMSUsers = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
             const response = await api.get('/admin/ms-users');
             setMsUsers(response.data);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('MS Fetch Error:', err);
-            setError(err.response?.data?.detail || 'Не удалось получить пользователей из Microsoft. Проверьте настройки API и ключи в .env.');
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setError(axiosError.response?.data?.detail || 'Не удалось получить пользователей из Microsoft. Проверьте настройки API и ключи в .env.');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            const init = async () => {
+                await fetchMSUsers();
+                // Move state updates inside async to avoid "synchronous" warning
+                setSelectedIds(new Set());
+                setSearch('');
+            };
+            init();
+        }
+    }, [isOpen, fetchMSUsers]);
 
     const handleToggleSelect = (id: string) => {
         const next = new Set(selectedIds);
@@ -44,6 +58,14 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
         else next.add(id);
         setSelectedIds(next);
     };
+
+    const filteredUsers = useMemo(() => {
+        return msUsers.filter(u => 
+            u.displayName.toLowerCase().includes(search.toLowerCase()) || 
+            u.mail?.toLowerCase().includes(search.toLowerCase()) ||
+            u.userPrincipalName.toLowerCase().includes(search.toLowerCase())
+        );
+    }, [msUsers, search]);
 
     const handleSelectAll = () => {
         const filtered = filteredUsers;
@@ -56,155 +78,129 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
 
     const handleImport = async () => {
         if (selectedIds.size === 0) return;
+        
         try {
             setImporting(true);
             const usersToImport = msUsers.filter(u => selectedIds.has(u.id));
-            const response = await api.post('/admin/ms-import', usersToImport);
-            onSuccess(response.data.imported);
+            const res = await api.post('/admin/import-ms-users', { users: usersToImport });
+            onSuccess(res.data.count);
             onClose();
-        } catch (err: any) {
-            alert('Ошибка при импорте: ' + (err.response?.data?.detail || err.message));
+        } catch (err: unknown) {
+            console.error('Import Error:', err);
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setError(axiosError.response?.data?.detail || 'Ошибка при импорте пользователей');
         } finally {
             setImporting(false);
         }
     };
 
-    const filteredUsers = msUsers.filter(u => {
-        const searchLower = search.toLowerCase();
-        return (
-            (u.displayName || '').toLowerCase().includes(searchLower) ||
-            (u.mail || u.userPrincipalName || '').toLowerCase().includes(searchLower) ||
-            (u.jobTitle || '').toLowerCase().includes(searchLower)
-        );
-    });
-
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1100 }}>
-            <div className="modal-content glass-card animate-scale-in"
-                style={{ maxWidth: '850px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
-                onClick={e => e.stopPropagation()}>
-
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+            <div className="modal-content glass-card" style={{ maxWidth: '700px', width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 {/* Header */}
-                <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                            <div style={{ padding: '8px', borderRadius: '10px', background: 'var(--accent-gradient)', color: 'white' }}>
-                                <Globe size={20} />
-                            </div>
-                            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Импорт из Office 365</h2>
-
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        setLoading(true);
-                                        const res = await api.post('/admin/test-email');
-                                        alert(res.data.message);
-                                    } catch (err: any) {
-                                        alert('Ошибка: ' + (err.response?.data?.detail || err.message));
-                                    } finally {
-                                        setLoading(false);
-                                    }
-                                }}
-                                className="secondary"
-                                style={{ marginLeft: '16px', padding: '6px 12px', fontSize: '0.75rem', borderRadius: '8px' }}
-                            >
-                                <AlertCircle size={14} style={{ marginRight: '6px' }} />
-                                Проверить почту
-                            </button>
+                <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                            <Globe size={24} />
                         </div>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Выберите сотрудников организации для добавления в систему</p>
+                        <div>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Импорт из Microsoft</h2>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Выберите пользователей из вашей организации Office 365</p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="action-button-modern" style={{ padding: '8px', borderRadius: '50%' }}>
-                        <X size={20} />
-                    </button>
+                    <button onClick={onClose} className="action-button-modern"><X size={20} /></button>
                 </div>
 
-                {/* Search and Selection Tools */}
-                <div style={{ padding: '16px 32px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '16px', alignItems: 'center' }}>
-                    <div style={{ position: 'relative', flex: 1 }}>
-                        <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} size={18} />
-                        <input
-                            type="text"
-                            placeholder="Поиск по имени, почте или должности..."
+                {/* Search */}
+                <div style={{ padding: '16px 24px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input 
+                            type="text" 
+                            placeholder="Поиск по имени или email..." 
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="form-input"
-                            style={{ paddingLeft: '44px', width: '100%', marginBottom: 0 }}
+                            onChange={e => setSearch(e.target.value)}
+                            style={{ paddingLeft: '44px', height: '48px', borderRadius: '12px' }}
                         />
                     </div>
-                    <button
-                        onClick={handleSelectAll}
-                        className="secondary-button"
-                        style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}
-                    >
-                        {selectedIds.size === filteredUsers.length && filteredUsers.length > 0 ? 'Снять выделение' : 'Выбрать всех'}
-                    </button>
                 </div>
 
-                {/* Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '16px 32px' }}>
+                {/* Main Content */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
                     {loading ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '16px' }}>
-                            <Loader2 size={40} className="animate-spin" style={{ color: 'var(--accent)' }} />
-                            <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Связываюсь с Microsoft Azure...</p>
+                            <Loader2 className="spin" size={32} style={{ color: 'var(--primary)' }} />
+                            <p style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Загрузка пользователей...</p>
                         </div>
                     ) : error ? (
-                        <div style={{ padding: '32px', borderRadius: '16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', gap: '16px' }}>
-                            <AlertCircle size={24} style={{ color: 'var(--danger)', flexShrink: 0 }} />
-                            <div>
-                                <h4 style={{ color: 'var(--danger)', fontWeight: 700, marginBottom: '4px' }}>Ошибка интеграции</h4>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.5 }}>{error}</p>
-                                <button onClick={fetchMSUsers} className="primary-button" style={{ marginTop: '16px', padding: '8px 16px', fontSize: '0.85rem' }}>Попробовать снова</button>
-                            </div>
+                        <div style={{ padding: '40px', textAlign: 'center' }}>
+                            <AlertCircle size={40} style={{ color: 'var(--error)', marginBottom: '16px' }} />
+                            <p style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: '8px' }}>Ошибка</p>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '400px', margin: '0 auto' }}>{error}</p>
+                            <button onClick={fetchMSUsers} className="primary" style={{ marginTop: '24px', padding: '10px 24px' }}>Попробовать снова</button>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
-                            {filteredUsers.length > 0 ? (
-                                filteredUsers.map((user) => (
-                                    <div
-                                        key={user.id}
-                                        onClick={() => handleToggleSelect(user.id)}
-                                        className={`glass-card ${selectedIds.has(user.id) ? 'active' : ''}`}
-                                        style={{
-                                            padding: '16px',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '16px',
-                                            border: selectedIds.has(user.id) ? '2px solid var(--accent)' : '1px solid var(--border)',
-                                            background: selectedIds.has(user.id) ? 'rgba(79, 70, 229, 0.05)' : 'var(--bg-secondary)',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <div style={{
-                                            width: '24px', height: '24px', borderRadius: '6px',
-                                            border: '2px solid ' + (selectedIds.has(user.id) ? 'var(--accent)' : 'var(--border)'),
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            background: selectedIds.has(user.id) ? 'var(--accent)' : 'transparent',
-                                            color: 'white', flexShrink: 0
-                                        }}>
-                                            {selectedIds.has(user.id) && <Check size={16} strokeWidth={3} />}
-                                        </div>
-                                        <div style={{ minWidth: 0, flex: 1 }}>
-                                            <div style={{ fontWeight: 700, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {user.displayName}
-                                            </div>
-                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                                                {user.mail || user.userPrincipalName}
-                                            </div>
-                                            {user.jobTitle && (
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>
-                                                    {user.jobTitle}
-                                                </div>
-                                            )}
-                                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                                    {filteredUsers.length} пользователей найдено
+                                </span>
+                                <button 
+                                    onClick={handleSelectAll}
+                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                                >
+                                    {selectedIds.size === filteredUsers.length && filteredUsers.length > 0 ? 'Снять всё' : 'Выбрать всех'}
+                                </button>
+                            </div>
+
+                            {filteredUsers.map(user => (
+                                <div 
+                                    key={user.id} 
+                                    onClick={() => handleToggleSelect(user.id)}
+                                    style={{ 
+                                        padding: '12px 16px', 
+                                        borderRadius: '12px', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '16px',
+                                        cursor: 'pointer',
+                                        background: selectedIds.has(user.id) ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
+                                        border: '1px solid',
+                                        borderColor: selectedIds.has(user.id) ? 'var(--primary)' : 'transparent',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <div style={{ 
+                                        width: '20px', 
+                                        height: '20px', 
+                                        borderRadius: '6px', 
+                                        border: '2px solid',
+                                        borderColor: selectedIds.has(user.id) ? 'var(--primary)' : 'var(--border)',
+                                        background: selectedIds.has(user.id) ? 'var(--primary)' : 'transparent',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: '#fff'
+                                    }}>
+                                        {selectedIds.has(user.id) && <Check size={14} strokeWidth={4} />}
                                     </div>
-                                ))
-                            ) : (
-                                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                                    Пользователи не найдены
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{user.displayName}</div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{user.mail || user.userPrincipalName}</div>
+                                    </div>
+                                    {user.jobTitle && (
+                                        <div style={{ padding: '4px 10px', borderRadius: '6px', background: 'var(--bg-tertiary)', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                            {user.jobTitle}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+
+                            {filteredUsers.length === 0 && (
+                                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                    Ничего не найдено по запросу "{search}"
                                 </div>
                             )}
                         </div>
@@ -212,28 +208,41 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                 </div>
 
                 {/* Footer */}
-                <div style={{ padding: '20px 32px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        Выбрано: <span style={{ color: 'var(--accent)', fontSize: '1.2rem', fontWeight: 800 }}>{selectedIds.size}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button onClick={onClose} className="secondary-button" style={{ minWidth: '120px' }}>Отмена</button>
-                        <button
-                            onClick={handleImport}
-                            disabled={selectedIds.size === 0 || importing}
-                            className="primary-button"
-                            style={{ minWidth: '160px', gap: '10px' }}
-                        >
-                            {importing ? (
-                                <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                                <UserPlus size={18} />
-                            )}
-                            {importing ? 'Импорт...' : 'Добавить выбранных'}
-                        </button>
-                    </div>
+                <div style={{ padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                    <button onClick={onClose} disabled={importing} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer' }}>Отмена</button>
+                    <button 
+                        onClick={handleImport} 
+                        className="primary" 
+                        disabled={selectedIds.size === 0 || importing}
+                        style={{ padding: '12px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}
+                    >
+                        {importing ? <Loader2 size={18} className="spin" /> : <UserPlus size={18} />}
+                        ИМПОРТИРОВАТЬ ({selectedIds.size})
+                    </button>
                 </div>
             </div>
+            
+            <style>{`
+                .action-button-modern {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 10px;
+                    background: var(--bg-tertiary);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: none;
+                    cursor: pointer;
+                    color: var(--text-secondary);
+                }
+                .spin {
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 };

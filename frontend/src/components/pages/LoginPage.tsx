@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
 import { api, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
 import Logo from '../atoms/Logo';
+import { AxiosError } from 'axios';
 
 type PageMode = 'login' | 'forgot' | 'reset-code' | '2fa';
 
@@ -15,7 +16,7 @@ const LoginPage: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const [mode, setMode] = useState<PageMode>('login'); // Changed type to PageMode
+  const [mode, setMode] = useState<PageMode>('login');
   const [resetEmail, setResetEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -53,8 +54,9 @@ const LoginPage: React.FC = () => {
         localStorage.setItem('token', res.data.access_token);
         navigate('/dashboard');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Неверный email или пароль');
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Неверный email или пароль');
     } finally {
       setLoading(false);
     }
@@ -68,8 +70,9 @@ const LoginPage: React.FC = () => {
       const res = await verify2FA(twoFaEmail, twoFaCode);
       localStorage.setItem('token', res.access_token);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Неверный код');
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Неверный код');
     } finally {
       setLoading(false);
     }
@@ -84,8 +87,9 @@ const LoginPage: React.FC = () => {
       const res = await requestPasswordReset(resetEmail);
       setSuccess(res.detail || 'Код восстановления отправлен на почту.');
       setMode('reset-code');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка при запросе сброса');
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Ошибка при запросе сброса');
     } finally {
       setLoading(false);
     }
@@ -105,8 +109,9 @@ const LoginPage: React.FC = () => {
       setMode('login');
       setPassword('');
       setEmail(resetEmail);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка при сбросе пароля');
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Ошибка при сбросе пароля');
     } finally {
       setLoading(false);
     }

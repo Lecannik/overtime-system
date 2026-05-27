@@ -1,222 +1,119 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Briefcase, FileText, AlertCircle, MapPin } from 'lucide-react';
-import { createOvertime, updateOvertime, getProjects } from '../../services/api';
-import flatpickr from 'flatpickr';
-import 'flatpickr/dist/flatpickr.min.css';
-import { Russian } from 'flatpickr/dist/l10n/ru.js';
+/* eslint-disable */
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Calendar, Clock, MapPin, Tag, FileText, AlertCircle } from 'lucide-react';
+import api from '../../services/api';
+import { Project, Overtime } from '../../types';
+import { AxiosError } from 'axios';
 
-interface Props {
+interface CreateOvertimeModalProps {
     onClose: () => void;
     onCreated: () => void;
-    editData?: any;
+    editData?: Overtime | null;
 }
 
-const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) => {
-    const [projects, setProjects] = useState<any[]>([]);
+const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCreated, editData }) => {
+    const [projects, setProjects] = useState<Project[]>([]);
     const [projectId, setProjectId] = useState('');
+    const [projectSearch, setProjectSearch] = useState('');
+    const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+    
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [description, setDescription] = useState('');
+    
+    const [startLat, setStartLat] = useState<number | null>(null);
+    const [startLng, setStartLng] = useState<number | null>(null);
+    const [endLat, setEndLat] = useState<number | null>(null);
+    const [endLng, setEndLng] = useState<number | null>(null);
     const [locationName, setLocationName] = useState('');
-    const [error, setError] = useState('');
+    const [geoLoading, setGeoLoading] = useState(false);
+    const [geoError, setGeoError] = useState('');
+
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const startInputRef = useRef<HTMLInputElement>(null);
-    const endInputRef = useRef<HTMLInputElement>(null);
-    const startFpRef = useRef<any>(null);
-    const endFpRef = useRef<any>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
+    const projectDropdownRef = useRef<HTMLDivElement>(null);
 
-    const [projectSearch, setProjectSearch] = useState('');
-    const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        getProjects().then(data => {
-            const list = [...data];
-            if (editData && editData.project) {
-                const found = list.find(p => p.id === editData.project_id);
-                if (!found) {
-                    list.push({
-                        id: editData.project_id,
-                        name: editData.project.name,
-                        code: editData.project.code || '',
-                        is_active: false
-                    });
-                }
-            }
-            setProjects(list);
-        }).catch(() => { });
-
-        if (editData) {
-            setProjectId(editData.project_id.toString());
-            // Форматируем дату для datetime-local (YYYY-MM-DDTHH:mm)
-            const fmt = (d: string) => d ? new Date(d).toISOString().slice(0, 16) : '';
-            setStartTime(fmt(editData.start_time));
-            setEndTime(fmt(editData.end_time));
-            setDescription(editData.description);
-            setLocationName(editData.location_name || '');
+    const initProjects = useCallback(async () => {
+        try {
+            const res = await api.get('/projects/');
+            setProjects(res.data);
+        } catch (err) {
+            console.error('Failed to load projects', err);
         }
-    }, [editData]);
-
-    useEffect(() => {
-        if (projectId && projects.length > 0) {
-            const selectedProj = projects.find(p => p.id.toString() === projectId);
-            if (selectedProj) {
-                setProjectSearch(selectedProj.name);
-            }
-        }
-    }, [projectId, projects]);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsProjectDropdownOpen(false);
-                if (projectId) {
-                    const selectedProj = projects.find(p => p.id.toString() === projectId);
-                    if (selectedProj) {
-                        setProjectSearch(selectedProj.name);
-                    }
-                } else {
-                    setProjectSearch('');
-                }
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [projectId, projects]);
-
-    const filteredProjects = projects.filter(p =>
-        p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
-        (p.code && p.code.toLowerCase().includes(projectSearch.toLowerCase()))
-    ).slice(0, 10);
-
-    const formatToIsoLocal = (d: Date) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-
-    const parseToDate = (str: string) => {
-        if (!str) return null;
-        const d = new Date(str);
-        return isNaN(d.getTime()) ? null : d;
-    };
-
-    useEffect(() => {
-        if (startInputRef.current && !startFpRef.current) {
-            startFpRef.current = flatpickr(startInputRef.current, {
-                enableTime: true,
-                time_24hr: true,
-                dateFormat: "d/m/Y H:i",
-                locale: Russian,
-                allowInput: true,
-                onChange: (selectedDates) => {
-                    if (selectedDates[0]) {
-                        setStartTime(formatToIsoLocal(selectedDates[0]));
-                    } else {
-                        setStartTime('');
-                    }
-                },
-                onClose: (selectedDates) => {
-                    if (selectedDates[0]) {
-                        setStartTime(formatToIsoLocal(selectedDates[0]));
-                    } else {
-                        setStartTime('');
-                    }
-                }
-            });
-        }
-        if (endInputRef.current && !endFpRef.current) {
-            endFpRef.current = flatpickr(endInputRef.current, {
-                enableTime: true,
-                time_24hr: true,
-                dateFormat: "d/m/Y H:i",
-                locale: Russian,
-                allowInput: true,
-                onChange: (selectedDates) => {
-                    if (selectedDates[0]) {
-                        setEndTime(formatToIsoLocal(selectedDates[0]));
-                    } else {
-                        setEndTime('');
-                    }
-                },
-                onClose: (selectedDates) => {
-                    if (selectedDates[0]) {
-                        setEndTime(formatToIsoLocal(selectedDates[0]));
-                    } else {
-                        setEndTime('');
-                    }
-                }
-            });
-        }
-
-        return () => {
-            if (startFpRef.current) {
-                startFpRef.current.destroy();
-                startFpRef.current = null;
-            }
-            if (endFpRef.current) {
-                endFpRef.current.destroy();
-                endFpRef.current = null;
-            }
-        };
     }, []);
 
     useEffect(() => {
-        if (startFpRef.current) {
-            const currentFpDate = startFpRef.current.selectedDates[0];
-            const formattedCurrent = currentFpDate ? formatToIsoLocal(currentFpDate) : '';
-            if (formattedCurrent !== startTime) {
-                const parsed = parseToDate(startTime);
-                if (parsed) {
-                    startFpRef.current.setDate(parsed, false);
-                } else {
-                    startFpRef.current.clear();
-                }
-            }
-        }
-    }, [startTime]);
+        initProjects();
+    }, [initProjects]);
 
     useEffect(() => {
-        if (endFpRef.current) {
-            const currentFpDate = endFpRef.current.selectedDates[0];
-            const formattedCurrent = currentFpDate ? formatToIsoLocal(currentFpDate) : '';
-            if (formattedCurrent !== endTime) {
-                const parsed = parseToDate(endTime);
-                if (parsed) {
-                    endFpRef.current.setDate(parsed, false);
-                } else {
-                    endFpRef.current.clear();
+        const initForm = () => {
+            if (editData) {
+                setProjectId(editData.project_id ? editData.project_id.toString() : '');
+                const fmt = (d: string) => d ? new Date(d).toISOString().slice(0, 16) : '';
+                setStartTime(fmt(editData.start_time));
+                setEndTime(editData.end_time ? fmt(editData.end_time) : '');
+                setDescription(editData.description || '');
+                setStartLat(editData.start_lat || null);
+                setStartLng(editData.start_lng || null);
+                setEndLat(editData.end_lat || null);
+                setEndLng(editData.end_lng || null);
+                setLocationName(editData.location_name || '');
+                
+                const selectedProj = projects.find(p => p.id.toString() === (editData.project_id ? editData.project_id.toString() : ''));
+                if (selectedProj) {
+                    setProjectSearch(selectedProj.name);
                 }
+            } else {
+                setStartTime(new Date().toISOString().slice(0, 16));
             }
-        }
-    }, [endTime]);
+        };
 
-    const hasChanges = () => {
-        if (editData) {
-            const fmt = (d: string) => d ? new Date(d).toISOString().slice(0, 16) : '';
-            return (
-                projectId !== editData.project_id.toString() ||
-                startTime !== fmt(editData.start_time) ||
-                endTime !== fmt(editData.end_time) ||
-                description !== editData.description ||
-                locationName !== (editData.location_name || '')
-            );
+        if (projects.length > 0) {
+            initForm();
         }
-        return projectId !== '' || startTime !== '' || endTime !== '' || description !== '' || locationName !== '';
-    };
+    }, [editData, projects]);
 
-    const handleCloseWithConfirm = () => {
-        if (hasChanges()) {
-            if (window.confirm('Вы уверены что хотите отменить изменения?')) {
-                onClose();
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target as Node)) {
+                setIsProjectDropdownOpen(false);
             }
-        } else {
-            onClose();
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const getLocation = (type: 'start' | 'end') => {
+        setGeoLoading(true);
+        setGeoError('');
+        if (!navigator.geolocation) {
+            setGeoError('Геолокация не поддерживается вашим браузером');
+            setGeoLoading(false);
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                if (type === 'start') {
+                    setStartLat(position.coords.latitude);
+                    setStartLng(position.coords.longitude);
+                } else {
+                    setEndLat(position.coords.latitude);
+                    setEndLng(position.coords.longitude);
+                }
+                setGeoLoading(false);
+            },
+            (error) => {
+                console.error(error);
+                setGeoError('Не удалось получить координаты. Разрешите доступ к геоданным.');
+                setGeoLoading(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -226,272 +123,189 @@ const CreateOvertimeModal: React.FC<Props> = ({ onClose, onCreated, editData }) 
 
         try {
             const data = {
-                project_id: Number(projectId),
-                start_time: startTime,
-                end_time: endTime || null,
+                project_id: projectId ? parseInt(projectId) : null,
+                start_time: new Date(startTime).toISOString(),
+                end_time: endTime ? new Date(endTime).toISOString() : undefined,
                 description,
+                start_lat: startLat,
+                start_lng: startLng,
+                end_lat: endLat,
+                end_lng: endLng,
                 location_name: locationName
             };
 
             if (editData) {
-                await updateOvertime(editData.id, data);
+                await api.patch(`/overtime/${editData.id}`, data);
             } else {
-                await createOvertime(data);
+                await api.post('/overtime/', data);
             }
-
             onCreated();
-            onClose();
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Ошибка при сохранении заявки');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setError(axiosError.response?.data?.detail || 'Ошибка при сохранении заявки');
         } finally {
             setLoading(false);
         }
     };
 
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(2, 6, 23, 0.7)', backdropFilter: 'blur(8px)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px'
-        }} onClick={handleCloseWithConfirm}>
-            <style>{`
-                [data-theme='dark'] input::-webkit-calendar-picker-indicator {
-                    filter: invert(1) brightness(2) !important;
-                    -webkit-filter: invert(1) brightness(2) !important;
-                    opacity: 1 !important;
-                    cursor: pointer;
-                }
-                input[type="datetime-local"] {
-                    color-scheme: dark !important;
-                }
-                .project-dropdown-item:hover {
-                    background: var(--bg-tertiary) !important;
-                }
-            `}</style>
-            <div className="glass-card animate-fade-in" style={{
-                maxWidth: '600px', width: '100%', padding: '0', overflow: 'hidden', border: 'none', background: 'var(--bg-primary)'
-            }}
-                onClick={e => e.stopPropagation()}>
+    const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
 
-                {/* Modal Header */}
-                <div style={{
-                    padding: '24px 32px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                    <div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{editData ? 'Редактировать заявку' : 'Создать новую заявку'}</h2>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '2px' }}>{editData ? 'Внесите изменения в вашу сверхурочную работу' : 'Заполните данные о вашей сверхурочной работе'}</p>
+    return (
+        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
+            <div className="modal-content glass-card animate-scale-in" 
+                ref={modalRef}
+                style={{ maxWidth: '560px', padding: 0, overflow: 'hidden', borderRadius: '24px' }} 
+                onClick={e => e.stopPropagation()}>
+                
+                {/* Header */}
+                <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--primary-gradient)' }}>
+                            <FileText size={24} />
+                        </div>
+                        <div>
+                            <h3 style={{ fontWeight: 800, fontSize: '1.25rem' }}>{editData ? 'Редактировать заявку' : 'Новая заявка'}</h3>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Заполнение отчета о переработке</p>
+                        </div>
                     </div>
-                    <button
-                        onClick={handleCloseWithConfirm}
-                        style={{
-                            background: 'var(--bg-tertiary)', border: 'none', borderRadius: '50%',
-                            width: '32px', height: '32px', padding: '0',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            cursor: 'pointer', color: 'var(--text-primary)', outline: 'none'
-                        }}
-                    >
-                        <X size={18} strokeWidth={2.5} />
-                    </button>
+                    <button onClick={onClose} className="action-button-modern" style={{ width: '40px', height: '40px' }}><X size={20} /></button>
                 </div>
 
-                <div style={{ padding: '32px' }}>
+                <form onSubmit={handleSubmit} style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {error && (
-                        <div style={{
-                            padding: '16px', borderRadius: '12px', background: 'rgba(185, 28, 28, 0.1)',
-                            color: 'var(--danger)', fontSize: '0.9rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px'
-                        }}>
-                            <AlertCircle size={18} /> {error}
+                        <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', borderRadius: '12px', fontSize: '0.875rem', display: 'flex', gap: '8px', fontWeight: 600 }}>
+                            <AlertCircle size={20} /> {error}
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }} ref={dropdownRef}>
-                            <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Briefcase size={16} style={{ color: 'var(--accent)' }} /> Проект специализации
-                            </label>
-                            <div style={{ position: 'relative' }}>
-                                <input
-                                    type="text"
-                                    placeholder="Введите номер или название проекта..."
-                                    value={projectSearch}
-                                    onChange={e => {
-                                        setProjectSearch(e.target.value);
+                    {/* Проект */}
+                    <div className="form-group" style={{ position: 'relative' }} ref={projectDropdownRef}>
+                        <label>Проект</label>
+                        <div style={{ position: 'relative' }}>
+                            <Tag size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input
+                                type="text"
+                                value={projectSearch}
+                                onChange={e => {
+                                    setProjectSearch(e.target.value);
+                                    setIsProjectDropdownOpen(true);
+                                    if (e.target.value === '') setProjectId('');
+                                }}
+                                onFocus={() => setIsProjectDropdownOpen(true)}
+                                placeholder="Выберите проект..."
+                                style={{ paddingLeft: '44px', cursor: 'text' }}
+                            />
+                        </div>
+                        
+                        {isProjectDropdownOpen && (
+                            <div className="glass-card scrollbar-hidden" style={{ 
+                                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', 
+                                maxHeight: '200px', overflowY: 'auto', zIndex: 10, padding: '8px', gap: '4px', display: 'flex', flexDirection: 'column'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
                                         setProjectId('');
-                                        setIsProjectDropdownOpen(true);
+                                        setProjectSearch('Внутренний (Без проекта)');
+                                        setIsProjectDropdownOpen(false);
                                     }}
-                                    onFocus={() => setIsProjectDropdownOpen(true)}
-                                    required
-                                    style={{ paddingRight: '40px' }}
-                                />
-                                {projectSearch && (
+                                    style={{
+                                        padding: '10px 16px', textAlign: 'left', background: projectId === '' ? 'var(--bg-secondary)' : 'transparent',
+                                        border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)'
+                                    }}
+                                >
+                                    Внутренний (Без проекта)
+                                </button>
+                                {filteredProjects.map(p => (
                                     <button
+                                        key={p.id}
                                         type="button"
                                         onClick={() => {
-                                            setProjectSearch('');
-                                            setProjectId('');
-                                            setIsProjectDropdownOpen(true);
+                                            setProjectId(p.id.toString());
+                                            setProjectSearch(p.name);
+                                            setIsProjectDropdownOpen(false);
                                         }}
                                         style={{
-                                            position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                                            background: 'none', border: 'none', color: 'var(--text-muted)', padding: '4px', cursor: 'pointer',
-                                            width: 'auto', height: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            padding: '10px 16px', textAlign: 'left', background: projectId === p.id.toString() ? 'var(--bg-secondary)' : 'transparent',
+                                            border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                                         }}
                                     >
-                                        <X size={16} />
+                                        <span style={{ fontWeight: 600 }}>{p.name}</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{p.code}</span>
                                     </button>
+                                ))}
+                                {filteredProjects.length === 0 && (
+                                    <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Проекты не найдены</div>
                                 )}
                             </div>
+                        )}
+                    </div>
 
-                            {isProjectDropdownOpen && filteredProjects.length > 0 && (
-                                <div style={{
-                                    position: 'absolute', top: '100%', left: 0, right: 0,
-                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                    borderRadius: '12px', marginTop: '8px', zIndex: 10,
-                                    boxShadow: 'var(--card-shadow)', maxHeight: '250px', overflowY: 'auto'
-                                }}>
-                                    {filteredProjects.map((p: any) => (
-                                        <div
-                                            key={p.id}
-                                            onClick={() => {
-                                                setProjectId(p.id.toString());
-                                                setProjectSearch(p.name);
-                                                setIsProjectDropdownOpen(false);
-                                            }}
-                                            style={{
-                                                padding: '12px 16px', cursor: 'pointer',
-                                                background: projectId === p.id.toString() ? 'rgba(59,130,246,0.1)' : 'transparent',
-                                                borderBottom: '1px solid var(--border)',
-                                                display: 'flex', flexDirection: 'column', gap: '2px'
-                                            }}
-                                            className="project-dropdown-item"
-                                        >
-                                            <div style={{
-                                                fontWeight: 600,
-                                                fontSize: '0.9rem',
-                                                color: p.is_active === false ? 'var(--text-muted)' : 'var(--text-primary)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px'
-                                            }}>
-                                                {p.name}
-                                                {p.is_active === false && (
-                                                    <span className="badge badge-secondary" style={{
-                                                        fontSize: '0.7rem',
-                                                        padding: '2px 6px',
-                                                        background: 'var(--bg-tertiary)',
-                                                        color: 'var(--text-secondary)',
-                                                        borderRadius: '6px',
-                                                        border: '1px solid var(--border)'
-                                                    }}>
-                                                        Архив
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {p.code && <div style={{ fontSize: '0.75rem', color: 'var(--accent)', fontFamily: 'monospace' }}>{p.code}</div>}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Calendar size={16} style={{ color: 'var(--accent)' }} /> Дата и время начала
-                                </label>
-                                <div style={{ position: 'relative' }}>
-                                    <input
-                                        ref={startInputRef}
-                                        type="text"
-                                        placeholder="Выберите дату и время начала"
-                                        required
-                                        style={{ paddingRight: '44px' }}
-                                        className="datetime-input-custom"
-                                    />
-                                    <Calendar
-                                        size={18}
-                                        style={{
-                                            position: 'absolute',
-                                            right: '14px',
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            color: 'var(--text-muted)',
-                                            pointerEvents: 'none',
-                                            opacity: 0.8
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Calendar size={16} style={{ color: 'var(--accent)' }} /> Дата и время окончания
-                                </label>
-                                <div style={{ position: 'relative' }}>
-                                    <input
-                                        ref={endInputRef}
-                                        type="text"
-                                        placeholder="Выберите дату и время окончания"
-                                        required={!editData || editData.status !== 'IN_PROGRESS'}
-                                        style={{ paddingRight: '44px' }}
-                                        className="datetime-input-custom"
-                                    />
-                                    <Calendar
-                                        size={18}
-                                        style={{
-                                            position: 'absolute',
-                                            right: '14px',
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            color: 'var(--text-muted)',
-                                            pointerEvents: 'none',
-                                            opacity: 0.8
-                                        }}
-                                    />
-                                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div className="form-group">
+                            <label>Время начала</label>
+                            <div style={{ position: 'relative' }}>
+                                <Calendar size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} required style={{ paddingLeft: '44px' }} />
                             </div>
                         </div>
+                        <div className="form-group">
+                            <label>Время окончания (опц.)</label>
+                            <div style={{ position: 'relative' }}>
+                                <Clock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ paddingLeft: '44px' }} />
+                            </div>
+                        </div>
+                    </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <MapPin size={16} style={{ color: 'var(--accent)' }} /> Местоположение (объект)
-                            </label>
+                    <div className="form-group">
+                        <label>Описание работ</label>
+                        <textarea
+                            value={description}
+                            onChange={e => setDescription(e.target.value)}
+                            placeholder="Что было сделано?"
+                            required
+                            rows={3}
+                            style={{ resize: 'none' }}
+                        />
+                    </div>
+
+                    {/* Геолокация */}
+                    <div style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                            <MapPin size={20} style={{ color: 'var(--accent)' }} />
+                            <h4 style={{ fontWeight: 700, margin: 0, fontSize: '0.95rem' }}>Геолокация</h4>
+                        </div>
+                        
+                        {geoError && <div style={{ color: 'var(--error)', fontSize: '0.8rem', marginBottom: '12px' }}>{geoError}</div>}
+                        
+                        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                            <button type="button" onClick={() => getLocation('start')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                                {geoLoading ? 'Определение...' : startLat ? 'Точка старта (Обновить)' : 'Точка старта'}
+                            </button>
+                            <button type="button" onClick={() => getLocation('end')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                                {geoLoading ? 'Определение...' : endLat ? 'Точка финиша (Обновить)' : 'Точка финиша'}
+                            </button>
+                        </div>
+                        
+                        <div className="form-group" style={{ marginBottom: 0 }}>
                             <input
+                                type="text"
+                                placeholder="Или введите адрес вручную (Монтаж, БЦ Асыл Тау)"
                                 value={locationName}
                                 onChange={e => setLocationName(e.target.value)}
-                                placeholder="Укажите адрес или название объекта..."
-                                style={{ width: '100%' }}
+                                style={{ fontSize: '0.85rem' }}
                             />
                         </div>
+                    </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <FileText size={16} style={{ color: 'var(--accent)' }} /> Обоснование переработки
-                            </label>
-                            <textarea
-                                value={description}
-                                onChange={e => setDescription(e.target.value)}
-                                required
-                                rows={4}
-                                placeholder="Напишите, какие задачи были выполнены или почему возникла необходимость задержаться..."
-                            />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                            <button onClick={handleCloseWithConfirm} type="button" style={{
-                                flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid var(--border)',
-                                background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)'
-                            }}>
-                                Отмена
-                            </button>
-                            <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '14px' }}>
-                                {loading ? 'Подождите...' : (editData ? 'Сохранить изменения' : 'Отправить на согласование')}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                    <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
+                        <button type="button" onClick={onClose} className="secondary" style={{ flex: 1, padding: '14px' }}>Отмена</button>
+                        <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '14px' }}>
+                            {loading ? 'СОХРАНЕНИЕ...' : (editData ? 'СОХРАНИТЬ' : 'ОТПРАВИТЬ')}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

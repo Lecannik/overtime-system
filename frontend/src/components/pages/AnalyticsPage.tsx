@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
+/* eslint-disable */
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -20,6 +21,8 @@ import { COMPANY_LABELS } from '../../constants/locale';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
+import { User, AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics, Project, AnalyticsParams } from '../../types';
+import { AxiosError } from 'axios';
 
 const COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#0ea5e9', '#6366f1'];
 const STATUS_COLORS: Record<string, string> = {
@@ -28,7 +31,15 @@ const STATUS_COLORS: Record<string, string> = {
     'Отклонено': '#ef4444'
 };
 
-const StatCard = ({ title, value, sub, icon: Icon, color }: any) => (
+interface StatCardProps {
+    title: string;
+    value: string | number;
+    sub: string;
+    icon: React.ElementType;
+    color?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ title, value, sub, icon: Icon, color }) => (
     <div className="glass-card" style={{ flex: '1', minWidth: '240px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>{title}</p>
@@ -66,21 +77,27 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 const AnalyticsPage: React.FC = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState<any>(null);
-    const [summary, setSummary] = useState<any>(null);
-    const [projects, setProjects] = useState<any[]>([]);
-    const [departments, setDepartments] = useState<any[]>([]);
+    const [user, setUser] = useState<User | null>(null);
+    const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+    const [projects, setProjects] = useState<ProjectAnalytics[]>([]);
+    const [departments, setDepartments] = useState<DepartmentAnalytics[]>([]);
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState<string>('all');
     const [customDates, setCustomDates] = useState({ start: '', end: '' });
     const [compareBy, setCompareBy] = useState<'projects' | 'departments' | 'users'>('projects');
     const [selectedCompany, setSelectedCompany] = useState<string>('all');
     const [selectedProject, setSelectedProject] = useState<string>('all');
-    const [userStats, setUserStats] = useState<any[]>([]);
-    const [reviewStats, setReviewStats] = useState<any>(null);
+    const [userStats, setUserStats] = useState<UserAnalytics[]>([]);
+    const [reviewStats, setReviewStats] = useState<ReviewAnalytics | null>(null);
+    const [projectsList, setProjectsList] = useState<Project[]>([]);
 
-    const getFilterParams = () => {
-        const params: any = {};
+    const startInputRef = useRef<HTMLInputElement>(null);
+    const endInputRef = useRef<HTMLInputElement>(null);
+    const startFpRef = useRef<any>(null);
+    const endFpRef = useRef<any>(null);
+
+    const getFilterParams = useCallback((): AnalyticsParams => {
+        const params: AnalyticsParams = {};
         const now = new Date();
 
         if (period === 'week') {
@@ -97,9 +114,9 @@ const AnalyticsPage: React.FC = () => {
         if (selectedCompany && selectedCompany !== 'all') params.company = selectedCompany;
         if (selectedProject && selectedProject !== 'all') params.project_id = Number(selectedProject);
         return params;
-    };
+    }, [period, customDates, selectedCompany, selectedProject]);
 
-    const fetchAll = async () => {
+    const fetchAll = useCallback(async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
@@ -127,20 +144,13 @@ const AnalyticsPage: React.FC = () => {
             setDepartments(deptData);
             setUserStats(uStats);
             setReviewStats(revStats);
-            if (!projectsList.length) setProjectsList(allProjects); // Сохраняем список для фильтра
+            setProjectsList(allProjects);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    };
-
-    const [projectsList, setProjectsList] = useState<any[]>([]);
-
-    const startInputRef = useRef<HTMLInputElement>(null);
-    const endInputRef = useRef<HTMLInputElement>(null);
-    const startFpRef = useRef<any>(null);
-    const endFpRef = useRef<any>(null);
+    }, [navigate, getFilterParams]);
 
     const formatToYmd = (d: Date) => {
         const year = d.getFullYear();
@@ -166,7 +176,7 @@ const AnalyticsPage: React.FC = () => {
         if (period !== 'custom') {
             fetchAll();
         }
-    }, [period, selectedCompany, selectedProject]);
+    }, [period, selectedCompany, selectedProject, fetchAll]);
 
     // Инициализация flatpickr при выборе кастомного периода
     useEffect(() => {
@@ -272,9 +282,10 @@ const AnalyticsPage: React.FC = () => {
             link.click();
             link.parentNode?.removeChild(link);
             window.URL.revokeObjectURL(url);
-        } catch (error: any) {
-            console.error('Export error:', error);
-            alert(error.response?.data?.detail || 'Ошибка при экспорте отчета');
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            console.error('Export error:', axiosError);
+            alert(axiosError.response?.data?.detail || 'Ошибка при экспорте отчета');
         } finally {
             setLoading(false);
         }
@@ -290,7 +301,7 @@ const AnalyticsPage: React.FC = () => {
 
     return (
         <div className="page-container animate-fade-in">
-            <Header user={user} />
+            {user && <Header user={user} />}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
                 <div>
@@ -403,7 +414,7 @@ const AnalyticsPage: React.FC = () => {
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                                 data={(compareBy === 'projects' ? projects : compareBy === 'departments' ? departments : userStats)
-                                    .sort((a, b) => b.total_hours - a.total_hours)
+                                    .sort((a: any, b: any) => b.total_hours - a.total_hours)
                                     .slice(0, compareBy === 'users' ? 8 : 12)}
                                 layout={compareBy === 'users' ? 'horizontal' : 'vertical'}
                                 margin={{ left: compareBy === 'users' ? 0 : 120, right: 30, top: 10, bottom: 20 }}

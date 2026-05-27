@@ -2,14 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, BarChart3, ClipboardCheck, Settings,
-    LogOut, User, Sun, Moon, Menu, X
+    LogOut, User as UserIcon, Sun, Moon, Menu, X
 } from 'lucide-react';
 import Logo from '../atoms/Logo';
 import NotificationBell from './NotificationBell';
 import { logout } from '../../services/api';
+import { User } from '../../types';
 
 interface HeaderProps {
-    user: any;
+    user: User;
 }
 
 const Header: React.FC<HeaderProps> = ({ user }) => {
@@ -118,7 +119,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                         <button className="action-button-modern" onClick={toggleTheme} title="Переключить тему">
                             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
                         </button>
-                        <button className="action-button-modern header-btn-desktop" onClick={() => navigate('/profile')} title="Профиль"><User size={18} /></button>
+                        <button className="action-button-modern header-btn-desktop" onClick={() => navigate('/profile')} title="Профиль"><UserIcon size={18} /></button>
                         <button
                             onClick={handleLogout}
                             className="action-button-modern header-btn-desktop"

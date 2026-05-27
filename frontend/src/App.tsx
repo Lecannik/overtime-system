@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import React, { useEffect, useState } from 'react';
-import { ThemeProvider } from './context/ThemeContext';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ThemeProvider } from './context/ThemeProvider';
 import api from './services/api';
+import { User } from './types';
 
 import LoginPage from './components/pages/LoginPage';
 import DashboardPage from './components/pages/DashboardPage';
@@ -16,28 +17,30 @@ import AuthSuccessPage from './components/pages/AuthSuccessPage';
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('token');
   const location = useLocation();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(!!token);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setUser(res.data);
+    } catch (err) {
+      console.error('ProtectedRoute: Auth error', err);
+      localStorage.removeItem('token');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!token) {
-      setLoading(false);
       return;
     }
-    const fetchUser = async () => {
-      try {
-        // console.log('ProtectedRoute: fetching user...');
-        const res = await api.get('/auth/me');
-        setUser(res.data);
-      } catch (err) {
-        console.error('ProtectedRoute: Auth error', err);
-        localStorage.removeItem('token');
-      } finally {
-        setLoading(false);
-      }
+    const init = async () => {
+      await fetchUser();
     };
-    fetchUser();
-  }, [token]);
+    init();
+  }, [token, fetchUser]);
 
   if (!token) return <Navigate to="/login" state={{ from: location }} />;
 
