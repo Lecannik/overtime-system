@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import React, { useEffect, useState, useCallback } from 'react';
 import { ThemeProvider } from './context/ThemeProvider';
 import api from './services/api';
-import { User } from './types';
+import type { User } from './types';
 
 import LoginPage from './components/pages/LoginPage';
 import DashboardPage from './components/pages/DashboardPage';

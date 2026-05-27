@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Calendar, Clock, MapPin, Tag, FileText, AlertCircle } from 'lucide-react';
 import api from '../../services/api';
-import { Project, Overtime } from '../../types';
+import type { Project, Overtime } from '../../types';
 import { AxiosError } from 'axios';
 
 interface CreateOvertimeModalProps {

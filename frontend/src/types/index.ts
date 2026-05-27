@@ -10,7 +10,7 @@
 // ==================== ПОЛЬЗОВАТЕЛИ ====================
 
 /** Роль пользователя в системе. */
-export type UserRole = 'admin' | 'head' | 'manager' | 'employee';
+export type UserRole = 'admin' | 'head' | 'manager' | 'employee' | string;
 
 /** Компания пользователя. */
 export type UserCompany = 'Polymedia' | 'AJ-techCom' | string;
@@ -54,7 +54,7 @@ export type OvertimeStatus =
   | 'HEAD_APPROVED'
   | 'APPROVED'
   | 'REJECTED'
-  | 'CANCELLED';
+  | 'CANCELLED' | string;
 
 /** Полная модель заявки на переработку. */
 export interface Overtime {
@@ -67,10 +67,17 @@ export interface Overtime {
   end_time: string | null;
   total_hours: number | null;
   approved_hours: number | null;
+  hours?: number; // legacy property
   location_name: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  end_lat: number | null;
+  end_lng: number | null;
   manager_comment: string | null;
   head_comment: string | null;
   admin_comment: string | null;
+  manager_approved?: boolean | null;
+  head_approved?: boolean | null;
   created_at: string;
   updated_at: string | null;
   /** Пользователь (может быть вложен в ответе). */
@@ -97,6 +104,7 @@ export interface Project {
   code: string | null;
   manager_id: number | null;
   weekly_limit: number;
+  is_active?: boolean;
 }
 
 /** Данные для создания проекта. */
@@ -113,6 +121,7 @@ export interface ProjectUpdate {
   name?: string;
   manager_id?: number | null;
   weekly_limit?: number;
+  is_active?: boolean;
 }
 
 // ==================== ОТДЕЛЫ ====================
@@ -187,6 +196,10 @@ export interface AnalyticsSummary {
   rejected_count: number;
   pending_count: number;
   avg_hours_per_overtime: number;
+  approved_requests?: number;
+  pending_requests?: number;
+  rejected_requests?: number;
+  total_requests?: number;
 }
 
 // ==================== ОБЩИЕ ====================
@@ -204,4 +217,71 @@ export interface OperationResult {
   status: 'success' | 'error';
   message?: string;
   detail?: string;
+}
+
+export interface UserStats {
+    total_approved_hours: number;
+    total_requests: number;
+    active_requests: number;
+    projects_count: number;
+    daily_stats: any[];
+    by_project: any[];
+    current_month_hours: number;
+}
+
+export interface ProjectAnalytics {
+    project_id: number;
+    project_name: string;
+    total_hours: number;
+    total_requests: number;
+    approved_count: number;
+    unique_users: number;
+}
+
+export interface DepartmentAnalytics {
+    department_id: number;
+    department_name: string;
+    total_hours: number;
+    total_requests: number;
+    unique_users: number;
+}
+
+export interface UserAnalytics {
+    user_id: number;
+    full_name: string;
+    department_name: string | null;
+    total_hours: number;
+    total_requests: number;
+    approved_count: number;
+}
+
+export interface ReviewAnalytics {
+    total_requested_hours: number;
+    total_approved_hours: number;
+    exact_match_count: number;
+    less_than_requested_count: number;
+    more_than_requested_count: number;
+    avg_review_time_hours: number;
+}
+
+export interface AnalyticsParams {
+    start_date?: string;
+    end_date?: string;
+    department_id?: number;
+    project_id?: number;
+    company?: string;
+}
+
+export interface LoginResponse {
+    access_token: string;
+    token_type: string;
+    user: User;
+    status?: string;
+    email?: string;
+}
+
+export interface UserUpdatePreferences {
+    is_2fa_enabled?: boolean;
+    tg_notifications?: boolean;
+    email_notifications?: boolean;
 }

@@ -9,7 +9,7 @@ import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
 import { STATUS_LABELS } from '../../constants/locale';
-import { User, Overtime } from '../../types';
+import type { User, Overtime } from '../../types';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
@@ -443,7 +443,7 @@ const ReviewPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => { setReviewingId(ot.id); setApprovedHours(ot.hours.toString()); }}
+                                        onClick={() => { setReviewingId(ot.id); setApprovedHours((ot.hours || 0).toString()); }}
                                         className="primary"
                                         style={{ width: 'auto', padding: '0 20px', height: '40px' }}
                                     >
@@ -492,7 +492,6 @@ const ReviewPage: React.FC = () => {
             {selectedOvertime && (
                 <OvertimeDetailModal
                     overtime={selectedOvertime}
-                    currentUser={user}
                     onClose={() => setSelectedOvertime(null)}
                     onStatusUpdate={() => {
                         setUpdateTrigger(prev => prev + 1);

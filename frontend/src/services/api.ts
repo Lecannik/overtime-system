@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { 
+import type { 
     LoginResponse, User, Project, Department, Overtime, 
     PaginatedResponse, UserStats, AuditLog, Notification,
     AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics,
@@ -45,6 +45,8 @@ export const requestPasswordReset = (email: string) =>
     api.post<{ detail: string }>('/auth/password-reset/request', { email }).then(r => r.data);
 export const confirmPasswordReset = (data: Record<string, unknown>) => 
     api.post<{ detail: string }>('/auth/password-reset/confirm', data).then(r => r.data);
+export const changePassword = (data: Record<string, unknown>) => 
+    api.post<{ detail: string }>('/auth/change-password', data).then(r => r.data);
 
 // --- USERS ---
 export const getUsers = (params?: Record<string, unknown>) => 

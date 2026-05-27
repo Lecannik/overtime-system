@@ -4,7 +4,7 @@ import {
     Building2, Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Briefcase, Download, X as XIcon
 } from 'lucide-react';
 
-import {
+import api, {
     getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
     updateDepartment, updateProject, getOdooProjects, importOdooProjects
@@ -436,7 +436,7 @@ const UsersPage: React.FC = () => {
                                         <td className="table-cell">
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                 <span className="badge badge-info" style={{ width: 'fit-content' }}>{ROLE_LABELS[u.role]}</span>
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company]}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company ?? ''] ?? u.company}</span>
                                             </div>
                                         </td>
                                         <td className="table-cell">
@@ -533,7 +533,7 @@ const UsersPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                                        <button onClick={() => { setEditProjectId(p.id); setEditProjectName(p.name); setEditProjectActive(p.is_active); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
+                                        <button onClick={() => { setEditProjectId(p.id); setEditProjectName(p.name); setEditProjectActive(p.is_active ?? true); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
                                         <button onClick={() => handleDeleteAction(p.id, 'project')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
                                     </div>
                                 </div>

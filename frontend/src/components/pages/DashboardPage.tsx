@@ -18,7 +18,7 @@ import LoadingOverlay from '../atoms/LoadingOverlay';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
-import { User, Overtime, UserStats } from '../../types';
+import type { User, Overtime, UserStats } from '../../types';
 import { AxiosError } from 'axios';
 
 interface ColumnConfig {

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, User as UserIcon, Mail, Shield, Building2, Globe, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react';
 import { createUser, updateUser, getDepartments } from '../../services/api';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
-import { User, Department } from '../../types';
+import type { User, Department } from '../../types';
 import { AxiosError } from 'axios';
 
 interface UserModalProps {
@@ -72,9 +72,9 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                 password: !editData ? password : undefined
             };
             if (editData) {
-                await updateUser(editData.id, data);
+                await updateUser(editData.id, data as any);
             } else {
-                await createUser(data);
+                await createUser(data as any);
             }
             onSuccess();
             onClose();

@@ -2,7 +2,7 @@
 import React from 'react';
 import { X, Calendar, Clock, MapPin, Tag, FileText, User as UserIcon, ShieldCheck } from 'lucide-react';
 import { STATUS_LABELS, formatDateTime } from '../../constants/locale';
-import { User, Overtime } from '../../types';
+import type { Overtime } from '../../types';
 
 interface OvertimeDetailModalProps {
     overtime: Overtime;

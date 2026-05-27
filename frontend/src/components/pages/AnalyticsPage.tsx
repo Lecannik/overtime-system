@@ -21,7 +21,7 @@ import { COMPANY_LABELS } from '../../constants/locale';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
-import { User, AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics, Project, AnalyticsParams } from '../../types';
+import type { User, AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics, Project, AnalyticsParams } from '../../types';
 import { AxiosError } from 'axios';
 
 const COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#0ea5e9', '#6366f1'];
@@ -173,9 +173,12 @@ const AnalyticsPage: React.FC = () => {
     };
 
     useEffect(() => {
-        if (period !== 'custom') {
-            fetchAll();
-        }
+        const initFetch = async () => {
+            if (period !== 'custom') {
+                await fetchAll();
+            }
+        };
+        initFetch();
     }, [period, selectedCompany, selectedProject, fetchAll]);
 
     // Инициализация flatpickr при выборе кастомного периода
@@ -292,12 +295,14 @@ const AnalyticsPage: React.FC = () => {
     };
 
     const pieData = summary ? [
-        { name: 'Одобрено', value: summary.approved_requests },
-        { name: 'Ожидает', value: summary.pending_requests },
-        { name: 'Отклонено', value: summary.rejected_requests },
-    ].filter(d => d.value > 0) : [];
+        { name: 'Одобрено', value: summary.approved_requests || summary.approved_count || 0 },
+        { name: 'Ожидает', value: summary.pending_requests || summary.pending_count || 0 },
+        { name: 'Отклонено', value: summary.rejected_requests || summary.rejected_count || 0 },
+    ].filter(d => (d.value || 0) > 0) : [];
 
     if (loading && !summary) return <div className="page-container"><Skeleton height={800} /></div>;
+
+    const chartData = compareBy === 'projects' ? projects : compareBy === 'departments' ? departments : userStats;
 
     return (
         <div className="page-container animate-fade-in">
@@ -359,8 +364,8 @@ const AnalyticsPage: React.FC = () => {
 
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
                 <StatCard title="Всего часов" value={`${summary?.total_hours?.toFixed(1) || 0}ч`} sub="Суммарная переработка" icon={Clock} color="var(--primary)" />
-                <StatCard title="Заявок" value={summary?.total_requests || 0} sub="Всего создано" icon={FileCheck} color="var(--success)" />
-                <StatCard title="Ожидает" value={summary?.pending_requests || 0} sub="Требуют внимания" icon={Activity} color="var(--warning)" />
+                <StatCard title="Заявок" value={summary?.total_requests || summary?.total_overtimes || 0} sub="Всего создано" icon={FileCheck} color="var(--success)" />
+                <StatCard title="Ожидает" value={summary?.pending_requests || summary?.pending_count || 0} sub="Требуют внимания" icon={Activity} color="var(--warning)" />
             </div>
 
             <div className="analytics-charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
@@ -413,9 +418,7 @@ const AnalyticsPage: React.FC = () => {
                     <div style={{ height: '350px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
-                                data={(compareBy === 'projects' ? projects : compareBy === 'departments' ? departments : userStats)
-                                    .sort((a: any, b: any) => b.total_hours - a.total_hours)
-                                    .slice(0, compareBy === 'users' ? 8 : 12)}
+                                data={([...chartData] as any[]).sort((a: any, b: any) => b.total_hours - a.total_hours).slice(0, compareBy === 'users' ? 8 : 12)}
                                 layout={compareBy === 'users' ? 'horizontal' : 'vertical'}
                                 margin={{ left: compareBy === 'users' ? 0 : 120, right: 30, top: 10, bottom: 20 }}
                             >

@@ -8,7 +8,7 @@ import {
 import api, { updateMyPreferences } from '../../services/api';
 import Header from '../layout/Header';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
-import { User, UserUpdatePreferences } from '../../types';
+import type { User, UserUpdatePreferences } from '../../types';
 import { AxiosError } from 'axios';
 
 const ProfilePage: React.FC = () => {
@@ -104,7 +104,7 @@ const ProfilePage: React.FC = () => {
                                     <Building2 size={18} style={{ color: 'var(--success)' }} />
                                     <div style={{ textAlign: 'left' }}>
                                         <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>Компания</p>
-                                        <p style={{ fontSize: '0.85rem', fontWeight: 700 }}>{user ? COMPANY_LABELS[user.company] : '-'}</p>
+                                        <p style={{ fontSize: '0.85rem', fontWeight: 700 }}>{user ? COMPANY_LABELS[user.company || 'Polymedia'] : '-'}</p>
                                     </div>
                                 </div>
                             </div>

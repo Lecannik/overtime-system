@@ -7,7 +7,7 @@ import {
 import Logo from '../atoms/Logo';
 import NotificationBell from './NotificationBell';
 import { logout } from '../../services/api';
-import { User } from '../../types';
+import type { User } from '../../types';
 
 interface HeaderProps {
     user: User;
@@ -198,7 +198,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                             style={{ flex: 1, display: 'flex', gap: '8px' }} 
                             onClick={() => { navigate('/profile'); setIsMobileMenuOpen(false); }}
                         >
-                            <User size={18} /> Профиль
+                            <UserIcon size={18} /> Профиль
                         </button>
                         <button 
                             className="action-button-modern" 

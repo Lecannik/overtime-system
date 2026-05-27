@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, ArrowRight, Eye, EyeOff, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { api, changePassword } from '../../services/api';
 import Logo from '../atoms/Logo';
-import { User } from '../../types';
+import type { User } from '../../types';
 import { AxiosError } from 'axios';
 
 const ChangePasswordPage: React.FC = () => {

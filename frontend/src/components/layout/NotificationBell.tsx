@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check } from 'lucide-react';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/api';
 import { formatTime } from '../../constants/locale';
-import { Notification } from '../../types';
+import type { Notification } from '../../types';
 
 const NotificationBell: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
