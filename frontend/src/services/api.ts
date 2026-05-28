@@ -75,15 +75,15 @@ export const importOdooProjects = (projects: Partial<OdooProjectPreview>[]) => a
 
 // --- OVERTIMES ---
 export const getMyOvertimes = (params?: Record<string, unknown>) => 
-    api.get<PaginatedResponse<Overtime>>('/overtime/my', { params }).then(r => r.data);
-export const getMyStats = () => api.get<UserStats>('/overtime/stats').then(r => r.data);
-export const createOvertime = (data: Partial<Overtime>) => api.post<Overtime>('/overtime/', data).then(r => r.data);
-export const updateOvertime = (id: number, data: Partial<Overtime>) => api.patch<Overtime>(`/overtime/${id}`, data).then(r => r.data);
-export const cancelOvertime = (id: number) => api.post(`/overtime/${id}/cancel`).then(r => r.data);
+    api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
+export const getMyStats = () => api.get<UserStats>('/overtimes/stats/me').then(r => r.data);
+export const createOvertime = (data: Partial<Overtime>) => api.post<Overtime>('/overtimes/', data).then(r => r.data);
+export const updateOvertime = (id: number, data: Partial<Overtime>) => api.patch<Overtime>(`/overtimes/${id}`, data).then(r => r.data);
+export const cancelOvertime = (id: number) => api.post(`/overtimes/${id}/cancel`).then(r => r.data);
 export const getOvertimes = (params?: Record<string, unknown>) => 
-    api.get<PaginatedResponse<Overtime>>('/overtime/', { params }).then(r => r.data);
+    api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
 export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) => 
-    api.post(`/overtime/${id}/review`, { approved, comment, as_role, approved_hours }).then(r => r.data);
+    api.post(`/overtimes/${id}/review`, { approved, comment, as_role, approved_hours }).then(r => r.data);
 
 // --- ANALYTICS ---
 export const getAnalyticsSummary = (params?: AnalyticsParams) => 

@@ -135,9 +135,9 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
             };
 
             if (editData) {
-                await api.patch(`/overtime/${editData.id}`, data);
+                await api.patch(`/overtimes/${editData.id}`, data);
             } else {
-                await api.post('/overtime/', data);
+                await api.post('/overtimes/', data);
             }
             onCreated();
         } catch (err: unknown) {
