@@ -64,6 +64,9 @@ async def authenticate_user(session: AsyncSession, email: str, password: str):
     if user is None:
         raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
 
+    if not user.hashed_password:
+        raise HTTPException(status_code=400, detail='Этот аккаунт настроен для входа через Microsoft.')
+
     if not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
 
