@@ -50,22 +50,22 @@ export const changePassword = (data: Record<string, unknown>) =>
 
 // --- USERS ---
 export const getUsers = (params?: Record<string, unknown>) => 
-    api.get<PaginatedResponse<User>>('/admin/users/', { params }).then(r => r.data);
-export const createUser = (data: Partial<User> & { password?: string }) => api.post<User>('/admin/users/', data).then(r => r.data);
+    api.get<PaginatedResponse<User>>('/admin/users', { params }).then(r => r.data);
+export const createUser = (data: Partial<User> & { password?: string }) => api.post<User>('/admin/users', data).then(r => r.data);
 export const updateUser = (id: number, data: Partial<User>) => api.patch<User>(`/admin/users/${id}`, data).then(r => r.data);
 export const deleteUser = (id: number) => api.delete(`/admin/users/${id}`).then(r => r.data);
 export const resetUserPassword = (id: number) => api.post<{ detail: string }>(`/admin/users/${id}/reset-password`).then(r => r.data);
 export const updateMyPreferences = (data: Partial<User>) => api.patch<User>('/auth/me', data).then(r => r.data);
 
 // --- DEPARTMENTS ---
-export const getDepartments = () => api.get<Department[]>('/admin/departments/').then(r => r.data);
-export const createDepartment = (data: { name: string }) => api.post<Department>('/admin/departments/', data).then(r => r.data);
+export const getDepartments = () => api.get<Department[]>('/admin/departments').then(r => r.data);
+export const createDepartment = (data: { name: string }) => api.post<Department>('/admin/departments', data).then(r => r.data);
 export const updateDepartment = (id: number, data: Partial<Department>) => api.patch<Department>(`/admin/departments/${id}`, data).then(r => r.data);
 export const deleteDepartment = (id: number) => api.delete(`/admin/departments/${id}`).then(r => r.data);
 
 // --- PROJECTS ---
-export const getAdminProjects = () => api.get<Project[]>('/admin/projects/').then(r => r.data);
-export const createProject = (data: { name: string; code: string }) => api.post<Project>('/admin/projects/', data).then(r => r.data);
+export const getAdminProjects = () => api.get<Project[]>('/admin/projects').then(r => r.data);
+export const createProject = (data: { name: string; code: string }) => api.post<Project>('/admin/projects', data).then(r => r.data);
 export const updateProject = (id: number, data: Partial<Project>) => api.patch<Project>(`/admin/projects/${id}`, data).then(r => r.data);
 export const deleteProject = (id: number) => api.delete(`/admin/projects/${id}`).then(r => r.data);
 
@@ -103,7 +103,7 @@ export const exportMyAnalytics = () =>
 
 // --- AUDIT ---
 export const getAuditLogs = (limit = 100, offset = 0, search?: string) => 
-    api.get<PaginatedResponse<AuditLog>>('/admin/audit-logs/', { params: { limit, offset, search } }).then(r => r.data);
+    api.get<PaginatedResponse<AuditLog>>('/audit/', { params: { limit, offset, search } }).then(r => r.data);
 
 // --- NOTIFICATIONS ---
 export const getNotifications = () => api.get<Notification[]>('/notifications/').then(r => r.data);

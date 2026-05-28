@@ -91,6 +91,9 @@ jobs:
         if: needs.build-backend.result == 'success' && needs.build-frontend.result == 'success'
         run: |
           cd /opt/overtime
+          git fetch origin
+          git checkout origin/main -- infra/gateway/nginx.conf
+          cp infra/gateway/nginx.conf nginx.conf
           docker compose pull
           docker compose up -d
           docker compose restart nginx-router
