@@ -73,6 +73,8 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/overtime-frontend:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/overtime-frontend:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=https://overtime.polymedia.kz
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
