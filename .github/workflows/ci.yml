@@ -1,10 +1,9 @@
 name: CI Pipeline
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_call:
 
 jobs:
   # 1. Тестирование Бэкенда (FastAPI)
@@ -39,11 +38,11 @@ jobs:
       - name: Run Pytest
         env:
           POSTGRES_USER: overtime_user
-          POSTGRES_PASSWORD: supersecret
+          POSTGRES_PASSWORD: ci_test_only_pwd_42x
           POSTGRES_DB: overtime_db
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          SECRET_KEY: secret_key_for_test
+          SECRET_KEY: ci_test_secret_not_for_prod
         run: |
           PYTHONPATH=. pytest --asyncio-mode=auto app/tests/test_auth.py app/tests/test_overtime.py
 

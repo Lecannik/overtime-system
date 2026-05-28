@@ -7,8 +7,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Создаём непривилегированного пользователя
+RUN addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser
+
 # Чтобы Alembic видел папку app как модуль
 ENV PYTHONPATH=/app
+# Перенаправляем кэш Whisper в /app/.cache (вместо /root)
+ENV XDG_CACHE_HOME=/app/.cache
 
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
@@ -23,5 +29,11 @@ COPY ./alembic ./alembic
 
 # Скрипты администрирования (create_admin и др.)
 COPY ./scripts ./scripts
+
+# Подготавливаем директории для данных и устанавливаем права
+RUN mkdir -p /app/uploads /app/.cache && \
+    chown -R appuser:appgroup /app
+
+USER appuser
 
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

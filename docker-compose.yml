@@ -28,7 +28,7 @@ services:
       postgres: { condition: service_healthy }
     volumes:
       - ./backend/uploads:/app/uploads
-      - ./models/cache:/root/.cache/whisper
+      - ./models/cache:/app/.cache/whisper
       - ./models/gazeta:/app/models/gazeta # Проброс модели суммаризатора
     networks: [ overtime_network ]
 

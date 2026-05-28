@@ -39,7 +39,7 @@ services:
       postgres: { condition: service_healthy }
     volumes:
       - uploads_data:/app/uploads
-      - whisper_cache:/root/.cache/whisper
+      - whisper_cache:/app/.cache/whisper
     networks: [overtime_network]
 
   # 3. Фронтенд (React → Nginx) — образ из DockerHub

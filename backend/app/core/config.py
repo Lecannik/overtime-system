@@ -21,10 +21,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # CORS: список разрешённых источников через запятую.
+    # CORS: список разрешённых источников через запятую. ОБЯЗАТЕЛЬНОЕ поле.
     # Например: "http://localhost:8090,https://overtime.company.kz"
-    # Для разработки можно оставить "*", но НЕ в продакшне.
-    ALLOWED_ORIGINS: str = "*"
+    # ⚠️ НЕ используйте "*" в продакшне.
+    ALLOWED_ORIGINS: str
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str | None = None

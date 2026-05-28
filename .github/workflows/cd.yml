@@ -1,13 +1,14 @@
 # =======================================================
-# GitHub Actions: CD Pipeline — Сборка, Публикация и Деплой с уведомлением в Telegram
+# GitHub Actions: CD Pipeline — Сборка, Публикация и Деплой
 # =======================================================
-# Запускается после успешного прохождения CI при push в main.
+# Запускается при push в main. Сначала прогоняет CI-тесты,
+# затем собирает Docker-образы, деплоит и уведомляет в Telegram.
 #
 # Требуемые GitHub Secrets:
-#   DOCKERHUB_USERNAME — логин DockerHub (lecannik)
-#   DOCKERHUB_TOKEN   — Access Token (https://hub.docker.com/settings/security)
+#   DOCKERHUB_USERNAME — логин DockerHub
+#   DOCKERHUB_TOKEN   — Access Token
 #   TELEGRAM_BOT_TOKEN — Токен бота
-#   TELEGRAM_CHAT_ID   — ID чата или пользователя для уведомлений
+#   TELEGRAM_CHAT_ID   — ID чата для уведомлений
 # =======================================================
 
 name: CD — Build, Push & Deploy
@@ -19,9 +20,17 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────
+  # CI-проверки (тесты + линтинг) — gate перед сборкой
+  # ──────────────────────────────────────────────────────
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # ──────────────────────────────────────────────────────
   # Сборка и публикация образа БЭКЕНДА
   # ──────────────────────────────────────────────────────
   build-backend:
+    needs: [ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -51,6 +60,7 @@ jobs:
   # Сборка и публикация образа ФРОНТЕНДА
   # ──────────────────────────────────────────────────────
   build-frontend:
+    needs: [ci]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -84,11 +94,9 @@ jobs:
   deploy:
     runs-on: self-hosted
     needs: [build-backend, build-frontend]
-    if: always() && github.ref == 'refs/heads/main'
 
     steps:
       - name: Update application
-        if: needs.build-backend.result == 'success' && needs.build-frontend.result == 'success'
         run: |
           cd /opt/overtime
           git fetch origin
@@ -97,23 +105,55 @@ jobs:
           docker compose pull
           docker compose up -d
           docker compose restart nginx-router
-          docker image prune -f
+
+          # Проверка доступности бэкенда после деплоя
+          echo "⏳ Ожидаем запуск бэкенда..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost/api/v1/health > /dev/null 2>&1; then
+              echo "✅ Бэкенд доступен"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "❌ Бэкенд не ответил за 60 секунд"
+              docker compose logs --tail=50 backend
+              exit 1
+            fi
+            sleep 2
+          done
+
+          # Очистка только устаревших образов (старше 24ч)
+          docker image prune -f --filter "until=24h"
 
       - name: Send Telegram Notification
         if: always()
+        env:
+          BUILD_BACKEND: ${{ needs.build-backend.result }}
+          BUILD_FRONTEND: ${{ needs.build-frontend.result }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || 'Ручной запуск' }}
+          ACTOR: ${{ github.actor }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # Формируем статус
-          if [[ "${{ needs.build-backend.result }}" == "success" && "${{ needs.build-frontend.result }}" == "success" ]]; then
-            STATUS="✅ *Успешно*"
+          if [[ "$BUILD_BACKEND" == "success" && "$BUILD_FRONTEND" == "success" ]]; then
+            STATUS="✅ Успешно"
           else
-            STATUS="❌ *Ошибка*"
+            STATUS="❌ Ошибка"
           fi
-          
-          # Текст сообщения
-          MESSAGE="${STATUS} %0A🚀 *Проект:* Overtime Pro %0A🏗 *Сборка:* #${{ github.run_number }} %0A👤 *Автор:* ${{ github.actor }} %0A📝 *Коммит:* ${{ github.event.head_commit.message }} %0A🔗 [Подробнее](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-          
-          # Отправка через curl
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=${MESSAGE}" \
-            -d "parse_mode=Markdown"
+
+          # Экранируем пользовательский ввод (защита от Script Injection)
+          SAFE_MSG=$(echo "$COMMIT_MSG" | head -c 200 | tr -cd '[:alnum:][:space:]:.,-/')
+          SAFE_ACTOR=$(echo "$ACTOR" | tr -cd '[:alnum:]_-')
+
+          MESSAGE="${STATUS}
+          Проект: Overtime Pro
+          Сборка: #${RUN_NUMBER}
+          Автор: ${SAFE_ACTOR}
+          Коммит: ${SAFE_MSG}
+          https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_CHAT}" \
+            -d "text=${MESSAGE}"
