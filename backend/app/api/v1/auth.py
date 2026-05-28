@@ -319,6 +319,7 @@ async def microsoft_login_redirect():
         "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email profile",
+        "prompt": "select_account",
     })
     
     # Редиректим на эндпоинт авторизации Authentik
