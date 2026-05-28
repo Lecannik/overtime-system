@@ -22,7 +22,8 @@ const ProfilePage: React.FC = () => {
     const [prefs, setPrefs] = useState<UserUpdatePreferences>({
         is_2fa_enabled: false,
         tg_notifications: false,
-        email_notifications: true
+        email_notifications: true,
+        telegram_chat_id: ''
     });
 
     const fetchUser = useCallback(async () => {
@@ -34,7 +35,8 @@ const ProfilePage: React.FC = () => {
             setPrefs({
                 is_2fa_enabled: res.data.is_2fa_enabled,
                 tg_notifications: res.data.tg_notifications,
-                email_notifications: res.data.email_notifications
+                email_notifications: res.data.email_notifications,
+                telegram_chat_id: res.data.telegram_chat_id || ''
             });
         } catch (err) {
             console.error(err);
@@ -137,18 +139,44 @@ const ProfilePage: React.FC = () => {
                                     <input type="checkbox" checked={prefs.email_notifications} onChange={e => setPrefs({ ...prefs, email_notifications: e.target.checked })} style={{ width: '20px', height: '20px', accentColor: 'var(--primary)' }} />
                                 </label>
 
-                                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Smartphone size={20} />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Smartphone size={20} />
+                                            </div>
+                                            <div>
+                                                <p style={{ fontWeight: 700, fontSize: '0.9rem' }}>Telegram-бот</p>
+                                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Уведомления в мессенджере</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p style={{ fontWeight: 700, fontSize: '0.9rem' }}>Telegram-бот</p>
-                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Уведомления в мессенджере</p>
+                                        <input type="checkbox" checked={prefs.tg_notifications} onChange={e => setPrefs({ ...prefs, tg_notifications: e.target.checked })} style={{ width: '20px', height: '20px', accentColor: 'var(--primary)' }} />
+                                    </label>
+
+                                    {prefs.tg_notifications && (
+                                        <div style={{ marginTop: '12px', paddingLeft: '52px', animation: 'fadeIn 0.2s ease-out' }}>
+                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                                Telegram Chat ID (получите у бота, отправив команду /start)
+                                            </p>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Например: 123456789" 
+                                                value={prefs.telegram_chat_id || ''} 
+                                                onChange={e => setPrefs({ ...prefs, telegram_chat_id: e.target.value })} 
+                                                style={{ 
+                                                    width: '100%', 
+                                                    padding: '10px 14px', 
+                                                    borderRadius: '10px', 
+                                                    background: 'var(--bg-tertiary)', 
+                                                    border: '1px solid var(--border-color)',
+                                                    color: 'var(--text-main)',
+                                                    fontSize: '0.85rem',
+                                                    outline: 'none'
+                                                }} 
+                                            />
                                         </div>
-                                    </div>
-                                    <input type="checkbox" checked={prefs.tg_notifications} onChange={e => setPrefs({ ...prefs, tg_notifications: e.target.checked })} style={{ width: '20px', height: '20px', accentColor: 'var(--primary)' }} />
-                                </label>
+                                    )}
+                                </div>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '32px 0 24px' }}>

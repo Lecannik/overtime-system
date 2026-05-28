@@ -284,4 +284,5 @@ export interface UserUpdatePreferences {
     is_2fa_enabled?: boolean;
     tg_notifications?: boolean;
     email_notifications?: boolean;
+    telegram_chat_id?: string | null;
 }
