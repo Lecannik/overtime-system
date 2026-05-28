@@ -43,6 +43,7 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           SECRET_KEY: ci_test_secret_not_for_prod
+          ALLOWED_ORIGINS: "http://localhost"
         run: |
           PYTHONPATH=. pytest --asyncio-mode=auto app/tests/test_auth.py app/tests/test_overtime.py
 
