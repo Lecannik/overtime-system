@@ -98,6 +98,7 @@ jobs:
     steps:
       - name: Update application
         run: |
+          ssh -o StrictHostKeyChecking=no nik@192.168.20.21 'bash -s' << 'EOF'
           cd /opt/overtime
           git fetch origin
           git checkout origin/main -- infra/gateway/nginx.conf
@@ -123,6 +124,7 @@ jobs:
 
           # Очистка только устаревших образов (старше 24ч)
           docker image prune -f --filter "until=24h"
+          EOF
 
       - name: Send Telegram Notification
         if: always()
