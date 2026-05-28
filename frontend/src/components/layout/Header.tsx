@@ -31,7 +31,12 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
 
     const handleLogout = async () => {
         try {
-            await logout();
+            const response = await logout();
+            if (response.data && response.data.sso_logout_url) {
+                localStorage.removeItem('token');
+                window.location.href = response.data.sso_logout_url;
+                return;
+            }
         } catch (error) {
             console.error('Ошибка при выходе из системы:', error);
         } finally {

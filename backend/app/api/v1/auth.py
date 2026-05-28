@@ -173,7 +173,7 @@ async def logout(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Выход из системы, отзыв Refresh Token.
+    Выход из системы, отзыв Refresh Token и генерация URL для выхода из SSO Authentik.
     """
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
@@ -181,7 +181,18 @@ async def logout(
         await revoke_refresh_token(session, refresh_token)
         
     response.delete_cookie(key="refresh_token")
-    return {"detail": "Успешный выход из системы"}
+    
+    sso_logout_url = None
+    if settings.AUTHENTIK_BASE_URL:
+        frontend_url = settings.ALLOWED_ORIGINS.split(",")[0] if settings.ALLOWED_ORIGINS != "*" else "http://localhost:8090"
+        if "overtime.polymedia.kz" in settings.ALLOWED_ORIGINS:
+            frontend_url = "https://overtime.polymedia.kz"
+        sso_logout_url = f"{settings.AUTHENTIK_BASE_URL}/flows/user/logout/?next={frontend_url}/login"
+        
+    return {
+        "detail": "Успешный выход из системы",
+        "sso_logout_url": sso_logout_url
+    }
 
 
 @router.get("/me", response_model=UserResponse)
