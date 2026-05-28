@@ -93,6 +93,7 @@ jobs:
           cd /opt/overtime
           docker compose pull
           docker compose up -d
+          docker compose restart nginx-router
           docker image prune -f
 
       - name: Send Telegram Notification
