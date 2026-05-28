@@ -29,6 +29,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
         setTheme(prev => prev === 'light' ? 'dark' : 'light');
     };
 
+
     const handleLogout = async () => {
         try {
             const response = await logout();
@@ -44,6 +45,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
             navigate('/login');
         }
     };
+
 
     const navItems = [
         { path: '/dashboard', label: 'Главная', icon: LayoutDashboard },
@@ -111,9 +113,9 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                     <div className="user-info-desktop">
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{user?.full_name || 'Загрузка...'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {user?.role === 'admin' ? 'Администратор' : 
-                             user?.role === 'head' ? 'Нач. отдела' :
-                             user?.role === 'manager' ? 'Менеджер' : 'Сотрудник'}
+                            {user?.role === 'admin' ? 'Администратор' :
+                                user?.role === 'head' ? 'Нач. отдела' :
+                                    user?.role === 'manager' ? 'Менеджер' : 'Сотрудник'}
                         </div>
                     </div>
 
@@ -133,10 +135,10 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                         >
                             <LogOut size={18} />
                         </button>
-                        
-                        <button 
-                            className="action-button-modern burger-button" 
-                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+
+                        <button
+                            className="action-button-modern burger-button"
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                             title="Меню"
                         >
                             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -185,29 +187,29 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                             </button>
                         );
                     })}
-                    
+
                     <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }}></div>
-                    
+
                     <div style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{user?.full_name}</div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            {user?.role === 'admin' ? 'Администратор' : 
-                             user?.role === 'head' ? 'Начальник отдела' :
-                             user?.role === 'manager' ? 'Менеджер' : 'Сотрудник'}
+                            {user?.role === 'admin' ? 'Администратор' :
+                                user?.role === 'head' ? 'Начальник отдела' :
+                                    user?.role === 'manager' ? 'Менеджер' : 'Сотрудник'}
                         </div>
                     </div>
-                    
+
                     <div style={{ display: 'flex', gap: '8px', padding: '0 8px' }}>
-                        <button 
-                            className="action-button-modern" 
-                            style={{ flex: 1, display: 'flex', gap: '8px' }} 
+                        <button
+                            className="action-button-modern"
+                            style={{ flex: 1, display: 'flex', gap: '8px' }}
                             onClick={() => { navigate('/profile'); setIsMobileMenuOpen(false); }}
                         >
                             <UserIcon size={18} /> Профиль
                         </button>
-                        <button 
-                            className="action-button-modern" 
-                            style={{ flex: 1, display: 'flex', gap: '8px', color: 'var(--danger)' }} 
+                        <button
+                            className="action-button-modern"
+                            style={{ flex: 1, display: 'flex', gap: '8px', color: 'var(--danger)' }}
                             onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}
                         >
                             <LogOut size={18} /> Выйти
