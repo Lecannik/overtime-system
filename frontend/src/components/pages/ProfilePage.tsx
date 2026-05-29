@@ -31,10 +31,9 @@ const ProfilePage: React.FC = () => {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
             const res = await api.get('/auth/me');
-            const hasTg = !!res.data.telegram_chat_id;
             const notifLvl = res.data.notification_level !== undefined ? res.data.notification_level : 2;
-            const emailEnabled = notifLvl > 0;
-            const tgEnabled = notifLvl === 2 || (hasTg && notifLvl > 0);
+            const emailEnabled = notifLvl === 1 || notifLvl === 2;
+            const tgEnabled = notifLvl === 2 || notifLvl === 3;
 
             setUser(res.data);
             setPrefs({
@@ -66,7 +65,9 @@ const ProfilePage: React.FC = () => {
         } else if (prefs.email_notifications) {
             notifLvl = 1;
         } else if (prefs.tg_notifications) {
-            notifLvl = 2; // Приоритет Telegram-уведомлениям
+            notifLvl = 3;
+        } else {
+            notifLvl = 0;
         }
 
         try {

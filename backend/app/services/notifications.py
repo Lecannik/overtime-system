@@ -36,14 +36,14 @@ async def notify_new_overtime(
     if manager:
         await notif_repo.create_notification(session, manager.id, "Новая заявка", msg_plain)
         await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
-        if manager.telegram_chat_id and manager.notification_level > 0:
+        if manager.telegram_chat_id and manager.notification_level in (2, 3):
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
 
     # Отправляем нач. отдела
     if head:
         await notif_repo.create_notification(session, head.id, "Новая заявка", msg_plain)
         await ws_manager.broadcast_to_user(head.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
-        if head.telegram_chat_id and head.notification_level > 0:
+        if head.telegram_chat_id and head.notification_level in (2, 3):
             await send_telegram_message(session, head.telegram_chat_id, msg_html)
 
     await ws_manager.broadcast_to_all({"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
@@ -72,9 +72,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
     is_final = overtime.status in [OvertimeStatus.APPROVED, OvertimeStatus.REJECTED]
     should_notify_tg = False
 
-    if employee.notification_level == 2:
-        should_notify_tg = True
-    elif employee.notification_level == 1 and is_final:
+    if employee.notification_level in (2, 3):
         should_notify_tg = True
 
     comment = overtime.head_comment if overtime.head_comment else overtime.manager_comment
@@ -109,7 +107,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
         await send_telegram_message(session, employee.telegram_chat_id, msg_html)
 
     # 3. Email — только при финальном решении (APPROVED / REJECTED)
-    if is_final:
+    if is_final and employee.notification_level in (1, 2):
         await _send_review_email(overtime, employee, reviewer, status_text, comment, time_str)
 
 
@@ -226,5 +224,5 @@ async def notify_limit_exceeded(
     if manager:
         await notif_repo.create_notification(session, manager.id, "Превышение лимита", msg_plain)
         await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Превышение лимита", "message": msg_plain})
-        if manager.telegram_chat_id and manager.notification_level > 0:
+        if manager.telegram_chat_id and manager.notification_level in (2, 3):
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
