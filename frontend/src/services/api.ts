@@ -35,8 +35,12 @@ api.interceptors.response.use(
         if (error.response?.data?.detail) {
             const detail = error.response.data.detail;
             if (Array.isArray(detail)) {
-                error.response.data.detail = detail.map((err: any) => {
-                    const field = err.loc ? err.loc.filter((l: any) => l !== 'body').join('.') : '';
+                interface PydanticErrorItem {
+                    loc?: (string | number)[];
+                    msg?: string;
+                }
+                error.response.data.detail = (detail as PydanticErrorItem[]).map((err) => {
+                    const field = err.loc ? err.loc.filter((l) => l !== 'body').join('.') : '';
                     const prefix = field ? `Поле "${field}": ` : '';
                     let msg = err.msg || '';
                     if (msg === 'Field required') msg = 'обязательно для заполнения';
