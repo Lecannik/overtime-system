@@ -36,6 +36,8 @@ const UsersPage: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [pageSize, setPageSize] = useState(15);
+    const [sortBy, setSortBy] = useState<string>('id');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
     const [isImportMSModalOpen, setIsImportMSModalOpen] = useState(false);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -77,6 +79,23 @@ const UsersPage: React.FC = () => {
     const [importLoading, setImportLoading] = useState(false);
     const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
 
+    const handleSort = (field: string) => {
+        if (sortBy === field) {
+            setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(field);
+            setSortOrder('asc');
+        }
+        setCurrentPage(1);
+    };
+
+    const renderSortIcon = (field: string) => {
+        if (sortBy !== field) return <span style={{ opacity: 0.3, marginLeft: '6px' }}>↕</span>;
+        return sortOrder === 'asc' 
+            ? <span style={{ color: '#38bdf8', marginLeft: '6px' }}>↑</span> 
+            : <span style={{ color: '#38bdf8', marginLeft: '6px' }}>↓</span>;
+    };
+
     const refreshData = useCallback(async () => {
         setLoading(true);
         try {
@@ -87,7 +106,9 @@ const UsersPage: React.FC = () => {
                     search: searchQuery,
                     role: roleFilter !== 'ALL' ? roleFilter : undefined,
                     department_id: deptFilter !== 'ALL' ? parseInt(deptFilter) : undefined,
-                    company: companyFilter !== 'ALL' ? companyFilter : undefined
+                    company: companyFilter !== 'ALL' ? companyFilter : undefined,
+                    sort_by: sortBy,
+                    sort_order: sortOrder
                 });
                 setUsers(res.items);
                 setTotalPages(res.pages);
@@ -124,7 +145,7 @@ const UsersPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [activeTab, currentPage, pageSize, searchQuery, roleFilter, deptFilter, companyFilter]);
+    }, [activeTab, currentPage, pageSize, searchQuery, roleFilter, deptFilter, companyFilter, sortBy, sortOrder]);
 
     /** Открыть Odoo-модал и загрузить список проектов из CRM. */
     const handleOpenOdooModal = async () => {
@@ -412,10 +433,18 @@ const UsersPage: React.FC = () => {
                         <table className="table-container" style={{ minWidth: '850px' }}>
                             <thead>
                                 <tr>
-                                    <th className="table-header">Пользователь</th>
-                                    <th className="table-header">Роль / Компания</th>
-                                    <th className="table-header">Отдел</th>
-                                    <th className="table-header">Статус</th>
+                                    <th className="table-header" onClick={() => handleSort('full_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                        Пользователь {renderSortIcon('full_name')}
+                                    </th>
+                                    <th className="table-header" onClick={() => handleSort('role')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                        Роль / Компания {renderSortIcon('role')}
+                                    </th>
+                                    <th className="table-header" onClick={() => handleSort('department_id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                        Отдел {renderSortIcon('department_id')}
+                                    </th>
+                                    <th className="table-header" onClick={() => handleSort('is_active')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                        Статус {renderSortIcon('is_active')}
+                                    </th>
                                     <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
                                 </tr>
                             </thead>

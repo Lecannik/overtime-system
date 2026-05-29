@@ -41,28 +41,33 @@ class MSGraphService:
             return None
 
     async def get_users(self) -> List[Dict[str, Any]]:
-        """Получает список пользователей организации из Office 365."""
+        """Получает список всех пользователей организации из Office 365."""
         token = await self._get_access_token()
         if not token:
             return []
 
+        all_users = []
+        url = "https://graph.microsoft.com/v1.0/users"
+        
         async with httpx.AsyncClient() as client:
-            # Упрощаем запрос до максимума
-            url = "https://graph.microsoft.com/v1.0/users"
-            logger.debug(f"Calling MS Graph API: {url}")
-            response = await client.get(
-                url, 
-                headers={"Authorization": f"Bearer {token}"}
-            )
-            
-            if response.status_code == 200:
+            while url:
+                logger.debug(f"Calling MS Graph API: {url}")
+                response = await client.get(
+                    url, 
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"MS Graph API Error: {response.status_code} - {response.text}")
+                    break
+                    
                 data = response.json()
                 users = data.get("value", [])
-                logger.info(f"MS Graph returned {len(users)} users")
-                return users
-            
-            logger.error(f"MS Graph API Error: {response.status_code} - {response.text}")
-            return []
+                all_users.extend(users)
+                url = data.get("@odata.nextLink")
+                
+        logger.info(f"MS Graph returned {len(all_users)} users in total")
+        return all_users
 
     async def send_email(self, recipient: str, subject: str, body_content: str):
         """Отправляет письмо через Microsoft Graph API."""
