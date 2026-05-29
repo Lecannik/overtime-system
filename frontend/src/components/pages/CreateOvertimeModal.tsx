@@ -1,6 +1,9 @@
 /* eslint-disable */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Calendar, Clock, MapPin, Tag, FileText, AlertCircle } from 'lucide-react';
+import flatpickr from 'flatpickr';
+import 'flatpickr/dist/flatpickr.min.css';
+import { Russian } from 'flatpickr/dist/l10n/ru.js';
 import api from '../../services/api';
 import type { Project, Overtime } from '../../types';
 import { AxiosError } from 'axios';
@@ -34,6 +37,91 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
 
     const modalRef = useRef<HTMLDivElement>(null);
     const projectDropdownRef = useRef<HTMLDivElement>(null);
+
+    const startFpRef = useRef<any>(null);
+    const endFpRef = useRef<any>(null);
+
+    const startInputRef = useCallback((node: HTMLInputElement | null) => {
+        if (node) {
+            if (!startFpRef.current) {
+                startFpRef.current = flatpickr(node, {
+                    enableTime: true,
+                    time_24hr: true,
+                    dateFormat: "d/m/Y H:i",
+                    locale: Russian,
+                    allowInput: true,
+                    onChange: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setStartTime(selectedDates[0].toISOString());
+                        } else {
+                            setStartTime('');
+                        }
+                    }
+                });
+            }
+        } else {
+            if (startFpRef.current) {
+                startFpRef.current.destroy();
+                startFpRef.current = null;
+            }
+        }
+    }, []);
+
+    const endInputRef = useCallback((node: HTMLInputElement | null) => {
+        if (node) {
+            if (!endFpRef.current) {
+                endFpRef.current = flatpickr(node, {
+                    enableTime: true,
+                    time_24hr: true,
+                    dateFormat: "d/m/Y H:i",
+                    locale: Russian,
+                    allowInput: true,
+                    onChange: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setEndTime(selectedDates[0].toISOString());
+                        } else {
+                            setEndTime('');
+                        }
+                    }
+                });
+            }
+        } else {
+            if (endFpRef.current) {
+                endFpRef.current.destroy();
+                endFpRef.current = null;
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (startFpRef.current && startTime) {
+            const parsed = new Date(startTime);
+            if (!isNaN(parsed.getTime())) {
+                const currentFpDate = startFpRef.current.selectedDates[0];
+                const currentFpTime = currentFpDate ? currentFpDate.getTime() : 0;
+                if (currentFpTime !== parsed.getTime()) {
+                    startFpRef.current.setDate(parsed, false);
+                }
+            }
+        }
+    }, [startTime]);
+
+    useEffect(() => {
+        if (endFpRef.current) {
+            const currentFpDate = endFpRef.current.selectedDates[0];
+            if (endTime) {
+                const parsed = new Date(endTime);
+                if (!isNaN(parsed.getTime())) {
+                    const currentFpTime = currentFpDate ? currentFpDate.getTime() : 0;
+                    if (currentFpTime !== parsed.getTime()) {
+                        endFpRef.current.setDate(parsed, false);
+                    }
+                }
+            } else if (currentFpDate) {
+                endFpRef.current.clear();
+            }
+        }
+    }, [endTime]);
 
     const initProjects = useCallback(async () => {
         try {
@@ -261,14 +349,27 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                             <label>Время начала</label>
                             <div style={{ position: 'relative' }}>
                                 <Calendar size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} required style={{ paddingLeft: '44px' }} />
+                                <input
+                                    type="text"
+                                    ref={startInputRef}
+                                    className="datetime-input-custom"
+                                    required
+                                    style={{ paddingLeft: '44px' }}
+                                    placeholder="Выберите дату и время..."
+                                />
                             </div>
                         </div>
                         <div className="form-group">
                             <label>Время окончания (опц.)</label>
                             <div style={{ position: 'relative' }}>
                                 <Clock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ paddingLeft: '44px' }} />
+                                <input
+                                    type="text"
+                                    ref={endInputRef}
+                                    className="datetime-input-custom"
+                                    style={{ paddingLeft: '44px' }}
+                                    placeholder="Выберите дату и время..."
+                                />
                             </div>
                         </div>
                     </div>
