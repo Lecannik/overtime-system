@@ -1,6 +1,7 @@
 import asyncio
 from app.core.database import AsyncSessionLocal as SessionLocal
 from app.models.user import User
+from app.models.organization import Department, Project
 from app.core.security import hash_password
 from sqlalchemy import select
 

@@ -449,9 +449,21 @@ async def get_microsoft_users(
     require_admin(current_user)
     return await ms_graph.get_users()
 
-@router.post("/ms-import")
+from pydantic import BaseModel as PydanticBaseModel
+
+class MSUserImportItem(PydanticBaseModel):
+    id: str
+    displayName: str
+    mail: str | None = None
+    userPrincipalName: str
+    jobTitle: str | None = None
+
+class MSUsersImportRequest(PydanticBaseModel):
+    users: List[MSUserImportItem]
+
+@router.post("/import-ms-users")
 async def import_microsoft_users(
-    users_to_import: List[dict],
+    payload: MSUsersImportRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -464,8 +476,8 @@ async def import_microsoft_users(
     
     import secrets
     
-    for user_data in users_to_import:
-        email = user_data.get("mail") or user_data.get("userPrincipalName")
+    for user_data in payload.users:
+        email = user_data.mail or user_data.userPrincipalName
         if not email:
             continue
             
@@ -477,7 +489,7 @@ async def import_microsoft_users(
         # Создаем нового пользователя с временным случайным паролем
         new_user = User(
             email=email,
-            full_name=user_data.get("displayName", "Сотрудник MS"),
+            full_name=user_data.displayName or "Сотрудник MS",
             hashed_password=hash_password(secrets.token_urlsafe(16)),
             role=UserRole.employee,
             is_active=True,
@@ -492,7 +504,7 @@ async def import_microsoft_users(
         imported_count += 1
         
     await db.commit()
-    return {"status": "success", "imported": imported_count}
+    return {"status": "success", "imported": imported_count, "count": imported_count}
 
 @router.post("/test-email")
 async def test_microsoft_email(
