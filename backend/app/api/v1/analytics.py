@@ -134,6 +134,7 @@ async def export_analytics(
     )
 
 @router.get("/export/me")
+@router.get("/export-my")
 async def export_my_analytics(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
