@@ -63,6 +63,8 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
 
     # 3. Базовое создание
     data = overtime_in.model_dump()
+    data["start_time"] = start_time
+    data["end_time"] = end_time
     overtime_db = Overtime(
         **data,
         user_id=user_id,
