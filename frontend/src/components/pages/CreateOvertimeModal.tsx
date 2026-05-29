@@ -242,10 +242,16 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         }
     };
 
+    const handleOverlayClick = () => {
+        if (window.confirm("Вы уверены, что хотите закрыть окно? Все несохраненные данные будут потеряны.")) {
+            onClose();
+        }
+    };
+
     const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
 
     return (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
+        <div className="modal-overlay" onClick={handleOverlayClick} style={{ zIndex: 2000 }}>
             <div className="modal-content glass-card animate-scale-in" 
                 ref={modalRef}
                 style={{ maxWidth: '560px', padding: 0, overflow: 'hidden', borderRadius: '24px' }} 
