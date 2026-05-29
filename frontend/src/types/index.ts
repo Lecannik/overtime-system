@@ -29,6 +29,7 @@ export interface User {
   must_change_password: boolean;
   notify_email: boolean;
   notify_telegram: boolean;
+  notification_level?: number;
   created_at: string;
 }
 
@@ -285,4 +286,5 @@ export interface UserUpdatePreferences {
     tg_notifications?: boolean;
     email_notifications?: boolean;
     telegram_chat_id?: string | null;
+    notification_level?: number;
 }

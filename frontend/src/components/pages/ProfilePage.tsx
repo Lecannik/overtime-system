@@ -31,11 +31,16 @@ const ProfilePage: React.FC = () => {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
             const res = await api.get('/auth/me');
+            const hasTg = !!res.data.telegram_chat_id;
+            const notifLvl = res.data.notification_level !== undefined ? res.data.notification_level : 2;
+            const emailEnabled = notifLvl > 0;
+            const tgEnabled = notifLvl === 2 || (hasTg && notifLvl > 0);
+
             setUser(res.data);
             setPrefs({
                 is_2fa_enabled: res.data.is_2fa_enabled,
-                tg_notifications: res.data.tg_notifications,
-                email_notifications: res.data.email_notifications,
+                tg_notifications: tgEnabled,
+                email_notifications: emailEnabled,
                 telegram_chat_id: res.data.telegram_chat_id || ''
             });
         } catch (err) {
@@ -54,10 +59,26 @@ const ProfilePage: React.FC = () => {
         e.preventDefault();
         setSaving(true);
         setSuccess(false);
+
+        let notifLvl = 0;
+        if (prefs.email_notifications && prefs.tg_notifications) {
+            notifLvl = 2;
+        } else if (prefs.email_notifications) {
+            notifLvl = 1;
+        } else if (prefs.tg_notifications) {
+            notifLvl = 2; // Приоритет Telegram-уведомлениям
+        }
+
         try {
-            await updateMyPreferences(prefs);
+            await updateMyPreferences({
+                is_2fa_enabled: prefs.is_2fa_enabled,
+                telegram_chat_id: prefs.tg_notifications ? (prefs.telegram_chat_id || null) : null,
+                notification_level: notifLvl
+            });
             setSuccess(true);
             setTimeout(() => setSuccess(false), 3000);
+            // Обновим пользователя после сохранения
+            await fetchUser();
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
             alert(axiosError.response?.data?.detail || 'Ошибка при сохранении настроек');

@@ -119,11 +119,17 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+
+        if (!projectId) {
+            setError('Пожалуйста, выберите проект. Если вы выполняли внутренние работы, выберите проект "Внутренний".');
+            return;
+        }
+
         setLoading(true);
 
         try {
             const data = {
-                project_id: projectId ? parseInt(projectId) : null,
+                project_id: parseInt(projectId),
                 start_time: new Date(startTime).toISOString(),
                 end_time: endTime ? new Date(endTime).toISOString() : undefined,
                 description,
@@ -205,8 +211,17 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setProjectId('');
-                                        setProjectSearch('Внутренний (Без проекта)');
+                                        const internalProj = projects.find(p => 
+                                            p.name.toLowerCase().includes('внутренн') || 
+                                            (p.code && p.code.toLowerCase() === 'internal')
+                                        );
+                                        if (internalProj) {
+                                            setProjectId(internalProj.id.toString());
+                                            setProjectSearch(internalProj.name);
+                                        } else {
+                                            setProjectId('');
+                                            setProjectSearch('Внутренний (Без проекта)');
+                                        }
                                         setIsProjectDropdownOpen(false);
                                     }}
                                     style={{

@@ -21,17 +21,34 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-// Обработка ошибок (например, 401 Unauthorized)
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
             localStorage.removeItem('token');
-            // Можно добавить редирект на /login, если это не страница логина
             if (!window.location.pathname.includes('/login')) {
                 window.location.href = '/login';
             }
         }
+
+        // Предотвращаем React Error #31 при выводе ошибок Pydantic (преобразуем массив/объект detail в строку)
+        if (error.response?.data?.detail) {
+            const detail = error.response.data.detail;
+            if (Array.isArray(detail)) {
+                error.response.data.detail = detail.map((err: any) => {
+                    const field = err.loc ? err.loc.filter((l: any) => l !== 'body').join('.') : '';
+                    const prefix = field ? `Поле "${field}": ` : '';
+                    let msg = err.msg || '';
+                    if (msg === 'Field required') msg = 'обязательно для заполнения';
+                    else if (msg.includes('value is not a valid integer')) msg = 'должно быть целым числом';
+                    else if (msg.includes('Input should be a valid datetime')) msg = 'должно быть корректной датой и временем';
+                    return `${prefix}${msg}`;
+                }).join('; ');
+            } else if (typeof detail === 'object') {
+                error.response.data.detail = JSON.stringify(detail);
+            }
+        }
+
         return Promise.reject(error);
     }
 );
