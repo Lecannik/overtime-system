@@ -81,6 +81,7 @@ class UserOTP(Base):
     code: Mapped[str] = mapped_column(String(6), nullable=False)
     type: Mapped[OTPType] = mapped_column(Enum(OTPType), default=OTPType.login)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)

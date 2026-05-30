@@ -120,12 +120,17 @@ async def _send_review_email(
     time_str: str
 ):
     """Отправляет стилизованное email-уведомление о решении по заявке."""
+    import html
     is_approved = overtime.status == OvertimeStatus.APPROVED
 
     # Цвета и иконки в зависимости от решения
     accent_color = "#15803d" if is_approved else "#dc2626"
     status_label = "ОДОБРЕНА" if is_approved else "ОТКЛОНЕНА"
     status_emoji = "✅" if is_approved else "❌"
+
+    project_name_escaped = html.escape(overtime.project.name)
+    reviewer_name_escaped = html.escape(reviewer.full_name)
+    comment_escaped = html.escape(comment) if comment else ""
 
     hours_block = ""
     if is_approved and overtime.approved_hours:
@@ -141,7 +146,7 @@ async def _send_review_email(
         comment_block = f"""
         <div style="margin-top: 16px; padding: 12px 16px; background: #f8fafc; border-left: 3px solid {accent_color}; border-radius: 0 8px 8px 0;">
             <strong style="color: #334155;">Комментарий:</strong>
-            <p style="margin: 4px 0 0; color: #475569;">{comment}</p>
+            <p style="margin: 4px 0 0; color: #475569;">{comment_escaped}</p>
         </div>
         """
 
@@ -156,7 +161,7 @@ async def _send_review_email(
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0; background: #f8fafc; border-radius: 8px; overflow: hidden;">
             <tr>
                 <td style="padding: 8px 16px; color: #64748b;">Проект</td>
-                <td style="padding: 8px 16px; font-weight: bold;">{overtime.project.name}</td>
+                <td style="padding: 8px 16px; font-weight: bold;">{project_name_escaped}</td>
             </tr>
             <tr>
                 <td style="padding: 8px 16px; color: #64748b;">Время</td>
@@ -169,7 +174,7 @@ async def _send_review_email(
             {hours_block}
             <tr>
                 <td style="padding: 8px 16px; color: #64748b;">Решение принял</td>
-                <td style="padding: 8px 16px;">{reviewer.full_name}</td>
+                <td style="padding: 8px 16px;">{reviewer_name_escaped}</td>
             </tr>
         </table>
 

@@ -46,9 +46,6 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     # Если токен уже был отозван — возможно, это атака повторного использования!
     # В целях безопасности отзываем все токены этого пользователя.
     if db_token.revoked:
-        await session.execute(
-            select(RefreshToken).where(RefreshToken.user_id == db_token.user_id)
-        )
         # Отзываем все токены пользователя
         await session.execute(
             RefreshToken.__table__.update()

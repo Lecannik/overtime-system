@@ -1,13 +1,10 @@
+import logging
 import msal
 import httpx
-import logging
-import sys
 from typing import List, Dict, Any
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-# Гарантируем, что логи будут видны в Docker
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 class MSGraphService:
     def __init__(self):
@@ -32,6 +29,12 @@ class MSGraphService:
             client_credential=self.secret
         )
         
+        # Пробуем получить токен бесшумно из кэша
+        result = app.acquire_token_silent(self.scope, account=None)
+        if result and "access_token" in result:
+            logger.info("MS Graph Access Token retrieved silently from cache")
+            return result["access_token"]
+            
         result = app.acquire_token_for_client(scopes=self.scope)
         if "access_token" in result:
             logger.info("MS Graph Access Token acquired successfully")

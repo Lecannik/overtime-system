@@ -231,8 +231,8 @@ async def check_overlapping_overtimes(
     Алгоритм: если (Начало1 < Конец2) и (Конец1 > Начало2), то есть пересечение.
     Учитывает, что конец периода может быть None (активная сессия).
     """
-    is_active_session = end_time is None or end_time.year <= 1970
-    db_active_condition = (Overtime.end_time.is_(None)) | (Overtime.end_time <= datetime(1970, 1, 2))
+    is_active_session = end_time is None
+    db_active_condition = Overtime.end_time.is_(None)
 
     if is_active_session:
         overlap_condition = db_active_condition | (Overtime.end_time > start_time)

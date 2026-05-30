@@ -70,7 +70,7 @@ function App() {
           <Route path="/auth/success" element={<AuthSuccessPage />} />
 
           {/* Защищенные маршруты */}
-          <Route path="/change-password" element={<ChangePasswordPage />} />
+          <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/review" element={<ProtectedRoute><ReviewPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />

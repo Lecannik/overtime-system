@@ -20,11 +20,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    SQL_ECHO: bool = False
 
     # CORS: список разрешённых источников через запятую. ОБЯЗАТЕЛЬНОЕ поле.
     # Например: "http://localhost:8090,https://overtime.company.kz"
     # ⚠️ НЕ используйте "*" в продакшне.
     ALLOWED_ORIGINS: str
+    FRONTEND_BASE_URL: str = "http://localhost:8090"
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "strict"
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str | None = None

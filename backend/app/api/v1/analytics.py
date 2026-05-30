@@ -1,7 +1,7 @@
 """
 Модуль содержит эндпоинты для получения аналитики по переработкам.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -11,11 +11,12 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 
-from app.core.database import get_db
+from app.core.database import get_session
 from app.api.deps import get_current_user
 from app.models.user import User, UserRole, UserCompany
 from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics
 from app.repositories import analytics as analytics_repo
+from app.services.excel_service import generate_excel_file
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
  
@@ -42,19 +43,19 @@ async def get_reviews_stats(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Аналитика по качеству согласования (запрошено vs одобрено)."""
-    return await analytics_repo.get_review_analytics(db, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_review_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
 
 @router.get("/weekly")
 async def get_weekly_stats(
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Статистика за текущую неделю для текущего пользователя."""
-    return await analytics_repo.get_user_weekly_stats(db, current_user.id)
+    return await analytics_repo.get_user_weekly_stats(session, current_user.id)
 
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_summary(
@@ -62,25 +63,25 @@ async def get_summary(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Общая сводка по переработкам (всего часов, заявок и т.д.)."""
-    return await analytics_repo.get_analytics_summary(db, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_analytics_summary(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
 
 
 @router.get("/companies")
 async def get_companies_comparison(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Сравнительный отчет по компаниям (Доступно только Админам)."""
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администраторов.")
     
-    return await analytics_repo.get_company_comparison(db, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_company_comparison(session, start_date=start_date, end_date=end_date)
 
 @router.get("/projects", response_model=List[ProjectAnalytics])
 async def get_projects_stats(
@@ -88,11 +89,11 @@ async def get_projects_stats(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе проектов."""
-    return await analytics_repo.get_project_analytics(db, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_project_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
 
 @router.get("/departments", response_model=List[DepartmentAnalytics])
 async def get_departments_stats(
@@ -100,11 +101,11 @@ async def get_departments_stats(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе отделов."""
-    return await analytics_repo.get_department_analytics(db, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_department_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
 
 @router.get("/users", response_model=List[UserAnalytics])
 async def get_users_stats(
@@ -112,11 +113,11 @@ async def get_users_stats(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе пользователей (с возможностью фильтрации по проекту)."""
-    return await analytics_repo.get_user_analytics(db, project_id=project_id, company=company, **scope, start_date=start_date, end_date=end_date)
+    return await analytics_repo.get_user_analytics(session, project_id=project_id, company=company, **scope, start_date=start_date, end_date=end_date)
 
 @router.get("/export")
 async def export_analytics(
@@ -124,13 +125,13 @@ async def export_analytics(
     company: UserCompany | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
     scope: dict = Depends(get_analytics_scope)
 ):
     """Экспорт данных для руководителей и админов."""
     return await generate_excel_response(
-        db, current_user, scope, project_id, company, start_date, end_date
+        session, current_user, scope, project_id, company, start_date, end_date
     )
 
 @router.get("/export/me")
@@ -138,17 +139,17 @@ async def export_analytics(
 async def export_my_analytics(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: AsyncSession = Depends(get_db),
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Персональный экспорт данных пользователя."""
     scope = {"user_id": current_user.id}
     return await generate_excel_response(
-        db, current_user, scope, None, None, start_date, end_date, is_personal=True
+        session, current_user, scope, None, None, start_date, end_date, is_personal=True
     )
 
 async def generate_excel_response(
-    db: AsyncSession,
+    session: AsyncSession,
     current_user: User,
     scope: dict,
     project_id: int | None,
@@ -157,10 +158,8 @@ async def generate_excel_response(
     end_date: datetime | None,
     is_personal: bool = False
 ):
-    from app.services.excel_service import generate_excel_file
-    
     data = await analytics_repo.get_export_data(
-        db, 
+        session, 
         **scope,
         project_id=project_id,
         company=company,
@@ -178,7 +177,6 @@ async def generate_excel_response(
         'Content-Disposition': f'attachment; filename="{filename}"',
         'Access-Control-Expose-Headers': 'Content-Disposition'
     }
-    from fastapi import Response
     return Response(
         content=output.getvalue(),
         headers=headers,

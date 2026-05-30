@@ -19,7 +19,7 @@ ENV XDG_CACHE_HOME=/app/.cache
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --prefer-binary -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+    pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Копируем само приложение и скрипты
 COPY ./app ./app

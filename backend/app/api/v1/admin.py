@@ -4,8 +4,13 @@ Admin API
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+import secrets
+from app.services.auth import register_user
+from app.services.ms_graph import ms_graph
 
-from app.core.database import get_db
+from app.core.database import get_session
 from app.core.security import hash_password
 
 from app.api.deps import get_current_user
@@ -47,7 +52,7 @@ def require_admin(current_user: User):
 @router.post("/departments", response_model=DepartmentResponse, status_code=201)
 async def create_department(
     dept_in: DepartmentCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -68,7 +73,7 @@ async def create_department(
 
 @router.get("/departments", response_model=List[DepartmentResponse])
 async def list_departments(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -83,7 +88,7 @@ async def list_departments(
 @router.get("/departments/{dept_id}", response_model=DepartmentResponse)
 async def get_department(
     dept_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -100,7 +105,7 @@ async def get_department(
 async def update_department(
     dept_id: int,
     dept_in: DepartmentUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -124,7 +129,7 @@ async def update_department(
 @router.delete("/departments/{dept_id}", status_code=204)
 async def delete_department(
     dept_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -136,7 +141,13 @@ async def delete_department(
     dept = await org_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Отдел не найден")
-    await org_repo.delete_department(db, dept)
+    try:
+        await org_repo.delete_department(db, dept)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Невозможно удалить отдел, так как с ним связаны сотрудники или другие записи."
+        )
 
 
 # ==================== PROJECTS ====================
@@ -144,7 +155,7 @@ async def delete_department(
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
 async def create_project(
     project_in: ProjectCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -165,7 +176,7 @@ async def create_project(
 
 @router.get("/projects", response_model=List[ProjectResponse])
 async def list_projects(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -187,7 +198,7 @@ async def list_projects(
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -204,7 +215,7 @@ async def get_project(
 async def update_project(
     project_id: int,
     project_in: ProjectUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -241,7 +252,7 @@ async def update_project(
 @router.delete("/projects/{project_id}", status_code=204)
 async def delete_project(
     project_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -253,14 +264,20 @@ async def delete_project(
     project = await org_repo.get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Проект не найден")
-    await org_repo.delete_project(db, project)
+    try:
+        await org_repo.delete_project(db, project)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Невозможно удалить проект, так как с ним связаны заявки на переработки или другие записи."
+        )
 
 # ==================== USERS ====================
 
 @router.post("/users", response_model=UserResponse, status_code=201)
 async def create_user(
     user_in: UserCreateByAdmin,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -269,7 +286,6 @@ async def create_user(
     """
     require_admin(current_user)
     
-    from app.services.auth import register_user
     new_user = await register_user(db, user_in)
     
     # Сразу ставим флаг смены пароля, так как пароль задал админ
@@ -292,7 +308,7 @@ async def list_users(
     role: UserRole | None = None,
     department_id: int | None = None,
     company: UserCompany | None = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -315,7 +331,7 @@ async def list_users(
 @router.get("/users/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -332,7 +348,7 @@ async def get_user(
 async def admin_update_user(
     user_id: int,
     user_in: UserAdminUpdate,      # <-- не DepartmentUpdate!
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Обновить пользователя (роль, отдел, активность)."""
@@ -352,7 +368,7 @@ async def admin_update_user(
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Сбросить пароль пользователя (только для админов)."""
@@ -367,7 +383,6 @@ async def reset_user_password(
     })
     # Отправляем новый пароль по почте через MS Graph
     try:
-        from app.services.ms_graph import ms_graph
         success = await ms_graph.send_email(
             recipient=user.email,
             subject="Сброс пароля в системе Overtime Pro",
@@ -384,13 +399,13 @@ async def reset_user_password(
         db, current_user.id, "RESET_PASSWORD", "user", user_id
     )
     await db.commit()
-    return {"detail": f"Пароль пользователя {user.full_name} успешно сброшен на: {new_password}"}
+    return {"detail": f"Пароль пользователя {user.full_name} успешно сброшен и отправлен на email."}
  
  
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -415,7 +430,7 @@ async def delete_user(
 @router.get("/settings/{key}", response_model=SystemSettingSchema)
 async def get_admin_setting(
     key: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Получить значение системной настройки (только для админов)."""
@@ -429,7 +444,7 @@ async def get_admin_setting(
 async def set_admin_setting(
     key: str,
     setting_in: SystemSettingUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Установить значение системной настройки (только для админов)."""
@@ -464,7 +479,7 @@ class MSUsersImportRequest(PydanticBaseModel):
 @router.post("/import-ms-users")
 async def import_microsoft_users(
     payload: MSUsersImportRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -473,8 +488,6 @@ async def import_microsoft_users(
     """
     require_admin(current_user)
     imported_count = 0
-    
-    import secrets
     
     for user_data in payload.users:
         email = user_data.mail or user_data.userPrincipalName
@@ -604,7 +617,7 @@ class OdooProjectImportItem(PydanticBaseModel):
 @router.post("/odoo/import")
 async def import_odoo_projects(
     projects_to_import: List[OdooProjectImportItem],
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -622,9 +635,6 @@ async def import_odoo_projects(
     Доступно только администраторам.
     """
     require_admin(current_user)
-
-    from sqlalchemy import select
-    from app.models.organization import Project
 
     imported = 0
     skipped = 0

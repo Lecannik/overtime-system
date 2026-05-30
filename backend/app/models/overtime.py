@@ -124,7 +124,5 @@ class Overtime(Base):
             return 0.0
         s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
         e = self.end_time.replace(tzinfo=None) if self.end_time.tzinfo else self.end_time
-        if e.year <= 1970:
-            return 0.0
         delta = e - s
         return max(0.0, delta.total_seconds() / 3600.0)

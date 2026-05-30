@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
-from app.core.database import get_db
+from app.core.database import get_session
 from app.api.deps import get_current_user
 from app.models.user import User, UserRole
 from app.schemas.audit import PaginatedAuditResponse
@@ -16,7 +16,7 @@ async def get_audit_logs(
     offset: int = 0,
     search: str | None = None,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_session)
 ):
     """
     Получить записи журнала аудита с пагинацией и поиском.
@@ -28,5 +28,5 @@ async def get_audit_logs(
             detail="Недостаточно прав для просмотра журналов аудита"
         )
     
-    logs_data = await audit_repo.get_audit_logs(db, limit, offset, search)
+    logs_data = await audit_repo.get_audit_logs(session, limit, offset, search)
     return logs_data

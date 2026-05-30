@@ -15,6 +15,11 @@ from app.api.deps import get_current_user
 from app.models.user import User, OTPType
 from app.repositories.user import update_user, get_user_by_email
 from app.core.config import settings
+from app.services.refresh_token import (
+    create_refresh_token,
+    verify_and_rotate_refresh_token,
+    revoke_refresh_token,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -70,7 +75,6 @@ async def login(
     )
     
     # Создаем Refresh Token
-    from app.services.refresh_token import create_refresh_token
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
     
@@ -79,8 +83,8 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
     
@@ -95,7 +99,6 @@ async def verify_login_2fa(
     db: AsyncSession = Depends(get_session)
 ):
     """Верификация 2FA кода при входе."""
-    from app.repositories.user import get_user_by_email
     user = await get_user_by_email(db, verify_in.email)
     
     if not user:
@@ -115,7 +118,6 @@ async def verify_login_2fa(
     )
     
     # Создаем Refresh Token
-    from app.services.refresh_token import create_refresh_token
     refresh_token = await create_refresh_token(db, user.id)
     await db.commit()
     
@@ -124,8 +126,8 @@ async def verify_login_2fa(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
     
@@ -149,7 +151,6 @@ async def refresh_session(
             detail="Отсутствует сессионный токен"
         )
         
-    from app.services.refresh_token import verify_and_rotate_refresh_token
     new_refresh_token, user = await verify_and_rotate_refresh_token(session, refresh_token)
     
     # Устанавливаем новую куку (ротация)
@@ -157,8 +158,8 @@ async def refresh_session(
         key="refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
     
@@ -177,16 +178,13 @@ async def logout(
     """
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
-        from app.services.refresh_token import revoke_refresh_token
         await revoke_refresh_token(session, refresh_token)
         
     response.delete_cookie(key="refresh_token")
     
     sso_logout_url = None
     if settings.AUTHENTIK_BASE_URL:
-        frontend_url = settings.ALLOWED_ORIGINS.split(",")[0] if settings.ALLOWED_ORIGINS != "*" else "http://localhost:8090"
-        if "overtime.polymedia.kz" in settings.ALLOWED_ORIGINS:
-            frontend_url = "https://overtime.polymedia.kz"
+        frontend_url = settings.FRONTEND_BASE_URL
         sso_logout_url = f"{settings.AUTHENTIK_BASE_URL}/flows/user/logout/?next={frontend_url}/login"
         
     return {
@@ -434,7 +432,6 @@ async def microsoft_callback(
     )
 
     # Шаг 2.5: Генерация локального JWT-токена доступа и сессионной куки
-    from app.services.refresh_token import create_refresh_token
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
     
@@ -443,8 +440,8 @@ async def microsoft_callback(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
     
@@ -452,9 +449,7 @@ async def microsoft_callback(
     
     # Перенаправляем пользователя на фронтенд-страницу успешного входа
     # ВАЖНО: Базовый домен должен совпадать с настройками фронтенда
-    frontend_url = settings.ALLOWED_ORIGINS.split(",")[0] if settings.ALLOWED_ORIGINS != "*" else "http://localhost:8090"
-    if "overtime.polymedia.kz" in settings.ALLOWED_ORIGINS:
-        frontend_url = "https://overtime.polymedia.kz"
+    frontend_url = settings.FRONTEND_BASE_URL
 
     return RedirectResponse(
         url=f"{frontend_url}/auth/success?token={local_access_token}"

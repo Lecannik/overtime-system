@@ -81,10 +81,12 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     )
     
     # Получаем менеджера проекта
-    manager = await user_repo.get_user_by_id(session, overtime.project.manager_id)
+    manager = None
+    if overtime.project.manager_id:
+        manager = await user_repo.get_user_by_id(session, overtime.project.manager_id)
     
     # Если лимит превышен — уведомляем менеджера
-    if weekly_hours > overtime.project.weekly_limit:
+    if manager and weekly_hours > overtime.project.weekly_limit:
         await notifications.notify_limit_exceeded(
             session, overtime, manager, weekly_hours, overtime.project.weekly_limit
         )
@@ -301,7 +303,7 @@ async def update_overtime(
     new_start = strip_timezone(new_start)
     new_end = strip_timezone(new_end)
 
-    if new_end and new_end.year > 1970 and new_start and new_end <= new_start:
+    if new_end and new_start and new_end <= new_start:
         raise HTTPException(
             status_code=400,
             detail="Время окончания должно быть позже времени начала."

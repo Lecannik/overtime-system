@@ -11,8 +11,6 @@ def calculate_overtime_hours(start_time: datetime, end_time: datetime) -> float:
     
     s_time = strip_timezone(start_time)
     e_time = strip_timezone(end_time)
-    if e_time.year <= 1970:
-        return 0.0
     delta = e_time - s_time
     if delta.total_seconds() < 0:
         return 0.0

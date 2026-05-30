@@ -91,8 +91,8 @@ export const updateProject = (id: number, data: Partial<Project>) => api.patch<P
 export const deleteProject = (id: number) => api.delete(`/admin/projects/${id}`).then(r => r.data);
 
 // Odoo Projects
-export const getOdooProjects = () => api.get<{ projects: OdooProjectPreview[] }>('/admin/odoo-projects').then(r => r.data);
-export const importOdooProjects = (projects: Partial<OdooProjectPreview>[]) => api.post('/admin/import-odoo-projects', { projects }).then(r => r.data);
+export const getOdooProjects = () => api.get<{ projects: OdooProjectPreview[] }>('/admin/odoo/projects').then(r => r.data);
+export const importOdooProjects = (projects: Partial<OdooProjectPreview>[]) => api.post('/admin/odoo/import', projects).then(r => r.data);
 
 // --- OVERTIMES ---
 export const getMyOvertimes = (params?: Record<string, unknown>) => 

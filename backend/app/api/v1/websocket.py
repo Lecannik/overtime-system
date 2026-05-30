@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_session
+from app.core.database import get_session, AsyncSessionLocal
 from app.repositories.user import get_user_by_id
 from app.services.websocket import ws_manager
 
@@ -27,7 +27,6 @@ async def websocket_endpoint(
             return
         user_id = int(user_id_str)
         
-        from app.core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as session:
             user = await get_user_by_id(session, user_id)
             if not user or not user.is_active:
