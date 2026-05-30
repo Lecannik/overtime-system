@@ -116,7 +116,20 @@ jobs:
           # Пинним конкретную версию образа (sha коммита) вместо :latest —
           # это делает деплой воспроизводимым, а откат — тривиальным.
           export IMAGE_TAG=${{ github.sha }}
-          docker compose -f docker-compose.prod.yml pull
+          # Pull с ретраями: DockerHub/CloudFront периодически рвёт соединение
+          # ("connection reset by peer"). Транзиентный сбой не должен валить
+          # деплой с первой попытки.
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.prod.yml pull; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "❌ docker compose pull не удался после 3 попыток"
+              exit 1
+            fi
+            echo "⚠️ pull сорвался (попытка $attempt/3), повтор через 10с..."
+            sleep 10
+          done
           docker compose -f docker-compose.prod.yml up -d
           docker compose -f docker-compose.prod.yml restart nginx-router
 
