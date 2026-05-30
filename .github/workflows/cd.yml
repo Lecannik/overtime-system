@@ -139,15 +139,18 @@ jobs:
           docker image prune -f
           docker builder prune -f
 
-          # Очистка легаси-артефактов на проде (выполняется только после успешного
-          # health-check благодаря set -e). На сервере должно оставаться только
-          # необходимое: docker-compose.prod.yml, .env, nginx.conf, backups/.
-          # Команды идемпотентны (rm -f / -rf не падают, если файла уже нет).
+          # Очистка легаси-артефактов на проде. На сервере должно оставаться
+          # только необходимое: docker-compose.prod.yml, .env, nginx.conf, backups/.
+          # Удаляем через одноразовый root-контейнер: часть файлов (.pyc, models/*)
+          # принадлежит root и host-овым rm под пользователем nik не удаляется.
+          # Шаг НЕ критичен (косметика): любой сбой гасим в "|| echo", чтобы из-за
+          # set -e неудача очистки никогда не роняла уже выполненный деплой.
           echo "🧹 Чистим легаси-файлы (исходники, git-репозиторий, старый compose)..."
-          rm -rf .git .github                      # деплой больше не использует git на проде
-          rm -f  docker-compose.yml docker-compose.override.yml  # заменены на docker-compose.prod.yml
-          rm -rf backend frontend infra models     # исходники и неиспользуемые проброски (всё в образах)
-          rm -f  deploy.sh logs.txt README.md .gitignore .env.example .env.prod.example
+          docker run --rm -v /opt/overtime:/work -w /work alpine sh -c '
+            rm -rf .git .github backend frontend infra models
+            rm -f docker-compose.yml docker-compose.override.yml \
+                  deploy.sh logs.txt README.md .gitignore .env.example .env.prod.example
+          ' || echo "⚠️ Очистка частично не удалась — некритично, деплой уже выполнен"
           echo "📂 Содержимое /opt/overtime после очистки:"
           ls -la
           EOF
