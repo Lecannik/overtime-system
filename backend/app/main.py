@@ -23,7 +23,7 @@ from app.core.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Обеспечиваем существование папок
-    os.makedirs("uploads/voice", exist_ok=True)
+    os.makedirs(os.path.abspath("uploads/voice"), exist_ok=True)
     
     # Запуск Telegram Бота
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -54,9 +54,9 @@ app.add_middleware(
 
 
 # Раздача статики
-import os
-os.makedirs("uploads", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+uploads_dir = os.path.abspath("uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # Роутеры
 app.include_router(health_router, prefix="/api/v1")
