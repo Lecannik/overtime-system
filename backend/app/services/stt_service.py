@@ -1,7 +1,12 @@
-import whisper
 import os
 import logging
 import torch
+
+# Отключаем оптимизации oneDNN/MKLDNN для предотвращения ошибки "could not create a primitive" на CPU
+torch.backends.mkldnn.enabled = False
+os.environ["DNNL_PRIMITIVE_CACHE_CAPACITY"] = "0"
+
+import whisper
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 logger = logging.getLogger(__name__)
