@@ -209,6 +209,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active.description = comment_text
             active.status = OvertimeStatus.PENDING
             active.voice_url = voice_url
+            active.voice_summary = summary_text
             # Сохраняем конечные координаты
             active.end_lat = end_lat
             active.end_lng = end_lng
