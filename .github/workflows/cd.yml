@@ -138,6 +138,18 @@ jobs:
           # Очистка неиспользуемых образов после деплоя
           docker image prune -f
           docker builder prune -f
+
+          # Очистка легаси-артефактов на проде (выполняется только после успешного
+          # health-check благодаря set -e). На сервере должно оставаться только
+          # необходимое: docker-compose.prod.yml, .env, nginx.conf, backups/.
+          # Команды идемпотентны (rm -f / -rf не падают, если файла уже нет).
+          echo "🧹 Чистим легаси-файлы (исходники, git-репозиторий, старый compose)..."
+          rm -rf .git .github                      # деплой больше не использует git на проде
+          rm -f  docker-compose.yml docker-compose.override.yml  # заменены на docker-compose.prod.yml
+          rm -rf backend frontend infra models     # исходники и неиспользуемые проброски (всё в образах)
+          rm -f  deploy.sh logs.txt README.md .gitignore .env.example .env.prod.example
+          echo "📂 Содержимое /opt/overtime после очистки:"
+          ls -la
           EOF
 
       - name: Send Telegram Notification
