@@ -88,13 +88,50 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onC
                         </div>
                     </div>
 
-                    {/* Description */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание работ</label>
-                        <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid var(--border)' }}>
-                            {overtime.description}
+                    {/* Description & Voice */}
+                    {overtime.voice_url ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Оригинальная запись</label>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '12px', 
+                                    padding: '12px 16px', 
+                                    background: 'var(--bg-tertiary)', 
+                                    borderRadius: '16px', 
+                                    border: '1px solid var(--border)' 
+                                }}>
+                                    <audio 
+                                        controls 
+                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/${overtime.voice_url}`} 
+                                        style={{ width: '100%', height: '40px' }}
+                                    />
+                                </div>
+                            </div>
+                            {overtime.voice_summary && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Краткое содержание (AI-резюме)</label>
+                                    <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--text-primary)' }}>
+                                        {overtime.voice_summary}
+                                    </div>
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Полная расшифровка текста</label>
+                                <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid var(--border)' }}>
+                                    {overtime.description}
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Описание работ</label>
+                            <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '16px', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid var(--border)' }}>
+                                {overtime.description}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Geolocation */}
                     {(overtime.location_name || (overtime.start_lat && overtime.start_lng)) && (

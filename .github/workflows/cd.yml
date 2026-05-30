@@ -104,6 +104,8 @@ jobs:
           git checkout origin/main -- infra/gateway/nginx.conf
           cp infra/gateway/nginx.conf nginx.conf
           docker compose pull
+          # Исправляем права доступа на директории uploads и .cache через временный контейнер под root
+          docker compose run --rm -u root backend chmod -R 777 /app/uploads /app/.cache
           docker compose up -d
           docker compose restart nginx-router
 

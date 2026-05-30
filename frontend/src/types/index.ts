@@ -79,6 +79,8 @@ export interface Overtime {
   admin_comment: string | null;
   manager_approved?: boolean | null;
   head_approved?: boolean | null;
+  voice_url: string | null;
+  voice_summary: string | null;
   created_at: string;
   updated_at: string | null;
   /** Пользователь (может быть вложен в ответе). */

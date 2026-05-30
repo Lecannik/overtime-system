@@ -57,6 +57,10 @@ class OvertimeResponse(OvertimeBase):
 
     created_at: datetime
 
+    # Голосовая запись и расшифровка
+    voice_url: str | None = None
+    voice_summary: str | None = None
+
     # Вложенные объекты (для отображения имен вместо ID)
     project: "ProjectMini | None" = None
     user: "UserMini | None" = None
