@@ -14,30 +14,26 @@ class MSGraphService:
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
         self.scope = ["https://graph.microsoft.com/.default"]
         
-        self._access_token = None
+        self._app = None
 
     async def _get_access_token(self):
-        """Получает или обновляет токен доступа от Microsoft."""
+        """Получает или обновляет токен доступа от Microsoft с использованием кэша MSAL."""
         if not all([self.client_id, self.secret, self.tenant_id]):
             logger.error("MS Graph Config Missing: ID, Secret or Tenant is not set!")
             return None
 
-        logger.debug(f"Attempting MS Auth for Tenant: {self.tenant_id}")
-        app = msal.ConfidentialClientApplication(
-            self.client_id,
-            authority=self.authority,
-            client_credential=self.secret
-        )
-        
-        # Пробуем получить токен бесшумно из кэша
-        result = app.acquire_token_silent(self.scope, account=None)
-        if result and "access_token" in result:
-            logger.info("MS Graph Access Token retrieved silently from cache")
-            return result["access_token"]
+        if self._app is None:
+            logger.debug(f"Initializing MS ConfidentialClientApplication for Tenant: {self.tenant_id}")
+            self._app = msal.ConfidentialClientApplication(
+                self.client_id,
+                authority=self.authority,
+                client_credential=self.secret
+            )
             
-        result = app.acquire_token_for_client(scopes=self.scope)
+        # Для client-credentials flow MSAL кэширует токен автоматически внутри acquire_token_for_client
+        result = self._app.acquire_token_for_client(scopes=self.scope)
         if "access_token" in result:
-            logger.info("MS Graph Access Token acquired successfully")
+            logger.info("MS Graph Access Token acquired successfully (cached or new)")
             return result["access_token"]
         else:
             logger.error(f"MS Auth Error: {result.get('error')} - {result.get('error_description')}")

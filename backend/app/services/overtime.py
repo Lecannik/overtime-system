@@ -116,10 +116,15 @@ async def review_overtime(
     4. Логирование действия в AuditLog.
     5. Уведомление сотрудника о решении.
     
-    Workflow статусов:
-    - Оба Ок -> APPROVED
-    - Любой Reject -> REJECTED
-    - Только один Ок -> MANAGER_APPROVED / HEAD_APPROVED
+    Workflow статусов (Бизнес-логика согласования):
+    - Любой Reject (отклонение) -> REJECTED
+    - Если одобряет Менеджер -> MANAGER_APPROVED (заявка ожидает одобрения Начальника)
+    - Если одобряет Начальник отдела (Head):
+        * Если недельный лимит часов по проекту не превышен (`weekly_hours <= project.weekly_limit`),
+          то статус становится APPROVED финально (без участия менеджера). Это намеренная
+          бизнес-логика для упрощения согласования рядовых заявок.
+        * Если лимит превышен, требуется также одобрение Менеджера. Если Менеджер уже одобрил,
+          статус становится APPROVED, иначе переходит в HEAD_APPROVED.
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
     if not overtime:

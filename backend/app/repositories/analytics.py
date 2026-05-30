@@ -242,7 +242,7 @@ async def get_user_analytics(
         query = query.where(User.department_id == department_id)
 
     query = apply_date_filters(query, start_date, end_date)
-    query = query.order_by(text("total_hours DESC"))
+    query = query.order_by(text("total_hours").desc())
 
     result = await session.execute(query)
     return [

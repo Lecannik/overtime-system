@@ -1,6 +1,10 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization import Project
+from app.models.user import User
+from datetime import datetime, timezone, timedelta
+
 
 @pytest.mark.asyncio
 async def test_create_overtime(client: AsyncClient, admin_token_headers, test_project: Project):
@@ -42,3 +46,97 @@ async def test_review_overtime_permission(client: AsyncClient, normal_user_token
     review_data = {"approved": True, "comment": "I approve myself!"}
     response = await client.post("/api/v1/overtimes/1/review", json=review_data, headers=normal_user_token_headers)
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_review_overtime_approved_by_head_within_limit(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    normal_user: User,
+    normal_user_token_headers: dict,
+    manager_user: User,
+    head_user: User,
+    head_token_headers: dict,
+    test_project: Project
+):
+    """Тест: если начальник отдела одобрил, а лимит не превышен — статус APPROVED (bypass)."""
+    # Привязываем менеджера к проекту
+    test_project.manager_id = manager_user.id
+    db_session.add(test_project)
+    await db_session.commit()
+
+    # Динамические даты в пределах текущей недели
+    now = datetime.now(timezone.utc)
+    start_time = (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    end_time = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Создаем заявку от обычного пользователя
+    overtime_data = {
+        "project_id": test_project.id,
+        "start_time": start_time,
+        "end_time": end_time,
+        "description": "Test Overtime Within Limit",
+        "start_lat": 10.0,
+        "start_lng": 20.0
+    }
+    
+    create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
+    assert create_resp.status_code == 200
+    overtime_id = create_resp.json()["id"]
+
+    # Начальник одобряет
+    review_data = {"approved": True, "comment": "Approved by head", "as_role": "head"}
+    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    assert review_resp.status_code == 200
+    assert review_resp.json()["status"] == "APPROVED"
+
+
+@pytest.mark.asyncio
+async def test_review_overtime_head_approved_when_limit_exceeded(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    normal_user: User,
+    normal_user_token_headers: dict,
+    manager_user: User,
+    manager_token_headers: dict,
+    head_user: User,
+    head_token_headers: dict,
+    test_project: Project
+):
+    """Тест: если начальник отдела одобрил, но лимит превышен — статус HEAD_APPROVED, а после менеджера — APPROVED."""
+    # Изменяем лимит проекта на 1 час и привязываем менеджера
+    test_project.weekly_limit = 1
+    test_project.manager_id = manager_user.id
+    db_session.add(test_project)
+    await db_session.commit()
+
+    # Динамические даты в пределах текущей недели (запрос на 3 часа)
+    now = datetime.now(timezone.utc)
+    start_time = (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%S")
+    end_time = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Создаем заявку на 3 часа от обычного пользователя (превышает лимит 1 час)
+    overtime_data = {
+        "project_id": test_project.id,
+        "start_time": start_time,
+        "end_time": end_time,
+        "description": "Test Overtime Over Limit",
+        "start_lat": 10.0,
+        "start_lng": 20.0
+    }
+    
+    create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
+    assert create_resp.status_code == 200
+    overtime_id = create_resp.json()["id"]
+
+    # Начальник одобряет
+    review_data = {"approved": True, "comment": "Approved by head", "as_role": "head"}
+    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    assert review_resp.status_code == 200
+    assert review_resp.json()["status"] == "HEAD_APPROVED"
+
+    # Теперь менеджер одобряет
+    manager_review_data = {"approved": True, "comment": "Approved by manager", "as_role": "manager"}
+    review_resp2 = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=manager_review_data, headers=manager_token_headers)
+    assert review_resp2.status_code == 200
+    assert review_resp2.json()["status"] == "APPROVED"

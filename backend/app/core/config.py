@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     FRONTEND_BASE_URL: str = "http://localhost:8090"
     COOKIE_SECURE: bool = True
     COOKIE_SAMESITE: str = "strict"
+    DEFAULT_TIMEZONE: str = "Asia/Almaty"
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str | None = None
@@ -61,6 +62,12 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         """Возвращает список CORS-origins из строки с разделителем ','."""
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def tz_info(self):
+        """Возвращает объект временной зоны на основе DEFAULT_TIMEZONE."""
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(self.DEFAULT_TIMEZONE)
 
 
 settings = Settings()

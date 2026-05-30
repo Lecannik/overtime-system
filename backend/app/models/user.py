@@ -26,6 +26,20 @@ class UserCompany(str, enum.Enum):
     AJ_techCom = "AJ-techCom"
 
 
+class NotificationLevel(enum.IntEnum):
+    """
+    Уровни уведомлений пользователя:
+    0: OFF — Уведомления отключены
+    1: EMAIL_ONLY — Только Email уведомления (финальные решения)
+    2: ALL — Email и Telegram уведомления
+    3: TELEGRAM_ONLY — Только Telegram уведомления
+    """
+    OFF = 0
+    EMAIL_ONLY = 1
+    ALL = 2
+    TELEGRAM_ONLY = 3
+
+
 class User(Base):
     """
     SQLAlchemy модель пользователя.
@@ -52,7 +66,7 @@ class User(Base):
         default=UserCompany.Polymedia
     )
     telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    notification_level: Mapped[int] = mapped_column(Integer, default=2)  # 0: Off, 1: Major, 2: All
+    notification_level: Mapped[int] = mapped_column(Integer, default=2)  # 0: Off, 1: Email only, 2: All, 3: TG only
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import httpx
 
-from app.core.database import Base, get_db
+from app.core.database import Base, get_session
 from app.main import app
 from app.models.user import User, UserRole, UserCompany
 from app.models.organization import Department, Project
@@ -63,13 +63,13 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Тестовый HTTP-клиент с подмененной базой данных."""
-    async def override_get_db():
+    async def override_get_session():
         try:
             yield db_session
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_session] = override_get_session
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
@@ -136,6 +136,47 @@ async def normal_user(db_session: AsyncSession, test_department: Department) -> 
 
 
 @pytest.fixture
+async def manager_user(db_session: AsyncSession) -> User:
+    """Создает пользователя с ролью manager."""
+    user = User(
+        full_name="Менеджер Тест",
+        email="manager@example.com",
+        hashed_password=hash_password("manager_pass"),
+        role=UserRole.manager,
+        company=UserCompany.Polymedia,
+        is_active=True
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def head_user(db_session: AsyncSession, test_department: Department) -> User:
+    """Создает начальника отдела."""
+    user = User(
+        full_name="Начальник Тест",
+        email="head@example.com",
+        hashed_password=hash_password("head_pass"),
+        role=UserRole.head,
+        company=UserCompany.Polymedia,
+        department_id=test_department.id,
+        is_active=True
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    
+    # Делаем его начальником тестового отдела
+    test_department.head_id = user.id
+    db_session.add(test_department)
+    await db_session.commit()
+    
+    return user
+
+
+@pytest.fixture
 async def admin_token_headers(admin_user: User) -> dict:
     """Возвращает заголовки авторизации для администратора."""
     token = create_access_token(data={"sub": str(admin_user.id)})
@@ -146,4 +187,18 @@ async def admin_token_headers(admin_user: User) -> dict:
 async def normal_user_token_headers(normal_user: User) -> dict:
     """Возвращает заголовки авторизации для сотрудника."""
     token = create_access_token(data={"sub": str(normal_user.id)})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def manager_token_headers(manager_user: User) -> dict:
+    """Возвращает заголовки авторизации для менеджера."""
+    token = create_access_token(data={"sub": str(manager_user.id)})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def head_token_headers(head_user: User) -> dict:
+    """Возвращает заголовки авторизации для начальника отдела."""
+    token = create_access_token(data={"sub": str(head_user.id)})
     return {"Authorization": f"Bearer {token}"}

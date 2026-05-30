@@ -22,6 +22,7 @@ from app.repositories import overtime as overtime_repo
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User
 from app.services.stt_service import transcribe_audio
+from app.core.config import settings
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +66,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
-            start_time_local = active.start_time.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=5)))
+            start_time_local = active.start_time.replace(tzinfo=timezone.utc).astimezone(settings.tz_info)
             await update.message.reply_text(
                 f"👷‍♂️ В процессе: проект «{active.project.name}»\nНачало: {start_time_local.strftime('%H:%M:%S')}",
                 reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
@@ -247,12 +248,12 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message:
         await update.effective_message.reply_text("⏳ Формирую отчет за текущий месяц, пожалуйста, подождите...")
     
-    tz_plus_5 = timezone(timedelta(hours=5))
-    now = datetime.now(timezone.utc).astimezone(tz_plus_5)
-    start_date = datetime(now.year, now.month, 1, tzinfo=tz_plus_5)
+    tz_local = settings.tz_info
+    now = datetime.now(timezone.utc).astimezone(tz_local)
+    start_date = datetime(now.year, now.month, 1, tzinfo=tz_local)
     import calendar
     _, last_day = calendar.monthrange(now.year, now.month)
-    end_date = datetime(now.year, now.month, last_day, 23, 59, 59, tzinfo=tz_plus_5)
+    end_date = datetime(now.year, now.month, last_day, 23, 59, 59, tzinfo=tz_local)
     
     from app.repositories import analytics as analytics_repo
     from app.services.excel_service import generate_excel_file

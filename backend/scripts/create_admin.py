@@ -13,6 +13,8 @@ from app.models.overtime import Overtime
 from app.models.audit import AuditLog
 from app.repositories import user as user_repo
 
+import secrets
+
 async def create_admin():
     async with AsyncSessionLocal() as session:
         # Проверяем, существует ли уже админ
@@ -21,21 +23,23 @@ async def create_admin():
             print("Администратор admin@example.com уже существует.")
             return
 
+        password = secrets.token_urlsafe(16)
         admin = User(
             full_name="System Administrator",
             email="admin@example.com",
-            hashed_password=hash_password("admin"),
+            hashed_password=hash_password(password),
             role=UserRole.admin,
             company=UserCompany.Polymedia,
             is_active=True,
-            must_change_password=False
+            must_change_password=True
         )
         
         try:
             await user_repo.create_user(session, admin)
             print("✅ Администратор admin@example.com успешно создан.")
             print("📧 Email: admin@example.com")
-            print("🔑 Пароль: admin")
+            print(f"🔑 Временный пароль: {password}")
+            print("⚠️ При первом входе в систему потребуется изменить этот пароль.")
         except Exception as e:
             print(f"❌ Ошибка при создании администратора: {e}")
 

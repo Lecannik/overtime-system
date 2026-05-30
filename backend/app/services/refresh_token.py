@@ -59,7 +59,8 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
         )
         
     # Проверка на истечение срока действия
-    if db_token.expires_at < datetime.now(timezone.utc):
+    expires_aware = db_token.expires_at if db_token.expires_at.tzinfo else db_token.expires_at.replace(tzinfo=timezone.utc)
+    if expires_aware < datetime.now(timezone.utc):
         db_token.revoked = True
         await session.commit()
         raise HTTPException(
