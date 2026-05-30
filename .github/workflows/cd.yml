@@ -124,8 +124,9 @@ jobs:
             sleep 2
           done
 
-          # Очистка только устаревших образов (старше 24ч)
-          docker image prune -f --filter "until=24h"
+          # Очистка неиспользуемых образов после деплоя
+          docker image prune -f
+          docker builder prune -f
           EOF
 
       - name: Send Telegram Notification

@@ -15,6 +15,11 @@ services:
       timeout: 5s
       retries: 5
     networks: [ overtime_network ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 2. Бэкенд (FastAPI)
   backend:
@@ -31,6 +36,11 @@ services:
       - ./models/cache:/app/.cache/whisper
       - ./models/gazeta:/app/models/gazeta # Проброс модели суммаризатора
     networks: [ overtime_network ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 3. Фронтенд (React Static)
   frontend:
@@ -38,6 +48,11 @@ services:
     container_name: overtime_frontend
     restart: always
     networks: [ overtime_network ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 4. Внутренний роутер (Gateway)
   nginx-router:
@@ -52,6 +67,11 @@ services:
       - backend
       - frontend
     networks: [ overtime_network ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 5. Резервное копирование БД
   db-backup:
@@ -70,6 +90,11 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     networks: [ overtime_network ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
