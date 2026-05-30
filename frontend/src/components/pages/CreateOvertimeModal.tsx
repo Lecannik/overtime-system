@@ -7,12 +7,55 @@ import { Russian } from 'flatpickr/dist/l10n/ru.js';
 import api from '../../services/api';
 import type { Project, Overtime } from '../../types';
 import { AxiosError } from 'axios';
+import { parseBackendDate } from '../../constants/locale';
+
+const toLocalISOString = (date: Date): string => {
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+};
 
 interface CreateOvertimeModalProps {
     onClose: () => void;
     onCreated: () => void;
     editData?: Overtime | null;
 }
+
+/**
+ * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
+ *
+ * @param {string} datestr - Входная строка даты.
+ * @param {string} format - Формат даты.
+ * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
+ */
+const safeParseDate = (datestr: string, _format: string): Date => {
+    if (!datestr) return new Date(NaN);
+    try {
+        const trimmed = datestr.trim();
+        const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
+        if (parts.length >= 3) {
+            let day = parseInt(parts[0], 10);
+            let month = parseInt(parts[1], 10) - 1;
+            let year = parseInt(parts[2], 10);
+            if (parts[0].length === 4) {
+                year = parseInt(parts[0], 10);
+                day = parseInt(parts[2], 10);
+            }
+            if (year < 100) {
+                year += 2000;
+            }
+            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+            if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
+                const date = new Date(year, month, day, hour, minute);
+                if (!isNaN(date.getTime())) return date;
+            }
+        }
+        const d = new Date(trimmed);
+        return isNaN(d.getTime()) ? new Date(NaN) : d;
+    } catch (e) {
+        return new Date(NaN);
+    }
+};
 
 const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCreated, editData }) => {
     const [projects, setProjects] = useState<Project[]>([]);
@@ -50,6 +93,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
                             setStartTime(selectedDates[0].toISOString());
@@ -76,6 +120,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
                             setEndTime(selectedDates[0].toISOString());
@@ -140,7 +185,10 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         const initForm = () => {
             if (editData) {
                 setProjectId(editData.project_id ? editData.project_id.toString() : '');
-                const fmt = (d: string) => d ? new Date(d).toISOString().slice(0, 16) : '';
+                const fmt = (d: string) => {
+                    const parsed = parseBackendDate(d);
+                    return parsed ? toLocalISOString(parsed) : '';
+                };
                 setStartTime(fmt(editData.start_time));
                 setEndTime(editData.end_time ? fmt(editData.end_time) : '');
                 setDescription(editData.description || '');
@@ -155,7 +203,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     setProjectSearch(selectedProj.name);
                 }
             } else {
-                setStartTime(new Date().toISOString().slice(0, 16));
+                setStartTime(toLocalISOString(new Date()));
             }
         };
 

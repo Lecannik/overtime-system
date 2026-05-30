@@ -27,8 +27,18 @@ def get_summarizer():
              model_path = "models/gazeta"
              
         logger.info(f"🎬 Загрузка Суммаризатора из {model_path}...")
-        _summary_tokenizer = T5Tokenizer.from_pretrained(model_path)
-        _summary_model = T5ForConditionalGeneration.from_pretrained(model_path)
+        try:
+            # Проверяем, есть ли файлы в директории
+            if os.path.exists(model_path) and os.listdir(model_path):
+                _summary_tokenizer = T5Tokenizer.from_pretrained(model_path)
+                _summary_model = T5ForConditionalGeneration.from_pretrained(model_path)
+            else:
+                raise OSError("Локальная директория пуста или отсутствует")
+        except Exception as e:
+            fallback_model = "IlyaGusev/rut5_base_sum_gazeta"
+            logger.warning(f"⚠️ Не удалось загрузить модель локально из {model_path}: {e}. Скачиваем из Hugging Face ({fallback_model})...")
+            _summary_tokenizer = T5Tokenizer.from_pretrained(fallback_model)
+            _summary_model = T5ForConditionalGeneration.from_pretrained(fallback_model)
     return _summary_model, _summary_tokenizer
 
 async def summarize_text(text: str) -> str:

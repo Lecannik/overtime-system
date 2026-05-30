@@ -76,12 +76,38 @@ export const getStatusColor = (status: string): string =>
 const DATE_LOCALE = 'ru-RU';
 
 /**
+ * Парсит дату от бэкенда. Если переданная строка является наивной датой (без указания таймзоны Z/+/-),
+ * принудительно трактует её как UTC, добавляя суффикс 'Z'.
+ */
+export const parseBackendDate = (date: string | Date | null | undefined): Date | null => {
+    if (!date) return null;
+    if (date instanceof Date) return isNaN(date.getTime()) ? null : date;
+    
+    if (typeof date === 'string') {
+        let clean = date.trim();
+        // Если это дата без Z и без смещения, добавляем 'Z'
+        if (clean.length >= 10 && !clean.endsWith('Z') && !/[-+]\d{2}:?\d{2}$/.test(clean)) {
+            // Поддержка для строк вида "YYYY-MM-DD" или "YYYY-MM-DDTHH:mm:ss"
+            if (!clean.includes('T') && clean.includes(' ')) {
+                clean = clean.replace(' ', 'T');
+            }
+            clean = clean + 'Z';
+        }
+        const parsed = new Date(clean);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+/**
  * Форматировать дату в формате дд.мм.гггг
  * @example formatDate('2026-05-23T15:00:00') → '23.05.2026'
  */
 export const formatDate = (date: string | Date | null | undefined): string => {
-    if (!date) return '—';
-    return new Date(date).toLocaleDateString(DATE_LOCALE, {
+    const parsed = parseBackendDate(date);
+    if (!parsed) return '—';
+    return parsed.toLocaleDateString(DATE_LOCALE, {
         day: '2-digit', month: '2-digit', year: 'numeric'
     });
 };
@@ -91,8 +117,9 @@ export const formatDate = (date: string | Date | null | undefined): string => {
  * @example formatDateTime('2026-05-23T15:00:00') → '23.05.2026, 15:00'
  */
 export const formatDateTime = (date: string | Date | null | undefined): string => {
-    if (!date) return '—';
-    return new Date(date).toLocaleString(DATE_LOCALE, {
+    const parsed = parseBackendDate(date);
+    if (!parsed) return '—';
+    return parsed.toLocaleString(DATE_LOCALE, {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
     });
@@ -103,8 +130,9 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
  * @example formatTime('2026-05-23T15:30:00') → '15:30'
  */
 export const formatTime = (date: string | Date | null | undefined): string => {
-    if (!date) return '—';
-    return new Date(date).toLocaleTimeString(DATE_LOCALE, {
+    const parsed = parseBackendDate(date);
+    if (!parsed) return '—';
+    return parsed.toLocaleTimeString(DATE_LOCALE, {
         hour: '2-digit', minute: '2-digit'
     });
 };

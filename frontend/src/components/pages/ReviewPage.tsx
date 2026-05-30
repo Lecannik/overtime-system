@@ -36,6 +36,43 @@ const parseToDate = (str: string) => {
     return isNaN(d.getTime()) ? null : d;
 };
 
+/**
+ * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
+ *
+ * @param {string} datestr - Входная строка даты.
+ * @param {string} format - Формат даты.
+ * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
+ */
+const safeParseDate = (datestr: string, _format: string): Date => {
+    if (!datestr) return new Date(NaN);
+    try {
+        const trimmed = datestr.trim();
+        const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
+        if (parts.length >= 3) {
+            let day = parseInt(parts[0], 10);
+            let month = parseInt(parts[1], 10) - 1;
+            let year = parseInt(parts[2], 10);
+            if (parts[0].length === 4) {
+                year = parseInt(parts[0], 10);
+                day = parseInt(parts[2], 10);
+            }
+            if (year < 100) {
+                year += 2000;
+            }
+            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+            if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
+                const date = new Date(year, month, day, hour, minute);
+                if (!isNaN(date.getTime())) return date;
+            }
+        }
+        const d = new Date(trimmed);
+        return isNaN(d.getTime()) ? new Date(NaN) : d;
+    } catch (e) {
+        return new Date(NaN);
+    }
+};
+
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
     const [overtimes, setOvertimes] = useState<Overtime[]>([]);
@@ -70,6 +107,7 @@ const ReviewPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
                             setStartDate(formatToYmd(selectedDates[0]));
@@ -95,6 +133,7 @@ const ReviewPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
                             setEndDate(formatToYmd(selectedDates[0]));

@@ -1,6 +1,6 @@
 import logging
 import html
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 # pyrefly: ignore [missing-import]
@@ -65,8 +65,9 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
+            start_time_local = active.start_time.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=5)))
             await update.message.reply_text(
-                f"👷‍♂️ В процессе: проект «{active.project.name}»\nНачало: {active.start_time.strftime('%H:%M:%S')}",
+                f"👷‍♂️ В процессе: проект «{active.project.name}»\nНачало: {start_time_local.strftime('%H:%M:%S')}",
                 reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
             )
         else:
@@ -133,7 +134,7 @@ async def start_location_handler(update: Update, context: ContextTypes.DEFAULT_T
     project_id = context.user_data.get('project_id')
     async with AsyncSessionLocal() as session:
         new_ot = Overtime(
-            user_id=user.id, project_id=project_id, start_time=datetime.now(),
+            user_id=user.id, project_id=project_id, start_time=datetime.now(timezone.utc).replace(tzinfo=None),
             start_lat=location.latitude, start_lng=location.longitude,
             status=OvertimeStatus.IN_PROGRESS, description="[Бот]"
         )
@@ -202,7 +203,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_overtime_by_id(session, active_id)
         if active:
-            active.end_time = datetime.now()
+            active.end_time = datetime.now(timezone.utc).replace(tzinfo=None)
             active.description = comment_text
             active.status = OvertimeStatus.PENDING
             active.voice_url = voice_url
@@ -243,11 +244,12 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message:
         await update.effective_message.reply_text("⏳ Формирую отчет за текущий месяц, пожалуйста, подождите...")
     
-    now = datetime.now()
-    start_date = datetime(now.year, now.month, 1)
+    tz_plus_5 = timezone(timedelta(hours=5))
+    now = datetime.now(timezone.utc).astimezone(tz_plus_5)
+    start_date = datetime(now.year, now.month, 1, tzinfo=tz_plus_5)
     import calendar
     _, last_day = calendar.monthrange(now.year, now.month)
-    end_date = datetime(now.year, now.month, last_day, 23, 59, 59)
+    end_date = datetime(now.year, now.month, last_day, 23, 59, 59, tzinfo=tz_plus_5)
     
     from app.repositories import analytics as analytics_repo
     from app.services.excel_service import generate_excel_file

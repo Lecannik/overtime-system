@@ -103,7 +103,7 @@ class Overtime(Base):
         с применением бизнес-логики (например, округление).
         """
         if self.status == OvertimeStatus.IN_PROGRESS:
-            return calculate_overtime_hours(self.start_time, datetime.now())
+            return calculate_overtime_hours(self.start_time, datetime.now(timezone.utc).replace(tzinfo=None))
         return calculate_overtime_hours(self.start_time, self.end_time)
 
     @property
@@ -116,7 +116,7 @@ class Overtime(Base):
             return 0.0
         if self.status == OvertimeStatus.IN_PROGRESS:
             s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
-            e = datetime.now()
+            e = datetime.now(timezone.utc).replace(tzinfo=None)
             delta = e - s
             return max(0.0, delta.total_seconds() / 3600.0)
         

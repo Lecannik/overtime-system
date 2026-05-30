@@ -47,6 +47,43 @@ const parseToDate = (str: string) => {
     return isNaN(d.getTime()) ? null : d;
 };
 
+/**
+ * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
+ *
+ * @param {string} datestr - Входная строка даты.
+ * @param {string} format - Формат даты.
+ * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
+ */
+const safeParseDate = (datestr: string, _format: string): Date => {
+    if (!datestr) return new Date(NaN);
+    try {
+        const trimmed = datestr.trim();
+        const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
+        if (parts.length >= 3) {
+            let day = parseInt(parts[0], 10);
+            let month = parseInt(parts[1], 10) - 1;
+            let year = parseInt(parts[2], 10);
+            if (parts[0].length === 4) {
+                year = parseInt(parts[0], 10);
+                day = parseInt(parts[2], 10);
+            }
+            if (year < 100) {
+                year += 2000;
+            }
+            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+            if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
+                const date = new Date(year, month, day, hour, minute);
+                if (!isNaN(date.getTime())) return date;
+            }
+        }
+        const d = new Date(trimmed);
+        return isNaN(d.getTime()) ? new Date(NaN) : d;
+    } catch (e) {
+        return new Date(NaN);
+    }
+};
+
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [overtimes, setOvertimes] = useState<Overtime[]>([]);
@@ -164,6 +201,7 @@ const DashboardPage: React.FC = () => {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
+          parseDate: safeParseDate,
           onClose: (selectedDates) => {
             if (selectedDates[0]) {
               setStartDate(formatToYmd(selectedDates[0]));
@@ -189,6 +227,7 @@ const DashboardPage: React.FC = () => {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
+          parseDate: safeParseDate,
           onClose: (selectedDates) => {
             if (selectedDates[0]) {
               setEndDate(formatToYmd(selectedDates[0]));
@@ -437,10 +476,10 @@ const DashboardPage: React.FC = () => {
 
       {/* Charts Section */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <div className="glass-card" style={{ padding: '24px' }}>
+        <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Активность за 30 дней (часы)</h4>
-          <div style={{ height: '200px' }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: '200px', minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stats?.daily_stats || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
                 <XAxis
@@ -470,11 +509,11 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="glass-card" style={{ padding: '24px' }}>
+        <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
-          <div style={{ height: '200px', display: 'flex', alignItems: 'center' }}>
-            <div style={{ flex: 1, height: '100%' }}>
-              <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: '200px', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+            <div style={{ flex: 1, height: '100%', minWidth: 0 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={stats?.by_project || []}

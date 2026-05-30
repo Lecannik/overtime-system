@@ -45,7 +45,7 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     end_time = strip_timezone(end_time)
 
     # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
-    if start_time > datetime.now() + timedelta(minutes=5):
+    if start_time > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5):
         raise HTTPException(
             status_code=400, 
             detail="Нельзя создавать заявку на будущее время."

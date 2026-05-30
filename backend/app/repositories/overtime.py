@@ -6,7 +6,7 @@
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from collections import defaultdict
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
@@ -157,7 +157,7 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     result = await session.execute(approved_query)
     approved_overtimes = result.scalars().all()
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     this_month_start = date(now.year, now.month, 1)
     
     first_this_month = date(now.year, now.month, 1)
@@ -257,7 +257,7 @@ async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project
     Подсчет часов за текущую календарную неделю (с понедельника).
     Нужно для проверки лимитов проекта.
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     
     query = select(Overtime).where(

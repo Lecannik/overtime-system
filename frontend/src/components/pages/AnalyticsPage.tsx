@@ -172,6 +172,43 @@ const AnalyticsPage: React.FC = () => {
         return isNaN(d.getTime()) ? null : d;
     };
 
+    /**
+     * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
+     *
+     * @param {string} datestr - Входная строка даты.
+     * @param {string} format - Формат даты.
+     * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
+     */
+    const safeParseDate = (datestr: string, _format: string): Date => {
+        if (!datestr) return new Date(NaN);
+        try {
+            const trimmed = datestr.trim();
+            const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
+            if (parts.length >= 3) {
+                let day = parseInt(parts[0], 10);
+                let month = parseInt(parts[1], 10) - 1;
+                let year = parseInt(parts[2], 10);
+                if (parts[0].length === 4) {
+                    year = parseInt(parts[0], 10);
+                    day = parseInt(parts[2], 10);
+                }
+                if (year < 100) {
+                    year += 2000;
+                }
+                const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+                const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
+                    const date = new Date(year, month, day, hour, minute);
+                    if (!isNaN(date.getTime())) return date;
+                }
+            }
+            const d = new Date(trimmed);
+            return isNaN(d.getTime()) ? new Date(NaN) : d;
+        } catch (e) {
+            return new Date(NaN);
+        }
+    };
+
     useEffect(() => {
         const initFetch = async () => {
             if (period !== 'custom') {
@@ -189,6 +226,7 @@ const AnalyticsPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onChange: () => {},
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
@@ -204,6 +242,7 @@ const AnalyticsPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    parseDate: safeParseDate,
                     onChange: () => {},
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
@@ -369,12 +408,12 @@ const AnalyticsPage: React.FC = () => {
             </div>
 
             <div className="analytics-charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
-                <div className="glass-card">
+                <div className="glass-card" style={{ minWidth: 0 }}>
                     <h4 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
                     </h4>
-                    <div style={{ height: '350px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div style={{ height: '350px', minWidth: 0 }}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <PieChart>
                                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={80} outerRadius={110} paddingAngle={5} dataKey="value" stroke="none">
                                     {pieData.map((_entry: any, index: number) => (
@@ -388,7 +427,7 @@ const AnalyticsPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="glass-card">
+                <div className="glass-card" style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '24px' }}>
                         <div>
                             <h4 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Сравнение</h4>
@@ -415,8 +454,8 @@ const AnalyticsPage: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                    <div style={{ height: '350px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div style={{ height: '350px', minWidth: 0 }}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <BarChart
                                 data={([...chartData] as any[]).sort((a: any, b: any) => b.total_hours - a.total_hours).slice(0, compareBy === 'users' ? 8 : 12)}
                                 layout={compareBy === 'users' ? 'horizontal' : 'vertical'}
