@@ -18,17 +18,17 @@ ENV XDG_CACHE_HOME=/app/.cache
 
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --prefer-binary -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
-# Копируем само приложение
+# Копируем само приложение и скрипты
 COPY ./app ./app
-
-# Alembic
 COPY alembic.ini .
 COPY ./alembic ./alembic
-
-# Скрипты администрирования (create_admin и др.)
 COPY ./scripts ./scripts
+
+# Скачиваем ML-модели во время сборки
+RUN python scripts/download_models.py
 
 # Подготавливаем директории для данных и устанавливаем права
 RUN mkdir -p /app/uploads /app/.cache && \

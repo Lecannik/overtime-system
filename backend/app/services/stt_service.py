@@ -21,22 +21,29 @@ def get_whisper():
 def get_summarizer():
     global _summary_model, _summary_tokenizer
     if _summary_model is None:
-        model_path = "/app/models/gazeta" # Путь внутри докера
-        if not os.path.exists(model_path):
-             # Пытаемся найти локально если не в докере
-             model_path = "models/gazeta"
-             
-        logger.info(f"🎬 Загрузка Суммаризатора из {model_path}...")
-        try:
-            # Проверяем, есть ли файлы в директории
-            if os.path.exists(model_path) and os.listdir(model_path):
-                _summary_tokenizer = T5Tokenizer.from_pretrained(model_path)
-                _summary_model = T5ForConditionalGeneration.from_pretrained(model_path)
-            else:
-                raise OSError("Локальная директория пуста или отсутствует")
-        except Exception as e:
+        # Проверяем монтируемый том, затем встроенную директорию по умолчанию, затем локальные пути
+        paths_to_try = [
+            "/app/models/gazeta",
+            "/app/models/gazeta_default",
+            "models/gazeta",
+            "models/gazeta_default"
+        ]
+        
+        loaded = False
+        for path in paths_to_try:
+            if os.path.exists(path) and os.listdir(path):
+                logger.info(f"🎬 Загрузка Суммаризатора из локального пути: {path}...")
+                try:
+                    _summary_tokenizer = T5Tokenizer.from_pretrained(path)
+                    _summary_model = T5ForConditionalGeneration.from_pretrained(path)
+                    loaded = True
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось загрузить из {path}: {e}")
+        
+        if not loaded:
             fallback_model = "IlyaGusev/rut5_base_sum_gazeta"
-            logger.warning(f"⚠️ Не удалось загрузить модель локально из {model_path}: {e}. Скачиваем из Hugging Face ({fallback_model})...")
+            logger.warning(f"⚠️ Не удалось загрузить модель локально из путей {paths_to_try}. Скачиваем из Hugging Face ({fallback_model})...")
             _summary_tokenizer = T5Tokenizer.from_pretrained(fallback_model)
             _summary_model = T5ForConditionalGeneration.from_pretrained(fallback_model)
     return _summary_model, _summary_tokenizer
