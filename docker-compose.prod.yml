@@ -29,7 +29,7 @@ services:
 
   # 2. Бэкенд (FastAPI) — образ из DockerHub
   backend:
-    image: lecannik/overtime-backend:latest
+    image: lecannik/overtime-backend:${IMAGE_TAG:-latest}
     container_name: overtime_backend
     restart: always
     env_file: [.env]
@@ -44,7 +44,7 @@ services:
 
   # 3. Фронтенд (React → Nginx) — образ из DockerHub
   frontend:
-    image: lecannik/overtime-frontend:latest
+    image: lecannik/overtime-frontend:${IMAGE_TAG:-latest}
     container_name: overtime_frontend
     restart: always
     networks: [overtime_network]

@@ -96,18 +96,29 @@ jobs:
     needs: [build-backend, build-frontend]
 
     steps:
+      # Чекаут нужен только чтобы доставить на сервер compose-файл и nginx.conf.
+      # Сам код приложения едет на сервер ИСКЛЮЧИТЕЛЬНО в виде образов из DockerHub.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Доставляем на сервер только необходимое: prod-compose и конфиг роутера.
+      # Никакого git-репозитория и исходников на проде быть не должно.
+      - name: Copy deploy files to server
+        run: |
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml nik@192.168.20.21:/opt/overtime/docker-compose.prod.yml
+          scp -o StrictHostKeyChecking=no infra/gateway/nginx.conf nik@192.168.20.21:/opt/overtime/nginx.conf
+
       - name: Update application
         run: |
           ssh -o StrictHostKeyChecking=no nik@192.168.20.21 'bash -s' << 'EOF'
+          set -e
           cd /opt/overtime
-          git fetch origin
-          git checkout origin/main -- infra/gateway/nginx.conf
-          cp infra/gateway/nginx.conf nginx.conf
-          docker compose pull
-          # Исправляем права доступа на директории uploads и .cache через временный контейнер под root
-          docker compose run --rm -u root backend chmod -R 777 /app/uploads /app/.cache
-          docker compose up -d
-          docker compose restart nginx-router
+          # Пинним конкретную версию образа (sha коммита) вместо :latest —
+          # это делает деплой воспроизводимым, а откат — тривиальным.
+          export IMAGE_TAG=${{ github.sha }}
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+          docker compose -f docker-compose.prod.yml restart nginx-router
 
           # Проверка доступности бэкенда после деплоя
           echo "⏳ Ожидаем запуск бэкенда..."
@@ -118,7 +129,7 @@ jobs:
             fi
             if [ "$i" -eq 30 ]; then
               echo "❌ Бэкенд не ответил за 60 секунд"
-              docker compose logs --tail=50 backend
+              docker compose -f docker-compose.prod.yml logs --tail=50 backend
               exit 1
             fi
             sleep 2
