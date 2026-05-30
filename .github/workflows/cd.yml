@@ -89,7 +89,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ──────────────────────────────────────────────────────
-  # ДЕПЛОЙ и УВЕДОМЛЕНИЕ
+  # ДЕПЛОЙ
   # ──────────────────────────────────────────────────────
   deploy:
     runs-on: self-hosted
@@ -155,11 +155,23 @@ jobs:
           ls -la
           EOF
 
+  # ──────────────────────────────────────────────────────
+  # УВЕДОМЛЕНИЕ В TELEGRAM
+  # ──────────────────────────────────────────────────────
+  # Отдельная job: needs на все предыдущие + if: always() гарантируют, что
+  # оповещение уйдёт при ЛЮБОМ исходе — включая падение самих сборок, когда
+  # deploy-джоба пропускается. Статус считаем по результатам всех job
+  # (needs.<job>.result), а не по шагам внутри одной job.
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, deploy]
+    if: always()
+    steps:
       - name: Send Telegram Notification
-        if: always()
         env:
           BUILD_BACKEND: ${{ needs.build-backend.result }}
           BUILD_FRONTEND: ${{ needs.build-frontend.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
           COMMIT_MSG: ${{ github.event.head_commit.message || 'Ручной запуск' }}
           ACTOR: ${{ github.actor }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -168,7 +180,9 @@ jobs:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [[ "$BUILD_BACKEND" == "success" && "$BUILD_FRONTEND" == "success" ]]; then
+          # Успех только если прошли ОБЕ сборки И сам деплой. Любой иной исход
+          # (failure / cancelled / skipped у любой из job) → "Ошибка".
+          if [[ "$BUILD_BACKEND" == "success" && "$BUILD_FRONTEND" == "success" && "$DEPLOY_RESULT" == "success" ]]; then
             STATUS="✅ Успешно"
           else
             STATUS="❌ Ошибка"
