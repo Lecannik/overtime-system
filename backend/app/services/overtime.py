@@ -154,9 +154,22 @@ async def review_overtime(
             overtime.manager_approved = review.approved
             overtime.manager_comment = review.comment
         elif acting_role == UserRole.head:
-            # Проверяем, что это начальник отдела ЭТОГО проекта
+            # Проверяем, что это начальник отдела сотрудника, создавшего заявку
+            from app.models.organization import Department
+            from sqlalchemy import select
+
+            is_their_head = False
+            if overtime.user.department_id:
+                dept_res = await session.execute(
+                    select(Department).where(Department.id == overtime.user.department_id)
+                )
+                dept = dept_res.scalar_one_or_none()
+                if dept and dept.head_id == current_user.id:
+                    is_their_head = True
+
             if (
                 current_user.role != UserRole.admin
+                and not is_their_head
                 and overtime.user.department_id != current_user.department_id
             ):
                 raise HTTPException(

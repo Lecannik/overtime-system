@@ -478,7 +478,7 @@ const DashboardPage: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
         <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Активность за 30 дней (часы)</h4>
-          <div style={{ height: '200px', minWidth: 0 }}>
+          <div style={{ height: '200px', position: 'relative', width: '100%', minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stats?.daily_stats || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
@@ -512,7 +512,7 @@ const DashboardPage: React.FC = () => {
         <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
           <div style={{ height: '200px', display: 'flex', alignItems: 'center', minWidth: 0 }}>
-            <div style={{ flex: 1, height: '100%', minWidth: 0 }}>
+            <div style={{ flex: 1, height: '100%', position: 'relative', width: '100%', minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie

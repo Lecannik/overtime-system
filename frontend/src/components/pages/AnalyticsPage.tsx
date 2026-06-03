@@ -412,7 +412,7 @@ const AnalyticsPage: React.FC = () => {
                     <h4 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
                     </h4>
-                    <div style={{ height: '350px', minWidth: 0 }}>
+                    <div style={{ height: '350px', position: 'relative', width: '100%', minWidth: 0 }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <PieChart>
                                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={80} outerRadius={110} paddingAngle={5} dataKey="value" stroke="none">
@@ -454,7 +454,7 @@ const AnalyticsPage: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                    <div style={{ height: '350px', minWidth: 0 }}>
+                    <div style={{ height: '350px', position: 'relative', width: '100%', minWidth: 0 }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <BarChart
                                 data={([...chartData] as any[]).sort((a: any, b: any) => b.total_hours - a.total_hours).slice(0, compareBy === 'users' ? 8 : 12)}

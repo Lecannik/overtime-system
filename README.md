@@ -108,6 +108,34 @@ python scripts/create_admin.py
 
 ---
 
+## 🌐 Развертывание (Production Deployment)
+
+Продакшн-версия системы развертывается по принципу инфраструктуры без исходного кода на целевом сервере (Source-code-free Deployment):
+
+1. **Сборка и доставка**:
+   * Сборка Docker-образов бэкенда (`lecannik/overtime-backend`) и фронтенда (`lecannik/overtime-frontend`) выполняется автоматически в CI-пайплайне GitHub Actions.
+   * Образы тегируются уникальным SHA коммита (`IMAGE_TAG=${{ github.sha }}`) и отправляются в реестр DockerHub.
+2. **Деплой на сервере**:
+   * GitHub Actions Runner (`git-runner`) с помощью протокола `scp` копирует на сервер деплоя файлы конфигурации: `docker-compose.prod.yml` и `nginx.conf`.
+   * По протоколу `ssh` на сервере выполняется обновление контейнеров:
+     ```bash
+     export IMAGE_TAG=<commit_sha>
+     docker compose -f docker-compose.prod.yml pull
+     docker compose -f docker-compose.prod.yml up -d
+     ```
+3. **Запуск административных скриптов на продакшене**:
+   Так как исходный код встроен в Docker-образы, служебные скрипты запускаются непосредственно внутри контейнеров хост-командами:
+   * Создание учетной записи администратора:
+     ```bash
+     docker compose -f docker-compose.prod.yml exec backend python scripts/create_admin.py
+     ```
+   * Накатывание миграций базы данных (выполняется автоматически при старте бэкенда или вручную):
+     ```bash
+     docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+     ```
+
+---
+
 ## 🏗 Архитектура проекта
 
 ```text
