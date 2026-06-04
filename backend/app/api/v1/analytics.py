@@ -21,19 +21,28 @@ from app.services.excel_service import generate_excel_file
 router = APIRouter(prefix="/analytics", tags=["analytics"])
  
  
-async def get_analytics_scope(current_user: User = Depends(get_current_user)) -> dict:
+async def get_analytics_scope(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+) -> dict:
     """
     Зависимость для определения области видимости (scope) данных в аналитике.
-    Возвращает словарь с фильтрами (manager_id, department_id), которые нужно применить.
+    Возвращает словарь с фильтрами (manager_id, department_ids), которые нужно применить.
     """
     if current_user.role == UserRole.admin:
-        return {"manager_id": None, "department_id": None}
+        return {"manager_id": None, "department_ids": None}
     
     if current_user.role == UserRole.manager:
-        return {"manager_id": current_user.id, "department_id": None}
+        return {"manager_id": current_user.id, "department_ids": None}
     
     if current_user.role == UserRole.head:
-        return {"manager_id": None, "department_id": current_user.department_id}
+        from app.models.organization import Department
+        from sqlalchemy import select
+        dept_res = await session.execute(
+            select(Department.id).where(Department.head_id == current_user.id)
+        )
+        dept_ids = [row[0] for row in dept_res.all()]
+        return {"manager_id": None, "department_ids": dept_ids}
         
     raise HTTPException(status_code=403, detail="Доступ запрещен. Требуется роль менеджера, начальника или админа.")
 

@@ -27,7 +27,8 @@ async def get_overtimes(
     start_date: date | None = None,
     end_date: date | None = None,
     page: int = 1,
-    page_size: int = 15
+    page_size: int = 15,
+    view: str | None = None
 ):
     """
     Получает список заявок с учетом прав доступа текущего пользователя и пагинации.
@@ -42,16 +43,43 @@ async def get_overtimes(
         pass 
     elif current_user.role == UserRole.employee:
         filters.append(Overtime.user_id == current_user.id)
-    else:
-        # Для руководителей: свои + подчиненные
-        my_depts = select(Department.id).where(Department.head_id == current_user.id)
-        filters.append(
-            or_(
-                Overtime.user_id == current_user.id,        # Свои
-                Project.manager_id == current_user.id,     # Проекты, где я менеджер
-                User.department_id.in_(my_depts)           # Отделы, где я начальник
+    elif current_user.role == UserRole.head:
+        if view == "review":
+            # На странице согласования видит только свой отдел (где является начальником)
+            my_depts = select(Department.id).where(Department.head_id == current_user.id)
+            filters.append(User.department_id.in_(my_depts))
+        elif view == "dashboard":
+            # На главной странице видит только свои заявки
+            filters.append(Overtime.user_id == current_user.id)
+        else:
+            # Legacy fallback: свои + подчиненные
+            my_depts = select(Department.id).where(Department.head_id == current_user.id)
+            filters.append(
+                or_(
+                    Overtime.user_id == current_user.id,
+                    User.department_id.in_(my_depts)
+                )
             )
-        )
+    elif current_user.role == UserRole.manager:
+        if view == "review":
+            # На странице согласования видит только заявки по своим проектам
+            filters.append(Project.manager_id == current_user.id)
+        elif view == "dashboard":
+            # На главной странице видит заявки по своим проектам + свои личные
+            filters.append(
+                or_(
+                    Overtime.user_id == current_user.id,
+                    Project.manager_id == current_user.id
+                )
+            )
+        else:
+            # Legacy fallback
+            filters.append(
+                or_(
+                    Overtime.user_id == current_user.id,
+                    Project.manager_id == current_user.id
+                )
+            )
 
     # Дополнительные фильтры
     if status:

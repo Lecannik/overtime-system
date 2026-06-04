@@ -65,6 +65,7 @@ async def get_analytics_summary(
     session: AsyncSession, 
     manager_id: int | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
@@ -86,6 +87,8 @@ async def get_analytics_summary(
 
     if manager_id:
         query = query.join(Project).where(Project.manager_id == manager_id)
+    elif department_ids is not None:
+        query = query.join(User).where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.join(User).where(User.department_id == department_id)
     
@@ -95,7 +98,7 @@ async def get_analytics_summary(
         query = query.where(Overtime.project_id == project_id)
 
     if company:
-        if not (department_id or manager_id or project_id): 
+        if not (department_id or department_ids is not None or manager_id or project_id): 
              query = query.join(User)
         elif manager_id or project_id:
             query = query.join(User)
@@ -118,6 +121,7 @@ async def get_project_analytics(
     session: AsyncSession, 
     manager_id: int | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
@@ -136,6 +140,16 @@ async def get_project_analytics(
         func.count(Overtime.id).label("request_count")
     ).join(Overtime, Project.id == Overtime.project_id).group_by(Project.id, Project.name)
 
+    user_joined = False
+    if department_ids is not None:
+        query = query.join(User, User.id == Overtime.user_id)
+        query = query.where(User.department_id.in_(department_ids))
+        user_joined = True
+    elif department_id:
+        query = query.join(User, User.id == Overtime.user_id)
+        query = query.where(User.department_id == department_id)
+        user_joined = True
+
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
     
@@ -143,7 +157,9 @@ async def get_project_analytics(
         query = query.where(Project.id == project_id)
 
     if company:
-        query = query.join(User, Project.id == Overtime.project_id).where(User.company == company)
+        if not user_joined:
+            query = query.join(User, User.id == Overtime.user_id)
+        query = query.where(User.company == company)
     
     query = apply_date_filters(query, start_date, end_date)
 
@@ -161,6 +177,7 @@ async def get_department_analytics(
     session: AsyncSession,
     manager_id: int | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
@@ -180,6 +197,14 @@ async def get_department_analytics(
     ).join(User, Department.id == User.department_id)\
      .join(Overtime, User.id == Overtime.user_id)\
      .group_by(Department.id, Department.name)
+
+    if manager_id:
+        query = query.join(Project, Overtime.project_id == Project.id).where(Project.manager_id == manager_id)
+
+    if department_ids is not None:
+        query = query.where(Department.id.in_(department_ids))
+    elif department_id:
+        query = query.where(Department.id == department_id)
 
     if project_id:
         query = query.where(Overtime.project_id == project_id)
@@ -204,6 +229,7 @@ async def get_user_analytics(
     project_id: int | None = None,
     company: UserCompany | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     manager_id: int | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None
@@ -238,6 +264,8 @@ async def get_user_analytics(
     
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
+    elif department_ids is not None:
+        query = query.where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.where(User.department_id == department_id)
 
@@ -260,6 +288,7 @@ async def get_export_data(
     user_id: int | None = None,
     manager_id: int | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
@@ -295,6 +324,8 @@ async def get_export_data(
 
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
+    elif department_ids is not None:
+        query = query.where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.where(User.department_id == department_id)
     
@@ -341,6 +372,7 @@ async def get_review_analytics(
     session: AsyncSession,
     manager_id: int | None = None,
     department_id: int | None = None,
+    department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
@@ -356,6 +388,8 @@ async def get_review_analytics(
     
     if manager_id:
         query = query.join(Project).where(Project.manager_id == manager_id)
+    elif department_ids is not None:
+        query = query.join(User).where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.join(User).where(User.department_id == department_id)
         
@@ -365,7 +399,7 @@ async def get_review_analytics(
         query = query.where(Overtime.project_id == project_id)
 
     if company:
-        if not (department_id or manager_id or project_id):
+        if not (department_id or department_ids is not None or manager_id or project_id):
             query = query.join(User)
         elif manager_id or project_id:
             query = query.join(User)

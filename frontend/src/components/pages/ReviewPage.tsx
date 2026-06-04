@@ -159,6 +159,10 @@ const ReviewPage: React.FC = () => {
                 const token = localStorage.getItem('token');
                 if (!token) { navigate('/login'); return; }
                 const userRes = await api.get('/auth/me');
+                if (userRes.data.role === 'employee') {
+                    navigate('/dashboard');
+                    return;
+                }
                 setUser(userRes.data);
             } catch (err) {
                 console.error('Fetch user error:', err);
@@ -181,7 +185,8 @@ const ReviewPage: React.FC = () => {
                 page_size: pageSize,
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
                 start_date: startDate || undefined,
-                end_date: endDate || undefined
+                end_date: endDate || undefined,
+                view: 'review'
             });
 
             setOvertimes(ovtRes.items || []);

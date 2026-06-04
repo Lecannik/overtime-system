@@ -25,6 +25,7 @@ async def list_overtimes(
     project_id: int | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    view: str | None = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -39,7 +40,8 @@ async def list_overtimes(
         start_date=start_date,
         end_date=end_date,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        view=view
     )
 
 

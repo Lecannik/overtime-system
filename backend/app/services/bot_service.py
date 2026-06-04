@@ -266,14 +266,21 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scope = {"manager_id": None, "department_id": None}
     elif user.role == UserRole.manager:
         scope = {"manager_id": user.id, "department_id": None}
-    elif user.role == UserRole.head:
-        scope = {"manager_id": None, "department_id": user.department_id}
-    else:
+    elif user.role != UserRole.head:
         scope = {"user_id": user.id}
         is_personal = True
         
     async with AsyncSessionLocal() as session:
         try:
+            if user.role == UserRole.head:
+                from app.models.organization import Department
+                from sqlalchemy import select
+                dept_res = await session.execute(
+                    select(Department.id).where(Department.head_id == user.id)
+                )
+                dept_ids = [row[0] for row in dept_res.all()]
+                scope = {"manager_id": None, "department_ids": dept_ids}
+
             data = await analytics_repo.get_export_data(
                 session,
                 **scope,

@@ -273,7 +273,8 @@ const DashboardPage: React.FC = () => {
         page_size: pageSize,
         status: filterStatus || undefined,
         start_date: startDate || undefined,
-        end_date: endDate || undefined
+        end_date: endDate || undefined,
+        view: 'dashboard'
       });
       setOvertimes(ovRes.items || []);
       setTotalPages(ovRes.pages || 1);
