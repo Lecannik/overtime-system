@@ -77,6 +77,19 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user: return ConversationHandler.END
+    
+    async with AsyncSessionLocal() as session:
+        active = await overtime_repo.get_active_session(session, user.id)
+        if active:
+            await update.message.reply_text(
+                "⚠️ <b>У вас уже запущена переработка!</b>\n\n"
+                "Вы не можете начать новую переработку, пока не завершите текущую.\n"
+                "Используйте кнопку «⏹ Остановить переработку», чтобы завершить её.",
+                parse_mode="HTML",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
+            )
+            return ConversationHandler.END
+            
     await update.message.reply_text(
         "🔍 Введите название или номер проекта для поиска:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)

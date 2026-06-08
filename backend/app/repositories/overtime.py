@@ -154,7 +154,9 @@ async def get_active_session(session: AsyncSession, user_id: int) -> Overtime | 
         .options(selectinload(Overtime.project))
     )
     result = await session.execute(query)
-    return result.scalar_one_or_none()
+    # Используем scalars().first() вместо scalar_one_or_none(), чтобы избежать падения
+    # MultipleResultsFound, если в БД по ошибке застряло несколько активных сессий.
+    return result.scalars().first()
 
 async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_data: dict) -> Overtime:
     """Обновляет поля переработки на основе словаря данных."""
@@ -278,7 +280,8 @@ async def check_overlapping_overtimes(
         query = query.where(Overtime.id != exclude_id)
         
     result = await session.execute(query)
-    return result.scalar_one_or_none() is not None
+    # Используем scalars().first() вместо scalar_one_or_none() для предотвращения падения
+    return result.scalars().first() is not None
 
 async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project_id: int) -> float:
     """
