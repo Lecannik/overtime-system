@@ -229,8 +229,13 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active.end_lng = end_lng
             await session.commit()
             
+            from app.core.utils import calculate_overtime_hours
             duration = active.end_time - active.start_time
-            dur_str = f"{duration.seconds // 3600}ч {(duration.seconds // 60) % 60}м"
+            total_seconds = int(duration.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            rounded_hours = int(calculate_overtime_hours(active.start_time, active.end_time))
+            dur_str = f"{hours}ч {minutes}м (округлено: {rounded_hours}ч)"
             
             escaped_summary = html.escape(summary_text)
             escaped_proj_name = html.escape(active.project.name)
