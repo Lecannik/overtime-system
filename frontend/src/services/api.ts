@@ -6,28 +6,92 @@ import type {
     AnalyticsParams, OdooProjectPreview
 } from '../types';
 
+let inMemoryToken: string | null = null;
+
+export const setAccessToken = (token: string | null) => {
+    inMemoryToken = token;
+};
+
+export const getAccessToken = () => {
+    return inMemoryToken;
+};
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const api = axios.create({
     baseURL: `${API_URL}/api/v1`,
+    withCredentials: true,
 });
 
 // Добавляем токен к каждому запросу
 api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
+    const token = getAccessToken();
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
 });
 
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+    failedQueue.forEach((prom) => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem('token');
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
+    async (error) => {
+        const originalRequest = error.config;
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            // Исключаем бесконечный цикл на логине/рефреше
+            if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')) {
+                setAccessToken(null);
+                return Promise.reject(error);
+            }
+
+            if (isRefreshing) {
+                return new Promise(function (resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                })
+                    .then((token) => {
+                        originalRequest.headers.Authorization = 'Bearer ' + token;
+                        return api(originalRequest);
+                    })
+                    .catch((err) => {
+                        return Promise.reject(err);
+                    });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                const res = await api.post('/auth/refresh');
+                const token = res.data.access_token;
+                setAccessToken(token || null);
+                
+                processQueue(null, token);
+                
+                originalRequest.headers.Authorization = 'Bearer ' + token;
+                return api(originalRequest);
+            } catch (err) {
+                processQueue(err, null);
+                setAccessToken(null);
+                if (!window.location.pathname.includes('/login')) {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(err);
+            } finally {
+                isRefreshing = false;
             }
         }
 

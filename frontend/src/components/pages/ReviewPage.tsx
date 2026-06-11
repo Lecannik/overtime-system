@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     CheckCircle2, Search, Filter, Calendar, ShieldCheck, ChevronDown, CheckCircle, Info, MapPin, Clock, XCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { api, getOvertimes, reviewOvertime } from '../../services/api';
+import { api, getOvertimes, reviewOvertime, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
@@ -156,7 +156,7 @@ const ReviewPage: React.FC = () => {
     useEffect(() => {
         const fetchUser = async () => {
             try {
-                const token = localStorage.getItem('token');
+                const token = getAccessToken();
                 if (!token) { navigate('/login'); return; }
                 const userRes = await api.get('/auth/me');
                 if (userRes.data.role === 'employee') {
@@ -177,7 +177,7 @@ const ReviewPage: React.FC = () => {
             if (showLoader) {
                 setLoading(true);
             }
-            const token = localStorage.getItem('token');
+            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
 
             const ovtRes = await getOvertimes({

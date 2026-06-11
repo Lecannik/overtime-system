@@ -15,7 +15,8 @@ import api, {
     getAnalyticsSummary, getProjectAnalytics,
     getDepartmentAnalytics,
     getUserAnalytics, getReviewAnalytics,
-    exportAnalytics
+    exportAnalytics,
+    getAccessToken
 } from '../../services/api';
 import { COMPANY_LABELS } from '../../constants/locale';
 import flatpickr from 'flatpickr';
@@ -119,7 +120,7 @@ const AnalyticsPage: React.FC = () => {
     const fetchAll = useCallback(async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
 
             const me = await api.get('/auth/me');

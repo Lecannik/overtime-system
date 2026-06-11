@@ -20,6 +20,7 @@ from app.services.refresh_token import (
     verify_and_rotate_refresh_token,
     revoke_refresh_token,
 )
+from app.core.rate_limit import login_limiter
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -42,6 +43,7 @@ async def login(
     """
     Аутентификация пользователя и получение JWT токена.
     """
+    login_limiter.check_limit(form_data.username)
     user = await authenticate_user(session, form_data.username, form_data.password)
     
     # ПРОВЕРКА 2FA
@@ -99,6 +101,7 @@ async def verify_login_2fa(
     db: AsyncSession = Depends(get_session)
 ):
     """Верификация 2FA кода при входе."""
+    login_limiter.check_limit(verify_in.email)
     user = await get_user_by_email(db, verify_in.email)
     
     if not user:
@@ -249,6 +252,7 @@ async def request_password_reset(
     req: PasswordResetRequest,
     db: AsyncSession = Depends(get_session)
 ):
+    login_limiter.check_limit(req.email)
     user = await get_user_by_email(db, req.email)
     
     if user:
@@ -441,6 +445,8 @@ async def microsoft_callback(
         value=refresh_token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
+        # samesite="lax" намеренно захардкожен для OIDC callback (cross-site flow),
+        # чтобы кука передавалась после редиректа с внешнего SSO-провайдера.
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )

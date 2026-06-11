@@ -4,7 +4,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-from app.models.user import UserRole, UserCompany
+from app.models.user import UserRole, UserCompany, NotificationLevel
 from datetime import datetime
 
 
@@ -34,7 +34,7 @@ class UserResponse(BaseModel):
     company: UserCompany
     department_id: Optional[int] = None
     telegram_chat_id: Optional[str] = None
-    notification_level: int = 2
+    notification_level: NotificationLevel = NotificationLevel.ALL
     is_active: bool
     must_change_password: bool
     is_2fa_enabled: bool
@@ -74,7 +74,7 @@ class UserUpdatePreferences(BaseModel):
     """
     full_name: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-    notification_level: Optional[int] = None
+    notification_level: Optional[NotificationLevel] = None
     department_id: Optional[int] = None
     is_2fa_enabled: Optional[bool] = None
 
@@ -87,7 +87,7 @@ class UserAdminUpdate (BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     telegram_chat_id: Optional[str] = None
-    notification_level: Optional[int] = None
+    notification_level: Optional[NotificationLevel] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     department_id: Optional[int] = None

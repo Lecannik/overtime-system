@@ -1,4 +1,6 @@
 import logging
+from datetime import timezone
+from app.core.config import settings
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, NotificationLevel
 from app.services.telegram import send_telegram_message
@@ -79,7 +81,19 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
     comment_block = f"\n💬 <b>Коммент</b>: {comment}" if comment else ""
     comment_plain = f"\nКомментарий: {comment}" if comment else ""
     
-    time_str = f"{overtime.start_time.strftime('%d.%m %H:%M')} — {overtime.end_time.strftime('%H:%M')}"
+    start_local = overtime.start_time
+    if start_local.tzinfo is None:
+        start_local = start_local.replace(tzinfo=timezone.utc)
+    start_local = start_local.astimezone(settings.tz_info)
+
+    end_local = overtime.end_time
+    if end_local:
+        if end_local.tzinfo is None:
+            end_local = end_local.replace(tzinfo=timezone.utc)
+        end_local = end_local.astimezone(settings.tz_info)
+        time_str = f"{start_local.strftime('%d.%m %H:%M')} — {end_local.strftime('%H:%M')}"
+    else:
+        time_str = f"{start_local.strftime('%d.%m %H:%M')} — ..."
 
     msg_plain = (
         f"Обновление заявки #{overtime.id}\n"

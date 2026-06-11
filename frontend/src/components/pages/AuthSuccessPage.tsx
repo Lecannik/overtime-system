@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { setAccessToken } from '../../services/api';
 
 const AuthSuccessPage: React.FC = () => {
   const navigate = useNavigate();
@@ -9,8 +10,8 @@ const AuthSuccessPage: React.FC = () => {
     const token = params.get('token');
 
     if (token) {
-      // Сохраняем локальный JWT токен в localStorage
-      localStorage.setItem('token', token);
+      // Сохраняем локальный JWT токен в памяти
+      setAccessToken(token);
       // Перенаправляем на дашборд
       navigate('/dashboard');
     } else {

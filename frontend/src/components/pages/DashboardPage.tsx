@@ -6,7 +6,7 @@ import {
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
   Settings, ChevronUp, ChevronDown
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics } from '../../services/api';
+import { api, getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
 import CreateOvertimeModal from './CreateOvertimeModal';
 import {
@@ -248,7 +248,7 @@ const DashboardPage: React.FC = () => {
 
   const fetchUserAndStats = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = getAccessToken();
       if (!token) { navigate('/login'); return; }
 
       const [userRes, statsRes] = await Promise.all([
@@ -265,7 +265,7 @@ const DashboardPage: React.FC = () => {
   const fetchTableData = useCallback(async (showLoader = false) => {
     try {
       if (showLoader) setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = getAccessToken();
       if (!token) { navigate('/login'); return; }
 
       const ovRes = await getMyOvertimes({ 

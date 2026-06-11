@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import Logo from '../atoms/Logo';
 import NotificationBell from './NotificationBell';
-import { logout } from '../../services/api';
+import { logout, setAccessToken } from '../../services/api';
 import type { User } from '../../types';
 
 interface HeaderProps {
@@ -34,14 +34,14 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
         try {
             const response = await logout();
             if (response.data && response.data.sso_logout_url) {
-                localStorage.removeItem('token');
+                setAccessToken(null);
                 window.location.href = response.data.sso_logout_url;
                 return;
             }
         } catch (error) {
             console.error('Ошибка при выходе из системы:', error);
         } finally {
-            localStorage.removeItem('token');
+            setAccessToken(null);
             navigate('/login');
         }
     };

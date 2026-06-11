@@ -66,7 +66,7 @@ class User(Base):
         default=UserCompany.Polymedia
     )
     telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    notification_level: Mapped[int] = mapped_column(Integer, default=2)  # 0: Off, 1: Email only, 2: All, 3: TG only
+    notification_level: Mapped[NotificationLevel] = mapped_column(Integer, default=NotificationLevel.ALL)
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

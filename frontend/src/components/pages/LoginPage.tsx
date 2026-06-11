@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
-import { api, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
+import { api, requestPasswordReset, confirmPasswordReset, verify2FA, setAccessToken, getAccessToken } from '../../services/api';
 import Logo from '../atoms/Logo';
 import { AxiosError } from 'axios';
 
@@ -33,7 +33,7 @@ const LoginPage: React.FC = () => {
   const [twoFaEmail, setTwoFaEmail] = useState('');
 
   useEffect(() => {
-    if (localStorage.getItem('token')) navigate('/dashboard');
+    if (getAccessToken()) navigate('/dashboard');
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,7 +51,7 @@ const LoginPage: React.FC = () => {
         setMode('2fa');
         setSuccess('Код подтверждения отправлен на вашу почту.');
       } else {
-        localStorage.setItem('token', res.data.access_token);
+        setAccessToken(res.data.access_token);
         navigate('/dashboard');
       }
     } catch (err: unknown) {
@@ -68,7 +68,7 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await verify2FA(twoFaEmail, twoFaCode);
-      localStorage.setItem('token', res.access_token);
+      setAccessToken(res.access_token);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as AxiosError<{ detail?: string }>;
@@ -332,7 +332,7 @@ const LoginPage: React.FC = () => {
           border-right: 1px solid var(--border);
         }
         .login-right-section {
-          background: linear-gradient(rgba(2, 6, 23, 0.85), rgba(2, 6, 23, 0.6)), url("https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80");
+          background: linear-gradient(rgba(2, 6, 23, 0.85), rgba(2, 6, 23, 0.6)), url("/login_bg.jpg");
           background-size: cover;
           background-position: center;
           display: flex;

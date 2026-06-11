@@ -11,25 +11,26 @@ class MSGraphService:
         self.client_id = settings.MS_CLIENT_ID
         self.secret = settings.MS_CLIENT_SECRET
         self.tenant_id = settings.MS_TENANT_ID
-        self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
+        self.authority = f"https://login.microsoftonline.com/{self.tenant_id}" if self.tenant_id else None
         self.scope = ["https://graph.microsoft.com/.default"]
         
-        self._app = None
-
-    async def _get_access_token(self):
-        """Получает или обновляет токен доступа от Microsoft с использованием кэша MSAL."""
-        if not all([self.client_id, self.secret, self.tenant_id]):
-            logger.error("MS Graph Config Missing: ID, Secret or Tenant is not set!")
-            return None
-
-        if self._app is None:
+        if all([self.client_id, self.secret, self.tenant_id]):
             logger.debug(f"Initializing MS ConfidentialClientApplication for Tenant: {self.tenant_id}")
             self._app = msal.ConfidentialClientApplication(
                 self.client_id,
                 authority=self.authority,
                 client_credential=self.secret
             )
-            
+        else:
+            logger.warning("MS Graph credentials not fully configured; client application will not be initialized.")
+            self._app = None
+
+    async def _get_access_token(self):
+        """Получает или обновляет токен доступа от Microsoft с использованием кэша MSAL."""
+        if self._app is None:
+            logger.error("MS Graph Config Missing or initialization failed: ID, Secret or Tenant is not set!")
+            return None
+
         # Для client-credentials flow MSAL кэширует токен автоматически внутри acquire_token_for_client
         result = self._app.acquire_token_for_client(scopes=self.scope)
         if "access_token" in result:

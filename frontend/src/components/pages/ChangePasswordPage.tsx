@@ -150,7 +150,7 @@ const ChangePasswordPage: React.FC = () => {
           border-right: 1px solid var(--border);
         }
         .login-right-section {
-          background: linear-gradient(rgba(2, 6, 23, 0.8), rgba(2, 6, 23, 0.5)), url("https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80");
+          background: linear-gradient(rgba(2, 6, 23, 0.8), rgba(2, 6, 23, 0.5)), url("/change_password_bg.jpg");
           background-size: cover;
           background-position: center;
           display: flex;

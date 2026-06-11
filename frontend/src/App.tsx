@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import React, { useEffect, useState, useCallback } from 'react';
 import { ThemeProvider } from './context/ThemeProvider';
-import api from './services/api';
+import api, { setAccessToken, getAccessToken } from './services/api';
 import type { User } from './types';
 
 import LoginPage from './components/pages/LoginPage';
@@ -15,7 +15,7 @@ import AuthSuccessPage from './components/pages/AuthSuccessPage';
 
 // Компонент-обертка для защиты маршрутов
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('token');
+  const token = getAccessToken();
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(!!token);
@@ -26,7 +26,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       setUser(res.data);
     } catch (err) {
       console.error('ProtectedRoute: Auth error', err);
-      localStorage.removeItem('token');
+      setAccessToken(null);
     } finally {
       setLoading(false);
     }
@@ -56,11 +56,57 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function HomeRedirect() {
-  const token = localStorage.getItem('token');
+  const token = getAccessToken();
   return token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />;
 }
 
 function App() {
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const res = await api.post('/auth/refresh');
+        if (res.data.access_token) {
+          setAccessToken(res.data.access_token);
+        }
+      } catch (err) {
+        console.log('No active session on startup / token refresh failed', err);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    initAuth();
+  }, []);
+
+  if (isInitializing) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-primary)'
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid var(--border)',
+          borderTop: '3px solid var(--primary)',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }}></div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <ThemeProvider>
       <Router>

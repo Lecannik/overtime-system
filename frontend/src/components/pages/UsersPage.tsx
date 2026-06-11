@@ -7,7 +7,8 @@ import {
 import api, {
     getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
-    updateDepartment, updateProject, getOdooProjects, importOdooProjects
+    updateDepartment, updateProject, getOdooProjects, importOdooProjects,
+    getAccessToken
 } from '../../services/api';
 
 import type { OdooProjectPreview, User, Department, Project, AuditLog } from '../../types';
@@ -215,7 +216,7 @@ const UsersPage: React.FC = () => {
 
     useEffect(() => {
         const checkAuth = async () => {
-            const token = localStorage.getItem('token');
+            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
             try {
                 const res = await api.get('/auth/me');

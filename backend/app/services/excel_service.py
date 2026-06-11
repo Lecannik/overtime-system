@@ -2,8 +2,9 @@ import io
 import pandas as pd
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.user import User, UserRole
+from app.core.config import settings
 
 async def generate_excel_file(
     data: list,
@@ -25,9 +26,23 @@ async def generate_excel_file(
 
     df = df[cols_order]
     
-    # Форматирование дат
-    df['start_time'] = pd.to_datetime(df['start_time']).dt.strftime('%d.%m.%Y %H:%M')
-    df['end_time'] = pd.to_datetime(df['end_time']).dt.strftime('%d.%m.%Y %H:%M')
+    # Форматирование дат к локальному часовому поясу (Asia/Almaty) с безопасной обработкой None
+    def format_datetime_local(dt):
+        if pd.isna(dt) or dt is None:
+            return ""
+        if isinstance(dt, str):
+            try:
+                dt = pd.to_datetime(dt)
+            except Exception:
+                return dt
+        if hasattr(dt, "to_pydatetime"):
+            dt = dt.to_pydatetime()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(settings.tz_info).strftime('%d.%m.%Y %H:%M')
+
+    df['start_time'] = df['start_time'].apply(format_datetime_local)
+    df['end_time'] = df['end_time'].apply(format_datetime_local)
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:

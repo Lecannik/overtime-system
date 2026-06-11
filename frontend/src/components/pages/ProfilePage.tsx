@@ -5,7 +5,7 @@ import {
     User as UserIcon, Mail, Shield, Building2, Globe, Save, Key,
     Bell, Smartphone, Camera, Loader2, CheckCircle2
 } from 'lucide-react';
-import api, { updateMyPreferences } from '../../services/api';
+import api, { updateMyPreferences, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
 import type { User, UserUpdatePreferences } from '../../types';
@@ -28,7 +28,7 @@ const ProfilePage: React.FC = () => {
 
     const fetchUser = useCallback(async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
             const res = await api.get('/auth/me');
             const notifLvl = res.data.notification_level !== undefined ? res.data.notification_level : 2;

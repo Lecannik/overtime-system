@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getAccessToken } from '../../services/api';
 import { formatTime } from '../../constants/locale';
 import type { Notification } from '../../types';
 
@@ -34,7 +34,7 @@ const NotificationBell: React.FC = () => {
         let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
         const connectWebSocket = () => {
-            const token = localStorage.getItem('token');
+            const token = getAccessToken();
             if (!token) return;
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
