@@ -10,7 +10,7 @@ async def main():
         result = await session.execute(select(User).where(User.email == 'admin@example.com'))
         user = result.scalar_one_or_none()
         if user:
-            user.hashed_password = hash_password('admin123')
+            user.hashed_password = hash_password('Polymedia!10')
             await session.commit()
             print("Password reset successful for admin@example.com")
         else:

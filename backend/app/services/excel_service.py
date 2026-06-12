@@ -6,6 +6,12 @@ from datetime import datetime, timezone
 from app.models.user import User, UserRole
 from app.core.config import settings
 
+def format_date_with_weekday(dt: datetime) -> str:
+    """Форматирует дату в формат: день_недели. день.месяц.год (например: пн. 15.06.2026)"""
+    weekdays = ["пн.", "вт.", "ср.", "чт.", "пт.", "сб.", "вс."]
+    wd = weekdays[dt.weekday()]
+    return f"{wd} {dt.strftime('%d.%m.%Y')}"
+
 async def generate_excel_file(
     data: list,
     current_user: User,
@@ -74,8 +80,10 @@ async def generate_excel_file(
         worksheet = writer.sheets['Report']
         
         # Заголовок
+        local_now = datetime.now(settings.tz_info)
+        formatted_date = format_date_with_weekday(local_now)
         title_text = "ПЕРСОНАЛЬНЫЙ ОТЧЕТ" if is_personal else "ОТЧЕТ ПО ПЕРЕРАБОТКАМ"
-        title = f"{title_text} — {datetime.now().strftime('%d.%m.%Y')}"
+        title = f"{title_text} — {formatted_date}"
         worksheet.merge_cells('A1:I1')
         worksheet['A1'] = title
         worksheet['A1'].font = Font(size=16, bold=True, color="1e40af")
@@ -200,7 +208,7 @@ async def generate_excel_file(
                 ws.row_dimensions[1].height = 30
                 
                 ws.merge_cells('A2:F2')
-                ws['A2'] = f"Выгрузил: {current_user.full_name} | Дата: {datetime.now().strftime('%d.%m.%Y')}"
+                ws['A2'] = f"Выгрузил: {current_user.full_name} | Дата: {formatted_date}"
                 ws['A2'].font = Font(italic=True, size=10, color="4b5563")
                 ws['A2'].alignment = Alignment(horizontal='center')
                 ws.row_dimensions[2].height = 20
