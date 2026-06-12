@@ -60,23 +60,37 @@ async def test_generate_excel_file():
         }
     ]
 
+    # 1. Проверяем генерацию БЕЗ указания дат (должна выводиться текущая Дата)
     excel_data = await generate_excel_file(data, fake_user, is_personal=False)
     assert excel_data is not None
     assert isinstance(excel_data, io.BytesIO)
 
-    # Прочитаем сгенерированный файл с помощью openpyxl
     wb = openpyxl.load_workbook(excel_data)
-    
-    # Проверим наличие листов
-    sheet_names = wb.sheetnames
-    assert "Report" in sheet_names
-    assert "Polymedia (<=16ч)" in sheet_names
-    
-    # Проверим, что на сгруппированном листе есть строка с датой в нужном формате
     ws_poly = wb["Polymedia (<=16ч)"]
     a2_val = ws_poly['A2'].value
     assert "Выгрузил: Иван Иванов" in a2_val
     assert "Дата: " in a2_val
+
+    # 2. Проверяем генерацию С указанием периода (должен выводиться Период)
+    from datetime import date
+    start_d = date(2026, 6, 1)
+    end_d = date(2026, 6, 12)
+    excel_data_period = await generate_excel_file(
+        data, fake_user, is_personal=False, start_date=start_d, end_date=end_d
+    )
     
-    date_part = a2_val.split("Дата: ")[1]
-    assert any(day in date_part for day in ["пн.", "вт.", "ср.", "чт.", "пт.", "сб.", "вс."])
+    wb_period = openpyxl.load_workbook(excel_data_period)
+    ws_poly_period = wb_period["Polymedia (<=16ч)"]
+    a2_period_val = ws_poly_period['A2'].value
+    
+    # Период: пн. 01.06.2026 — пт. 12.06.2026
+    assert "Выгрузил: Иван Иванов" in a2_period_val
+    assert "Период: пн. 01.06.2026 — пт. 12.06.2026" in a2_period_val
+
+    # Проверим заголовки таблицы (в строке 4)
+    headers = [ws_poly_period.cell(row=4, column=col).value for col in range(1, 8)]
+    assert headers == ["№", "Сотрудник", "Дата", "Отдел", "Проекты", "Запрошено (ч)", "Согласовано (ч)"]
+
+    # Проверим, что в третьем столбце первой строки данных (строка 5) выводится дата с днем недели
+    date_val = ws_poly_period.cell(row=5, column=3).value
+    assert date_val == "пт. 12.06.2026"

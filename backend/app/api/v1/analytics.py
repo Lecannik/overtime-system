@@ -179,7 +179,7 @@ async def generate_excel_response(
     if not data:
         raise HTTPException(status_code=404, detail="Нет данных для экспорта")
         
-    output = await generate_excel_file(data, current_user, is_personal=is_personal)
+    output = await generate_excel_file(data, current_user, is_personal=is_personal, start_date=start_date, end_date=end_date)
     
     filename = f"personal_report_{datetime.now().strftime('%Y%m%d')}.xlsx" if is_personal else f"overtime_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
     headers = {
