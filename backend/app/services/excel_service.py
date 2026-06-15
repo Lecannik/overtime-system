@@ -176,7 +176,7 @@ async def generate_excel_file(
 
         # Группировка сотрудников для дополнительных листов (табелей)
         if not is_personal and current_user.role in [UserRole.manager, UserRole.head, UserRole.admin]:
-            # Шаг 1: Посчитаем суммарные часы каждого сотрудника для определения листа (>16 или <=16)
+            # Шаг 1: Посчитаем суммарные согласованные часы каждого сотрудника для определения листа (>16 или <=16)
             emp_totals = {}
             for item in data:
                 emp_name = item.get("employee")
@@ -185,7 +185,8 @@ async def generate_excel_file(
                 if emp_name not in emp_totals:
                     emp_totals[emp_name] = {
                         "company": item.get("employee_company") or "Polymedia",
-                        "total_approved": 0.0
+                        "total_approved": 0.0,
+                        "department": item.get("department") or ""
                     }
                 if item.get("status") == "Подтверждено":
                     approved = item.get("approved_hours")
@@ -193,84 +194,105 @@ async def generate_excel_file(
                         approved = item.get("hours", 0.0) or 0.0
                     emp_totals[emp_name]["total_approved"] += approved
 
-            # Шаг 2: Сгруппируем детальные записи по (сотрудник, дата)
-            emp_daily_stats = {}
-            for item in data:
-                emp_name = item.get("employee")
-                if not emp_name:
-                    continue
-                emp_date = get_local_date(item.get("start_time"))
-                if not emp_date:
-                    continue
-                    
-                key = (emp_name, emp_date)
-                if key not in emp_daily_stats:
-                    emp_daily_stats[key] = {
-                        "employee": emp_name,
-                        "date": emp_date,
-                        "company": item.get("employee_company") or "Polymedia",
-                        "department": item.get("department") or "",
-                        "projects": set(),
-                        "total_hours": 0.0,
-                        "total_approved": 0.0
-                    }
-                
-                stats = emp_daily_stats[key]
-                if item.get("project"):
-                    stats["projects"].add(item.get("project"))
-                stats["total_hours"] += item.get("hours", 0.0) or 0.0
-                if item.get("status") == "Подтверждено":
-                    approved = item.get("approved_hours")
-                    if approved is None or pd.isna(approved):
-                        approved = item.get("hours", 0.0) or 0.0
-                    stats["total_approved"] += approved
-
-            # Шаг 3: Распределим сгруппированные по дням записи по спискам для листов
-            polymedia_gt16 = []
-            polymedia_lte16 = []
-            ajtech_gt16 = []
-            ajtech_lte16 = []
+            # Шаг 2: Распределим сотрудников по 4 группам на основе суммарных часов и компании
+            polymedia_gt16_members = set()
+            polymedia_lte16_members = set()
+            ajtech_gt16_members = set()
+            ajtech_lte16_members = set()
             
-            for key, stats in emp_daily_stats.items():
-                emp_name = stats["employee"]
-                total_approved = emp_totals[emp_name]["total_approved"]
-                company = emp_totals[emp_name]["company"]
-                
+            for emp_name, info in emp_totals.items():
+                total_approved = info["total_approved"]
+                company = info["company"]
                 if total_approved > 16:
                     if company == "Polymedia":
-                        polymedia_gt16.append(stats)
+                        polymedia_gt16_members.add(emp_name)
                     else:
-                        ajtech_gt16.append(stats)
+                        ajtech_gt16_members.add(emp_name)
                 else:
                     if company == "Polymedia":
-                        polymedia_lte16.append(stats)
+                        polymedia_lte16_members.add(emp_name)
                     else:
-                        ajtech_lte16.append(stats)
-            
-            polymedia_gt16.sort(key=lambda x: (x["employee"], x["date"]))
-            polymedia_lte16.sort(key=lambda x: (x["employee"], x["date"]))
-            ajtech_gt16.sort(key=lambda x: (x["employee"], x["date"]))
-            ajtech_lte16.sort(key=lambda x: (x["employee"], x["date"]))
+                        ajtech_lte16_members.add(emp_name)
 
-            # Функция для генерации и форматирования листа табеля
-            def create_timesheet_sheet(sheet_name, title_desc, group_data):
+            # Вспомогательные функции для подготовки данных
+            def get_group_dates(members):
+                group_dates = set()
+                for item in data:
+                    emp_name = item.get("employee")
+                    if emp_name in members and item.get("status") == "Подтверждено":
+                        emp_date = get_local_date(item.get("start_time"))
+                        if emp_date:
+                            group_dates.add(emp_date)
+                return sorted(list(group_dates))
+
+            def prepare_group_data(members):
+                # Нам нужны только те сотрудники, у которых есть согласованные часы > 0
+                active_members = sorted([m for m in members if m in emp_totals and emp_totals[m]["total_approved"] > 0])
+                group_dates = get_group_dates(active_members)
+                
+                structured_data = []
+                for emp_name in active_members:
+                    emp_info = {
+                        "employee": emp_name,
+                        "department": emp_totals[emp_name]["department"],
+                        "projects": {}
+                    }
+                    
+                    for item in data:
+                        if item.get("employee") == emp_name and item.get("status") == "Подтверждено":
+                            proj = item.get("project") or "Внутренний"
+                            emp_date = get_local_date(item.get("start_time"))
+                            if not emp_date:
+                                continue
+                            
+                            approved = item.get("approved_hours")
+                            if approved is None or pd.isna(approved):
+                                approved = item.get("hours", 0.0) or 0.0
+                                
+                            if proj not in emp_info["projects"]:
+                                emp_info["projects"][proj] = {d: 0.0 for d in group_dates}
+                            
+                            emp_info["projects"][proj][emp_date] += approved
+                    
+                    structured_data.append(emp_info)
+                
+                return group_dates, structured_data
+
+            # Функция для генерации и форматирования листа табеля с датами по горизонтали
+            def create_timesheet_sheet(sheet_name, title_desc, members):
+                group_dates, structured_data = prepare_group_data(members)
                 ws = writer.book.create_sheet(title=sheet_name)
                 
                 # Заголовок листа
-                ws.merge_cells('A1:G1')
+                headers = ["№", "Сотрудник", "Отдел", "Проекты"]
+                for d in group_dates:
+                    headers.append(format_date_with_weekday(d))
+                headers.append("Итого")
+                
+                num_cols = len(headers)
+                last_col_letter = get_column_letter(num_cols)
+                
+                ws.merge_cells(f'A1:{last_col_letter}1')
                 ws['A1'] = f"ТАБЕЛЬ УЧЕТА РАБОЧЕГО ВРЕМЕНИ — {title_desc}"
                 ws['A1'].font = Font(size=14, bold=True, color="1e40af")
                 ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
                 ws.row_dimensions[1].height = 30
                 
-                ws.merge_cells('A2:G2')
+                ws.merge_cells(f'A2:{last_col_letter}2')
                 ws['A2'] = f"Выгрузил: {current_user.full_name} | {period_str}"
                 ws['A2'].font = Font(italic=True, size=10, color="4b5563")
                 ws['A2'].alignment = Alignment(horizontal='center')
                 ws.row_dimensions[2].height = 20
 
+                # Если нет активных сотрудников или дат, выводим сообщение
+                if not structured_data or not group_dates:
+                    ws.merge_cells(f'A4:{last_col_letter}4')
+                    ws['A4'] = "Нет данных за выбранный период"
+                    ws['A4'].font = Font(italic=True, size=11, color="4b5563")
+                    ws['A4'].alignment = Alignment(horizontal='center')
+                    return
+
                 # Заголовки таблицы
-                headers = ["№", "Сотрудник", "Дата", "Отдел", "Проекты", "Запрошено (ч)", "Согласовано (ч)"]
                 header_fill = PatternFill(start_color="1e40af", end_color="1e40af", fill_type="solid")
                 header_font = Font(color="FFFFFF", bold=True)
                 border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
@@ -285,63 +307,112 @@ async def generate_excel_file(
 
                 # Данные
                 row_idx = 5
-                for idx, row in enumerate(group_data, 1):
-                    ws.row_dimensions[row_idx].height = 20
-                    ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal='center')
-                    ws.cell(row=row_idx, column=2, value=row["employee"])
+                for emp_idx, emp_info in enumerate(structured_data, 1):
+                    projects = sorted(list(emp_info["projects"].keys()))
+                    if not projects:
+                        continue
                     
-                    # Форматируем дату в нужный формат: пн. 15.06.2026
-                    formatted_item_date = format_date_with_weekday(row["date"])
-                    ws.cell(row=row_idx, column=3, value=formatted_item_date).alignment = Alignment(horizontal='center')
+                    emp_daily_totals = {d: 0.0 for d in group_dates}
+                    emp_grand_total = 0.0
                     
-                    ws.cell(row=row_idx, column=4, value=row["department"])
-                    ws.cell(row=row_idx, column=5, value=", ".join(sorted(list(row["projects"]))))
+                    # Выводим строки по проектам
+                    for proj_idx, proj in enumerate(projects):
+                        ws.row_dimensions[row_idx].height = 20
+                        
+                        if proj_idx == 0:
+                            ws.cell(row=row_idx, column=1, value=emp_idx).alignment = Alignment(horizontal='center')
+                            ws.cell(row=row_idx, column=2, value=emp_info["employee"])
+                            ws.cell(row=row_idx, column=3, value=emp_info["department"])
+                        else:
+                            ws.cell(row=row_idx, column=1, value="")
+                            ws.cell(row=row_idx, column=2, value="")
+                            ws.cell(row=row_idx, column=3, value="")
+                            
+                        ws.cell(row=row_idx, column=4, value=proj)
+                        
+                        proj_total = 0.0
+                        for d_idx, d in enumerate(group_dates, 5):
+                            val = emp_info["projects"][proj].get(d, 0.0)
+                            emp_daily_totals[d] += val
+                            proj_total += val
+                            cell_val = val if val > 0 else ""
+                            ws.cell(row=row_idx, column=d_idx, value=cell_val).alignment = Alignment(horizontal='center')
+                            
+                        emp_grand_total += proj_total
+                        proj_total_val = proj_total if proj_total > 0 else ""
+                        ws.cell(row=row_idx, column=num_cols, value=proj_total_val).font = Font(bold=True)
+                        ws.cell(row=row_idx, column=num_cols).alignment = Alignment(horizontal='center')
+                        
+                        for col_idx in range(1, num_cols + 1):
+                            ws.cell(row=row_idx, column=col_idx).border = border_thin
+                            
+                        row_idx += 1
+                        
+                    # Выводим строку "Итого по сотруднику"
+                    ws.row_dimensions[row_idx].height = 22
+                    ws.cell(row=row_idx, column=1, value="")
+                    ws.cell(row=row_idx, column=2, value="Итого по сотруднику:").font = Font(bold=True)
+                    ws.cell(row=row_idx, column=2).alignment = Alignment(horizontal='left', vertical='center')
+                    ws.cell(row=row_idx, column=3, value="")
+                    ws.cell(row=row_idx, column=4, value="")
                     
-                    ws.cell(row=row_idx, column=6, value=row["total_hours"]).alignment = Alignment(horizontal='center')
-                    ws.cell(row=row_idx, column=7, value=row["total_approved"]).alignment = Alignment(horizontal='center')
-
-                    for col_idx in range(1, 8):
-                        ws.cell(row=row_idx, column=col_idx).border = border_thin
+                    for d_idx, d in enumerate(group_dates, 5):
+                        val = emp_daily_totals[d]
+                        cell_val = val if val > 0 else ""
+                        ws.cell(row=row_idx, column=d_idx, value=cell_val).font = Font(bold=True)
+                        ws.cell(row=row_idx, column=d_idx).alignment = Alignment(horizontal='center')
+                        
+                    ws.cell(row=row_idx, column=num_cols, value=emp_grand_total).font = Font(bold=True)
+                    ws.cell(row=row_idx, column=num_cols).alignment = Alignment(horizontal='center')
+                    
+                    subtotal_fill = PatternFill(start_color="f3f4f6", end_color="f3f4f6", fill_type="solid")
+                    for col_idx in range(1, num_cols + 1):
+                        cell = ws.cell(row=row_idx, column=col_idx)
+                        cell.border = border_thin
+                        cell.fill = subtotal_fill
+                        
                     row_idx += 1
 
-                # Итоговая строка
-                ws.row_dimensions[row_idx].height = 22
-                ws.cell(row=row_idx, column=5, value="ИТОГО:").font = Font(bold=True)
-                ws.cell(row=row_idx, column=5).alignment = Alignment(horizontal='right', vertical='center')
-                ws.cell(row=row_idx, column=5).border = border_thin
+                # Общая итоговая строка по всему листу
+                ws.row_dimensions[row_idx].height = 24
+                ws.cell(row=row_idx, column=4, value="ОБЩИЙ ИТОГО:").font = Font(bold=True)
+                ws.cell(row=row_idx, column=4).alignment = Alignment(horizontal='right', vertical='center')
                 
-                total_req = sum(item["total_hours"] for item in group_data)
-                total_app = sum(item["total_approved"] for item in group_data)
-
-                ws.cell(row=row_idx, column=6, value=total_req).font = Font(bold=True)
-                ws.cell(row=row_idx, column=6).alignment = Alignment(horizontal='center')
-                ws.cell(row=row_idx, column=6).border = border_thin
-
-                ws.cell(row=row_idx, column=7, value=total_app).font = Font(bold=True, color="15803d")
-                ws.cell(row=row_idx, column=7).alignment = Alignment(horizontal='center')
-                ws.cell(row=row_idx, column=7).border = border_thin
-
-                for col_idx in [1, 2, 3, 4]:
+                sheet_daily_totals = {d: 0.0 for d in group_dates}
+                sheet_grand_total = 0.0
+                for emp_info in structured_data:
+                    for proj, dates_dict in emp_info["projects"].items():
+                        for d, val in dates_dict.items():
+                            sheet_daily_totals[d] += val
+                            sheet_grand_total += val
+                            
+                for d_idx, d in enumerate(group_dates, 5):
+                    val = sheet_daily_totals[d]
+                    cell_val = val if val > 0 else ""
+                    ws.cell(row=row_idx, column=d_idx, value=cell_val).font = Font(bold=True)
+                    ws.cell(row=row_idx, column=d_idx).alignment = Alignment(horizontal='center')
+                    
+                ws.cell(row=row_idx, column=num_cols, value=sheet_grand_total).font = Font(bold=True, color="15803d")
+                ws.cell(row=row_idx, column=num_cols).alignment = Alignment(horizontal='center')
+                
+                for col_idx in range(1, num_cols + 1):
                     ws.cell(row=row_idx, column=col_idx).border = border_thin
-
-                # Ширины колонок
-                col_widths = {
-                    "A": 6,
-                    "B": 30,
-                    "C": 18,
-                    "D": 25,
-                    "E": 40,
-                    "F": 15,
-                    "G": 15
-                }
-                for col_letter, width in col_widths.items():
-                    ws.column_dimensions[col_letter].width = width
+                
+                # Установка ширин колонок
+                ws.column_dimensions["A"].width = 6
+                ws.column_dimensions["B"].width = 30
+                ws.column_dimensions["C"].width = 25
+                ws.column_dimensions["D"].width = 25
+                for col_idx in range(5, num_cols):
+                    col_letter = get_column_letter(col_idx)
+                    ws.column_dimensions[col_letter].width = 14
+                ws.column_dimensions[get_column_letter(num_cols)].width = 12
 
             # Создаем 4 дополнительных листа
-            create_timesheet_sheet("Polymedia (>16ч)", "Polymedia (более 16ч)", polymedia_gt16)
-            create_timesheet_sheet("Polymedia (<=16ч)", "Polymedia (до 16ч)", polymedia_lte16)
-            create_timesheet_sheet("AJ-techCom (>16ч)", "AJ-techCom (более 16ч)", ajtech_gt16)
-            create_timesheet_sheet("AJ-techCom (<=16ч)", "AJ-techCom (до 16ч)", ajtech_lte16)
+            create_timesheet_sheet("Polymedia (>16ч)", "Polymedia (более 16ч)", polymedia_gt16_members)
+            create_timesheet_sheet("Polymedia (<=16ч)", "Polymedia (до 16ч)", polymedia_lte16_members)
+            create_timesheet_sheet("AJ-techCom (>16ч)", "AJ-techCom (более 16ч)", ajtech_gt16_members)
+            create_timesheet_sheet("AJ-techCom (<=16ч)", "AJ-techCom (до 16ч)", ajtech_lte16_members)
 
     output.seek(0)
     return output

@@ -88,9 +88,37 @@ async def test_generate_excel_file():
     assert "Период: пн. 01.06.2026 — пт. 12.06.2026" in a2_period_val
 
     # Проверим заголовки таблицы (в строке 4)
-    headers = [ws_poly_period.cell(row=4, column=col).value for col in range(1, 8)]
-    assert headers == ["№", "Сотрудник", "Дата", "Отдел", "Проекты", "Запрошено (ч)", "Согласовано (ч)"]
+    # headers = ["№", "Сотрудник", "Отдел", "Проекты", "пт. 12.06.2026", "Итого"]
+    headers = [ws_poly_period.cell(row=4, column=col).value for col in range(1, 7)]
+    assert headers == ["№", "Сотрудник", "Отдел", "Проекты", "пт. 12.06.2026", "Итого"]
 
-    # Проверим, что в третьем столбце первой строки данных (строка 5) выводится дата с днем недели
-    date_val = ws_poly_period.cell(row=5, column=3).value
-    assert date_val == "пт. 12.06.2026"
+    # Проверим первую строку данных (строка 5) для первого сотрудника по алфавиту (Дощанов Руслан Аскарович)
+    assert ws_poly_period.cell(row=5, column=1).value == 1
+    assert ws_poly_period.cell(row=5, column=2).value == "Дощанов Руслан Аскарович"
+    assert ws_poly_period.cell(row=5, column=3).value == "Отдел программных решений"
+    assert ws_poly_period.cell(row=5, column=4).value == "Внутренний"
+    assert ws_poly_period.cell(row=5, column=5).value == 2.0
+    assert ws_poly_period.cell(row=5, column=6).value == 2.0
+
+    # Строка 6 - Итого по первому сотруднику
+    assert ws_poly_period.cell(row=6, column=2).value == "Итого по сотруднику:"
+    assert ws_poly_period.cell(row=6, column=5).value == 2.0
+    assert ws_poly_period.cell(row=6, column=6).value == 2.0
+
+    # Строка 7 - второй сотрудник (Чмиль Никита Павлович)
+    assert ws_poly_period.cell(row=7, column=1).value == 2
+    assert ws_poly_period.cell(row=7, column=2).value == "Чмиль Никита Павлович"
+    assert ws_poly_period.cell(row=7, column=3).value == "Технический отдел"
+    assert ws_poly_period.cell(row=7, column=4).value == "Test_Projject"
+    assert ws_poly_period.cell(row=7, column=5).value == 3.0
+    assert ws_poly_period.cell(row=7, column=6).value == 3.0
+
+    # Строка 8 - Итого по второму сотруднику
+    assert ws_poly_period.cell(row=8, column=2).value == "Итого по сотруднику:"
+    assert ws_poly_period.cell(row=8, column=5).value == 3.0
+    assert ws_poly_period.cell(row=8, column=6).value == 3.0
+
+    # Строка 9 - ОБЩИЙ ИТОГО
+    assert ws_poly_period.cell(row=9, column=4).value == "ОБЩИЙ ИТОГО:"
+    assert ws_poly_period.cell(row=9, column=5).value == 5.0
+    assert ws_poly_period.cell(row=9, column=6).value == 5.0
