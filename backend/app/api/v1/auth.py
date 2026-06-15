@@ -407,12 +407,13 @@ async def microsoft_callback(
     # Авто-создание (Provisioning), если пользователь заходит впервые
     if not user:
         # Пароль для SSO-пользователей оставляем пустым, войти по паролю они не смогут
+        company_val = UserCompany.AJ_techCom if ("aj-tech" in email.lower() or "ajtech" in email.lower()) else UserCompany.Polymedia
         user = User(
             email=email,
             full_name=full_name,
             hashed_password="",
             role=UserRole.employee, # Дефолтная роль
-            company=UserCompany.Polymedia,
+            company=company_val,
             is_active=True,
             must_change_password=False,
             is_2fa_enabled=False

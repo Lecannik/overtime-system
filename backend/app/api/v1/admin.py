@@ -500,11 +500,13 @@ async def import_microsoft_users(
             continue
             
         # Создаем нового пользователя с временным случайным паролем
+        company_val = UserCompany.AJ_techCom if ("aj-tech" in email.lower() or "ajtech" in email.lower()) else UserCompany.Polymedia
         new_user = User(
             email=email,
             full_name=user_data.displayName or "Сотрудник MS",
             hashed_password=hash_password(secrets.token_urlsafe(16)),
             role=UserRole.employee,
+            company=company_val,
             is_active=True,
             must_change_password=True
         )

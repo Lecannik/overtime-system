@@ -70,7 +70,7 @@ async def generate_excel_file(
         if col not in df.columns:
             df[col] = None
 
-    df = df[cols_order]
+    df = df[cols_order].copy()
     
     # Форматирование дат к локальному часовому поясу (Asia/Almaty) с безопасной обработкой None
     def format_datetime_local(dt):
@@ -87,8 +87,8 @@ async def generate_excel_file(
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(settings.tz_info).strftime('%d.%m.%Y %H:%M')
 
-    df['start_time'] = df['start_time'].apply(format_datetime_local)
-    df['end_time'] = df['end_time'].apply(format_datetime_local)
+    df.loc[:, 'start_time'] = df['start_time'].apply(format_datetime_local)
+    df.loc[:, 'end_time'] = df['end_time'].apply(format_datetime_local)
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
