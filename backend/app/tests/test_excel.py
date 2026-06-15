@@ -57,6 +57,19 @@ async def test_generate_excel_file():
             "approved_hours": 2.0,
             "description": "Внутренняя работа",
             "status": "Подтверждено"
+        },
+        {
+            "id": 3,
+            "employee": "Петров Петр Петрович",
+            "employee_company": "AJ-techCom",
+            "department": "Отдел автоматизации",
+            "project": "AJ_Project",
+            "start_time": "2026-06-12 10:00:00",
+            "end_time": "2026-06-12 15:00:00",
+            "hours": 5.0,
+            "approved_hours": 5.0,
+            "description": "Автоматизация процессов",
+            "status": "Подтверждено"
         }
     ]
 
@@ -70,6 +83,12 @@ async def test_generate_excel_file():
     a2_val = ws_poly['A2'].value
     assert "Выгрузил: Иван Иванов" in a2_val
     assert "Дата: " in a2_val
+
+    # Проверим, что создался лист для AJ-techCom
+    ws_aj_check = wb["AJ-techCom (<=16ч)"]
+    assert ws_aj_check is not None
+    assert ws_aj_check.cell(row=5, column=2).value == "Петров Петр Петрович"
+    assert ws_aj_check.cell(row=5, column=5).value == 5.0
 
     # 2. Проверяем генерацию С указанием периода (должен выводиться Период)
     from datetime import date

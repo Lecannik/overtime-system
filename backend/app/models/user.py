@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Boolean, Enum, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Boolean, Enum, Integer, DateTime, ForeignKey, TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -24,6 +24,41 @@ class UserCompany(str, enum.Enum):
     """
     Polymedia = "Polymedia"
     AJ_techCom = "AJ-techCom"
+
+
+class UserCompanyType(TypeDecorator):
+    """
+    Пользовательский тип SQLAlchemy для работы с перечислением UserCompany.
+    
+    Обеспечивает корректное преобразование членов перечисления в их
+    строковые значения (value) при записи в базу данных и обратно при чтении.
+    Это необходимо для корректной работы с типом ENUM в PostgreSQL,
+    где значение сохраняется как 'AJ-techCom' (с дефисом), в то время как
+    в Python имя члена перечисления записано как AJ_techCom (с подчеркиванием).
+    """
+    impl = Enum(UserCompany, name='usercompany', values_callable=lambda enum: [e.value for e in enum])
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        """
+        Преобразует Python-значение перед отправкой в базу данных.
+        """
+        if value is None:
+            return None
+        if hasattr(value, 'value'):
+            return value.value
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        """
+        Преобразует значение из базы данных в Python-объект.
+        """
+        if value is None:
+            return None
+        try:
+            return UserCompany(value)
+        except ValueError:
+            return value
 
 
 class NotificationLevel(enum.IntEnum):
@@ -62,7 +97,7 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.employee)
     company: Mapped[UserCompany] = mapped_column(
-        Enum(UserCompany, name='usercompany', values_callable=lambda enum: [e.value for e in enum]),
+        UserCompanyType,
         default=UserCompany.Polymedia
     )
     telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
