@@ -1,0 +1,68 @@
+# =============================================================================
+# Базовый образ с тяжёлыми ML-зависимостями.
+#
+# Собирается ВРУЧНУЮ и пушится один раз (или при изменении зависимостей).
+# Команды для пересборки:
+#
+#   docker build -f backend/Dockerfile.base -t lecannik/overtime-base:latest ./backend
+#   docker push lecannik/overtime-base:latest
+#
+# Рабочий Dockerfile.prod наследует этот образ через FROM.
+# При обычных деплоях (изменения кода) пересборка базы НЕ нужна.
+# =============================================================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Системные зависимости для Whisper и аудио
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Создаём непривилегированного пользователя
+RUN addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser
+
+ENV PYTHONPATH=/app
+ENV XDG_CACHE_HOME=/app/.cache
+
+# 1. Устанавливаем torch CPU (без triton/cuda)
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+        "torch==2.7.0+cpu" \
+        "torchaudio==2.7.0+cpu" \
+        --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Убираем triton — он только для GPU, нам не нужен
+RUN pip uninstall -y triton 2>/dev/null || true
+
+# 3. Тяжёлые ML-зависимости (редко меняются)
+RUN pip install --no-cache-dir --prefer-binary \
+    openai-whisper==20250625 \
+    transformers==5.8.1 \
+    sentencepiece==0.2.1 \
+    numpy==1.26.4
+
+# 4. Лёгкие зависимости приложения (тоже кэшируем здесь)
+RUN pip install --no-cache-dir --prefer-binary \
+    fastapi==0.136.1 \
+    "uvicorn[standard]==0.47.0" \
+    SQLAlchemy==2.0.49 \
+    asyncpg==0.31.0 \
+    pydantic==2.13.4 \
+    pydantic-settings==2.14.1 \
+    python-dotenv==1.1.0 \
+    "passlib[bcrypt]==1.7.4" \
+    PyJWT==2.12.1 \
+    python-multipart==0.0.29 \
+    email-validator==2.2.0 \
+    alembic==1.18.4 \
+    psycopg2-binary==2.9.10 \
+    bcrypt==4.2.0 \
+    "python-telegram-bot[job-queue]==21.10" \
+    httpx==0.28.1 \
+    msal==1.36.0 \
+    pandas==2.2.3 \
+    openpyxl==3.1.5
