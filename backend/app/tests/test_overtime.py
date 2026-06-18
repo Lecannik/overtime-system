@@ -140,3 +140,53 @@ async def test_review_overtime_head_approved_when_limit_exceeded(
     review_resp2 = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=manager_review_data, headers=manager_token_headers)
     assert review_resp2.status_code == 200
     assert review_resp2.json()["status"] == "APPROVED"
+
+
+@pytest.mark.asyncio
+async def test_cannot_review_in_progress_overtime(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    normal_user: User,
+    normal_user_token_headers: dict,
+    head_token_headers: dict,
+    test_project: Project
+):
+    """Тест: нельзя согласовать заявку, которая находится в процессе (IN_PROGRESS), и она исключается из review-списка."""
+    # Создаем заявку
+    now = datetime.now(timezone.utc)
+    start_time = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    overtime_data = {
+        "project_id": test_project.id,
+        "start_time": start_time,
+        "end_time": None,
+        "description": "Active Session Overtime",
+        "start_lat": 10.0,
+        "start_lng": 20.0
+    }
+    create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
+    assert create_resp.status_code == 200
+    overtime_id = create_resp.json()["id"]
+
+    # Принудительно меняем статус на IN_PROGRESS через БД
+    from app.models.overtime import Overtime, OvertimeStatus
+    from sqlalchemy import select
+    res = await db_session.execute(select(Overtime).where(Overtime.id == overtime_id))
+    overtime_obj = res.scalar_one()
+    overtime_obj.status = OvertimeStatus.IN_PROGRESS
+    overtime_obj.end_time = None
+    db_session.add(overtime_obj)
+    await db_session.commit()
+
+    # Пробуем согласовать (должно выдать 400 Bad Request)
+    review_data = {"approved": True, "comment": "Trying to approve unfinished", "as_role": "head"}
+    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    assert review_resp.status_code == 400
+    assert "процессе выполнения" in review_resp.json()["detail"]
+
+    # Проверяем, что в списке для согласования (?view=review) эта заявка отсутствует
+    list_resp = await client.get("/api/v1/overtimes/?view=review", headers=head_token_headers)
+    assert list_resp.status_code == 200
+    items = list_resp.json()["items"]
+    assert not any(item["id"] == overtime_id for item in items)
+

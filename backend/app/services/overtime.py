@@ -130,7 +130,14 @@ async def review_overtime(
     if not overtime:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
+    if overtime.status == OvertimeStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя согласовать заявку, которая еще находится в процессе выполнения."
+        )
+
     # 1. Режим Супер-админа: если админ не указал роль, одобряем за обоих сразу
+
     if current_user.role == UserRole.admin and not review.as_role:
         overtime.manager_approved = review.approved
         overtime.manager_comment = review.comment

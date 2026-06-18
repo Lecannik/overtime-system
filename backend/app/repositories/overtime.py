@@ -80,6 +80,8 @@ async def get_overtimes(
                     Project.manager_id == current_user.id
                 )
             )
+    if view == "review":
+        filters.append(Overtime.status != OvertimeStatus.IN_PROGRESS)
 
     # Дополнительные фильтры
     if status:
