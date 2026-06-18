@@ -27,13 +27,13 @@ COPY alembic.ini .
 COPY ./alembic ./alembic
 COPY ./scripts ./scripts
 
-# Скачиваем ML-модели во время сборки
-RUN python scripts/download_models.py
-
-# Подготавливаем директории для данных и устанавливаем права
-RUN mkdir -p /app/uploads /app/.cache && \
+# Подготавливаем директории и права.
+# ML-модели скачиваются при ПЕРВОМ СТАРТЕ контейнера через entrypoint.sh
+# и кэшируются в Docker volume — поэтому скачивание в слое образа убрано.
+RUN mkdir -p /app/uploads /app/.cache /app/models && \
+    chmod +x /app/scripts/entrypoint.sh && \
     chown -R appuser:appgroup /app
 
 USER appuser
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["/app/scripts/entrypoint.sh"]
