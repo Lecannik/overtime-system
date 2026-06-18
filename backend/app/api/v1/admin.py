@@ -378,7 +378,7 @@ async def reset_user_password(
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    new_password = "changeme123"
+    new_password = secrets.token_urlsafe(12)
     await user_repo.update_user(db, user, {
         "hashed_password": hash_password(new_password),
         "must_change_password": True
