@@ -1,7 +1,7 @@
 """
 Admin API
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import httpx
@@ -32,6 +32,7 @@ from app.repositories import organization as org_repo
 from app.schemas.settings import SystemSettingSchema, SystemSettingUpdate
 from app.repositories import settings as settings_repo
 from app.repositories import audit as audit_repo
+from app.core.rate_limit import admin_limiter
 from app.services.ms_graph import ms_graph
 from app.repositories.user import get_user_by_email
 from app.services.odoo_service import odoo_service
@@ -278,6 +279,7 @@ async def delete_project(
 
 @router.post("/users", response_model=UserResponse, status_code=201)
 async def create_user(
+    request: Request,
     user_in: UserCreateByAdmin,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -286,6 +288,7 @@ async def create_user(
     Создать нового пользователя.
     Доступно только администраторам.
     """
+    admin_limiter.check_limit(request)
     require_admin(current_user)
     
     new_user = await register_user(db, user_in)
@@ -348,12 +351,14 @@ async def get_user(
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
 async def admin_update_user(
+    request: Request,
     user_id: int,
     user_in: UserAdminUpdate,      # <-- не DepartmentUpdate!
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Обновить пользователя (роль, отдел, активность)."""
+    admin_limiter.check_limit(request)
     require_admin(current_user)
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
@@ -369,11 +374,13 @@ async def admin_update_user(
 
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
+    request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """Сбросить пароль пользователя (только для админов)."""
+    admin_limiter.check_limit(request)
     require_admin(current_user)
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
@@ -406,15 +413,17 @@ async def reset_user_password(
  
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(
+    request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
     Удалить пользователя.
- 
+
     Доступно только администраторам.
     """
+    admin_limiter.check_limit(request)
     require_admin(current_user)
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:

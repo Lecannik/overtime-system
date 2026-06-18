@@ -262,18 +262,24 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.voice:
         processing_msg = await update.message.reply_text("⏳ Анализирую ваш голос, секунду...")
         try:
+            import uuid
+            upload_dir = os.path.abspath("uploads/voice")
+            os.makedirs(upload_dir, exist_ok=True)
+            file_name = f"{uuid.uuid4()}.ogg"
+            file_path = os.path.join(upload_dir, file_name)
+            # Защита от path traversal: путь должен остаться внутри upload_dir
+            if not os.path.abspath(file_path).startswith(upload_dir):
+                raise ValueError("Invalid file path")
             voice = await update.message.voice.get_file()
-            file_path = os.path.abspath(f"uploads/voice/{active_id}_{user.id}.ogg")
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
             logger.info(f"🎤 Загрузка голосового сообщения в {file_path}...")
             await voice.download_to_drive(file_path)
-            voice_url = f"uploads/voice/{active_id}_{user.id}.ogg"
+            voice_url = f"uploads/voice/{file_name}"
             stt_result = await transcribe_audio(file_path)
             comment_text = stt_result["text"]
             summary_text = stt_result["summary"]
         except Exception as e:
             logger.error("🚨 Ошибка при обработке голосового сообщения:", exc_info=True)
-            comment_text = f"[Ошибка: {str(e)}]"
+            comment_text = "[Голосовое сообщение не распознано]"
             summary_text = "[Ошибка]"
         await processing_msg.delete()
     else:

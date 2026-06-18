@@ -330,12 +330,21 @@ async def get_export_data(
         query = query.where(User.department_id == department_id)
     
     query = apply_date_filters(query, start_date, end_date)
-    query = query.order_by(Overtime.start_time.desc())
-    
+    MAX_EXPORT_ROWS = 50_000
+    query = query.order_by(Overtime.start_time.desc()).limit(MAX_EXPORT_ROWS + 1)
+
     result = await session.execute(query)
-    
+    rows = result.all()
+
+    if len(rows) > MAX_EXPORT_ROWS:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail=f"Слишком много данных для экспорта (более {MAX_EXPORT_ROWS:,} строк). Сузьте период или добавьте фильтры.",
+        )
+
     data = []
-    for row in result.all():
+    for row in rows:
         d = dict(row._asdict())
         status_val = d['status']
         is_active = False

@@ -1,10 +1,11 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from app.core.database import get_session
 from app.api.deps import get_current_user
+from app.core.rate_limit import overtime_create_limiter
 from app.models.user import User, UserRole
 from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
 from app.models.overtime import Overtime, OvertimeStatus
@@ -58,10 +59,12 @@ async def get_my_stats(
 
 @router.post("/", response_model=OvertimeResponse)
 async def create_overtime(
+    request: Request,
     overtime_in: OvertimeCreate,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    overtime_create_limiter.check_limit(request)
     """
     Создать новую заявку на переработку.
 
