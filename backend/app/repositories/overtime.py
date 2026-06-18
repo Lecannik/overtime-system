@@ -89,10 +89,10 @@ async def get_overtimes(
     if project_id:
         filters.append(Overtime.project_id == project_id)
     if start_date:
-        start_datetime = datetime.combine(start_date, datetime.min.time())
+        start_datetime = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
         filters.append(Overtime.start_time >= start_datetime)
     if end_date:
-        end_datetime = datetime.combine(end_date, datetime.max.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
         filters.append(Overtime.start_time <= end_datetime)
 
     # Применяем фильтры
@@ -163,7 +163,7 @@ async def get_active_session(session: AsyncSession, user_id: int) -> Overtime | 
 async def get_all_stale_in_progress(session: AsyncSession, older_than_hours: int) -> list[Overtime]:
     """Возвращает все IN_PROGRESS сессии, которые не закрыты дольше older_than_hours часов."""
     from sqlalchemy.orm import selectinload as _sl
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=older_than_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
     query = (
         select(Overtime)
         .where(
@@ -204,7 +204,7 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     result = await session.execute(approved_query)
     approved_overtimes = result.scalars().all()
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
     this_month_start = date(now.year, now.month, 1)
     
     first_this_month = date(now.year, now.month, 1)
@@ -305,7 +305,7 @@ async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project
     Подсчет часов за текущую календарную неделю (с понедельника).
     Нужно для проверки лимитов проекта.
     """
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
     monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     
     query = select(Overtime).where(

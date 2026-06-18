@@ -348,7 +348,7 @@ async def get_export_data(
                 pass
 
         if is_active:
-            d['hours'] = calculate_overtime_hours(d['start_time'], datetime.now(timezone.utc).replace(tzinfo=None))
+            d['hours'] = calculate_overtime_hours(d['start_time'], datetime.now(timezone.utc))
         else:
             d['hours'] = calculate_overtime_hours(d['start_time'], d['end_time'])
 

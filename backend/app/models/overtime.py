@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.user import User
 from app.models.organization import Project
-from app.core.utils import calculate_overtime_hours
+from app.core.utils import calculate_overtime_hours, ensure_utc
 
 
 class OvertimeStatus(str, PyEnum):
@@ -63,9 +63,9 @@ class Overtime(Base):
     end_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     end_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    # Временные метки
-    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Временные метки (timestamptz — хранит UTC явно, конвертация AT TIME ZONE работает корректно)
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Описание и голос
     description: Mapped[str] = mapped_column(String, nullable=False)
@@ -104,7 +104,7 @@ class Overtime(Base):
         Ограничена 24 часами (максимальная длительность одних суток).
         """
         if self.status == OvertimeStatus.IN_PROGRESS:
-            h = calculate_overtime_hours(self.start_time, datetime.now(timezone.utc).replace(tzinfo=None))
+            h = calculate_overtime_hours(self.start_time, datetime.now(timezone.utc))
         else:
             h = calculate_overtime_hours(self.start_time, self.end_time)
         return min(h, 24.0)
@@ -112,21 +112,17 @@ class Overtime(Base):
     @property
     def raw_hours(self) -> float:
         """
-        Возвращает чистую разницу во времени без учета 
+        Возвращает чистую разницу во времени без учета
         бизнес-правил округления. Если сессия не завершена, возвращает 0.
         Ограничена 24 часами (максимальная длительность одних суток).
         """
         if not self.start_time:
             return 0.0
         if self.status == OvertimeStatus.IN_PROGRESS:
-            s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
-            e = datetime.now(timezone.utc).replace(tzinfo=None)
-            delta = e - s
+            delta = datetime.now(timezone.utc) - ensure_utc(self.start_time)
             return min(24.0, max(0.0, delta.total_seconds() / 3600.0))
-        
+
         if not self.end_time:
             return 0.0
-        s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
-        e = self.end_time.replace(tzinfo=None) if self.end_time.tzinfo else self.end_time
-        delta = e - s
+        delta = ensure_utc(self.end_time) - ensure_utc(self.start_time)
         return min(24.0, max(0.0, delta.total_seconds() / 3600.0))

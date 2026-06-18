@@ -195,20 +195,27 @@ async def test_cannot_review_in_progress_overtime(
 def test_split_interval_by_days_logic():
     """Тест чистой логики разделения интервала по границам суток."""
     from app.core.utils import split_interval_by_days
-    from datetime import datetime
-    
+    from datetime import datetime, timezone
+
     # Стык дней (18.06.2026 22:00 до 19.06.2026 02:00 по времени Asia/Almaty)
     # 22:00 по Алматы = 17:00 UTC
     # 02:00 по Алматы = 21:00 UTC
     start = datetime(2026, 6, 18, 17, 0, 0)
     end = datetime(2026, 6, 18, 21, 0, 0)
-    
+
     intervals = split_interval_by_days(start, end)
     assert len(intervals) == 2
+    # Функция возвращает UTC-aware datetime
     # Первая часть: 22:00 до 00:00 (17:00 UTC до 19:00 UTC)
-    assert intervals[0] == (datetime(2026, 6, 18, 17, 0, 0), datetime(2026, 6, 18, 19, 0, 0))
+    assert intervals[0] == (
+        datetime(2026, 6, 18, 17, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 6, 18, 19, 0, 0, tzinfo=timezone.utc),
+    )
     # Вторая часть: 00:00 до 02:00 (19:00 UTC до 21:00 UTC)
-    assert intervals[1] == (datetime(2026, 6, 18, 19, 0, 0), datetime(2026, 6, 18, 21, 0, 0))
+    assert intervals[1] == (
+        datetime(2026, 6, 18, 19, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 6, 18, 21, 0, 0, tzinfo=timezone.utc),
+    )
 
 
 @pytest.mark.asyncio
@@ -249,13 +256,14 @@ async def test_overtime_creation_split_by_days(
 
     parts = sorted(overtimes, key=lambda x: x.start_time)[-2:]
 
+    # Колонки timestamptz — SQLAlchemy возвращает UTC-aware datetime
     # Первая часть: 17:00 до 19:00 UTC (22:00 - 00:00 Almaty)
-    assert parts[0].start_time.isoformat() == "2026-01-15T17:00:00"
-    assert parts[0].end_time.isoformat() == "2026-01-15T19:00:00"
+    assert parts[0].start_time.replace(tzinfo=None).isoformat() == "2026-01-15T17:00:00"
+    assert parts[0].end_time.replace(tzinfo=None).isoformat() == "2026-01-15T19:00:00"
 
     # Вторая часть: 19:00 до 21:00 UTC (00:00 - 02:00 Almaty)
-    assert parts[1].start_time.isoformat() == "2026-01-15T19:00:00"
-    assert parts[1].end_time.isoformat() == "2026-01-15T21:00:00"
+    assert parts[1].start_time.replace(tzinfo=None).isoformat() == "2026-01-15T19:00:00"
+    assert parts[1].end_time.replace(tzinfo=None).isoformat() == "2026-01-15T21:00:00"
 
 
 @pytest.mark.asyncio

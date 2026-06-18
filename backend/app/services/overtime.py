@@ -12,7 +12,7 @@ from app.repositories import user as user_repo
 
 
 from datetime import datetime, timedelta, timezone
-from app.core.utils import calculate_overtime_hours, strip_timezone
+from app.core.utils import calculate_overtime_hours, ensure_utc
 from app.core.config import settings
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
@@ -41,9 +41,9 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
             detail="Время окончания должно быть позже времени начала."
         )
 
-    # Убираем таймзоны для корректного сравнения (с предварительным переводом в UTC)
-    start_time = strip_timezone(start_time)
-    end_time = strip_timezone(end_time)
+    # Приводим к UTC-aware для корректной работы с timestamptz колонками
+    start_time = ensure_utc(start_time)
+    end_time = ensure_utc(end_time)
 
     # Защита от аномально большой длительности
     if end_time and start_time:
@@ -58,7 +58,7 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
             )
 
     # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
-    if start_time > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5):
+    if start_time > datetime.now(timezone.utc) + timedelta(minutes=5):
         raise HTTPException(
             status_code=400, 
             detail="Нельзя создавать заявку на будущее время."
@@ -351,8 +351,8 @@ async def update_overtime(
     new_start = update_data.get("start_time", overtime.start_time)
     new_end = update_data.get("end_time", overtime.end_time)
     
-    new_start = strip_timezone(new_start)
-    new_end = strip_timezone(new_end)
+    new_start = ensure_utc(new_start)
+    new_end = ensure_utc(new_end)
 
     if new_end and new_start and new_end <= new_start:
         raise HTTPException(

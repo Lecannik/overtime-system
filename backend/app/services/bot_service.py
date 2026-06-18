@@ -66,8 +66,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
-            start_time_local = active.start_time.replace(tzinfo=timezone.utc).astimezone(settings.tz_info)
-            elapsed_hours = (datetime.now(timezone.utc).replace(tzinfo=None) - active.start_time).total_seconds() / 3600
+            start_time_local = active.start_time.astimezone(settings.tz_info)
+            elapsed_hours = (datetime.now(timezone.utc) - active.start_time).total_seconds() / 3600
 
             warning = ""
             if elapsed_hours >= settings.MAX_OVERTIME_HOURS:
@@ -99,7 +99,7 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
-            elapsed_hours = (datetime.now(timezone.utc).replace(tzinfo=None) - active.start_time).total_seconds() / 3600
+            elapsed_hours = (datetime.now(timezone.utc) - active.start_time).total_seconds() / 3600
 
             if elapsed_hours >= settings.MAX_OVERTIME_HOURS:
                 # Автозакрываем зависшую сессию
@@ -132,8 +132,8 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
                     tz_local = settings.tz_info
                     parts_info = "\n\nЗаявка разбита на части по суткам:"
                     for idx, (s, e) in enumerate(intervals, 1):
-                        s_loc = s.replace(tzinfo=timezone.utc).astimezone(tz_local)
-                        e_loc = e.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                        s_loc = s.astimezone(tz_local)
+                        e_loc = e.astimezone(tz_local)
                         parts_info += f"\n  {idx}. {s_loc.strftime('%d.%m %H:%M')} — {e_loc.strftime('%H:%M')}"
 
                 await update.message.reply_text(
@@ -212,7 +212,7 @@ async def start_location_handler(update: Update, context: ContextTypes.DEFAULT_T
     project_id = context.user_data.get('project_id')
     async with AsyncSessionLocal() as session:
         new_ot = Overtime(
-            user_id=user.id, project_id=project_id, start_time=datetime.now(timezone.utc).replace(tzinfo=None),
+            user_id=user.id, project_id=project_id, start_time=datetime.now(timezone.utc),
             start_lat=location.latitude, start_lng=location.longitude,
             status=OvertimeStatus.IN_PROGRESS, description="[Бот]"
         )
@@ -283,7 +283,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_overtime_by_id(session, active_id)
         if active:
-            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            end_time = datetime.now(timezone.utc)
             
             # Разделяем интервал по дням (00:00 локального времени)
             from app.core.utils import split_interval_by_days
@@ -364,8 +364,8 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for idx, ot in enumerate(all_overtimes, 1):
                     # Форматируем даты для локального времени вывода в бот
                     tz_local = settings.tz_info
-                    ot_start_loc = ot.start_time.replace(tzinfo=timezone.utc).astimezone(tz_local)
-                    ot_end_loc = ot.end_time.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                    ot_start_loc = ot.start_time.astimezone(tz_local)
+                    ot_end_loc = ot.end_time.astimezone(tz_local)
                     h_part = int(calculate_overtime_hours(ot.start_time, ot.end_time))
                     split_info += f"\n  {idx}. {ot_start_loc.strftime('%d.%m %H:%M')} — {ot_end_loc.strftime('%H:%M')} ({h_part}ч)"
             
