@@ -133,15 +133,18 @@ jobs:
           docker compose -f docker-compose.prod.yml up -d
           docker compose -f docker-compose.prod.yml restart nginx-router
 
-          # Проверка доступности бэкенда после деплоя
-          echo "⏳ Ожидаем запуск бэкенда..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost/api/v1/health > /dev/null 2>&1; then
-              echo "✅ Бэкенд доступен"
+          # Проверка доступности бэкенда после деплоя.
+          # При первом деплое на чистый volume модели скачиваются в фоне
+          # (~3-5 мин), поэтому даём 300 секунд (150 × 2s).
+          echo "⏳ Ожидаем запуск бэкенда (до 300 секунд)..."
+          for i in $(seq 1 150); do
+            if curl -sf http://localhost/api/v1/auth/me > /dev/null 2>&1 || \
+               curl -o /dev/null -s -w "%{http_code}" http://localhost/api/v1/auth/me | grep -qE "^(200|401|403|405|422)$"; then
+              echo "✅ Бэкенд доступен (попытка $i)"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "❌ Бэкенд не ответил за 60 секунд"
+            if [ "$i" -eq 150 ]; then
+              echo "❌ Бэкенд не ответил за 300 секунд"
               docker compose -f docker-compose.prod.yml logs --tail=50 backend
               exit 1
             fi
