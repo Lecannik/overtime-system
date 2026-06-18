@@ -184,7 +184,7 @@ const DashboardPage: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(12);
 
   // Filters
   const [filterStatus, setFilterStatus] = useState<string>('');

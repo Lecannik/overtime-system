@@ -98,7 +98,7 @@ const ReviewPage: React.FC = () => {
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [pageSize] = useState(10);
+    const [pageSize] = useState(12);
 
     const startInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
         if (node) {
