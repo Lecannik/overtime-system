@@ -18,6 +18,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 jobs:
   # ──────────────────────────────────────────────────────
   # CI-проверки (тесты + линтинг) — gate перед сборкой
