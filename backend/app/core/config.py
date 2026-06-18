@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "strict"
     DEFAULT_TIMEZONE: str = "Asia/Almaty"
 
+    # Защита от аномальных переработок: лимит длительности одной заявки в часах.
+    # При создании через API заявки длиннее этого значения отклоняются.
+    # IN_PROGRESS сессии старше этого значения закрываются автоматически.
+    MAX_OVERTIME_HOURS: int = 24
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str | None = None
 

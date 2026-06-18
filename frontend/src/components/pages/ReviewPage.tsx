@@ -370,6 +370,9 @@ const ReviewPage: React.FC = () => {
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                     <span className="badge badge-info" style={{ fontSize: '0.6rem' }}>ID {ot.id}</span>
+                                    <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`} style={{ fontSize: '0.6rem' }}>
+                                        {STATUS_LABELS[ot.status] || ot.status}
+                                    </span>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
                                         {ot.start_lat && ot.start_lng && (
                                             <a

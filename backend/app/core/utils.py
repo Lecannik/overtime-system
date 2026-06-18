@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 def calculate_overtime_hours(start_time: datetime, end_time: datetime) -> float:
     """
@@ -26,3 +26,50 @@ def strip_timezone(dt: datetime | None) -> datetime | None:
     if dt and dt.tzinfo:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
+
+def split_interval_by_days(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """
+    Разделяет временной интервал на список интервалов,
+    не пересекающих границы суток (00:00 по локальному времени из настроек).
+    Возвращает список наивных datetime объектов в UTC.
+    """
+    if not start or not end:
+        return []
+        
+    from app.core.config import settings
+    tz_local = settings.tz_info
+    
+    # 1. Приведение к локальному времени
+    s_utc = start.replace(tzinfo=timezone.utc) if not start.tzinfo else start.astimezone(timezone.utc)
+    e_utc = end.replace(tzinfo=timezone.utc) if not end.tzinfo else end.astimezone(timezone.utc)
+    
+    s_local = s_utc.astimezone(tz_local)
+    e_local = e_utc.astimezone(tz_local)
+    
+    if e_local <= s_local:
+        return []
+        
+    # 2. Разделение по границам суток
+    intervals_local = []
+    current_start = s_local
+    
+    while True:
+        # 00:00 следующего дня в локальном времени
+        next_day = current_start.date() + timedelta(days=1)
+        next_midnight = datetime.combine(next_day, datetime.min.time(), tzinfo=tz_local)
+        
+        if e_local <= next_midnight:
+            intervals_local.append((current_start, e_local))
+            break
+        else:
+            intervals_local.append((current_start, next_midnight))
+            current_start = next_midnight
+            
+    # 3. Перевод обратно в наивный UTC
+    result = []
+    for s, e in intervals_local:
+        s_utc_naive = s.astimezone(timezone.utc).replace(tzinfo=None)
+        e_utc_naive = e.astimezone(timezone.utc).replace(tzinfo=None)
+        result.append((s_utc_naive, e_utc_naive))
+        
+    return result

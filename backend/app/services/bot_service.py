@@ -67,8 +67,26 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
             start_time_local = active.start_time.replace(tzinfo=timezone.utc).astimezone(settings.tz_info)
+            elapsed_hours = (datetime.now(timezone.utc).replace(tzinfo=None) - active.start_time).total_seconds() / 3600
+
+            warning = ""
+            if elapsed_hours >= settings.MAX_OVERTIME_HOURS:
+                warning = (
+                    f"\n\n🚨 <b>АНОМАЛЬНО ДОЛГАЯ СЕССИЯ: {elapsed_hours:.1f}ч!</b>\n"
+                    f"Максимум — {settings.MAX_OVERTIME_HOURS}ч. Сессия будет автоматически закрыта. "
+                    "Завершите переработку сейчас."
+                )
+            elif elapsed_hours >= settings.MAX_OVERTIME_HOURS / 2:
+                warning = (
+                    f"\n\n⚠️ <b>Сессия идёт уже {elapsed_hours:.1f}ч.</b> "
+                    "Не забудьте завершить переработку!"
+                )
+
             await update.message.reply_text(
-                f"👷‍♂️ В процессе: проект «{active.project.name}»\nНачало: {start_time_local.strftime('%H:%M:%S')}",
+                f"👷‍♂️ В процессе: проект «{active.project.name}»\n"
+                f"Начало: {start_time_local.strftime('%d.%m %H:%M:%S')}"
+                f"{warning}",
+                parse_mode="HTML",
                 reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
             )
         else:
@@ -77,19 +95,65 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user: return ConversationHandler.END
-    
+
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
-            await update.message.reply_text(
-                "⚠️ <b>У вас уже запущена переработка!</b>\n\n"
-                "Вы не можете начать новую переработку, пока не завершите текущую.\n"
-                "Используйте кнопку «⏹ Остановить переработку», чтобы завершить её.",
-                parse_mode="HTML",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
-            )
-            return ConversationHandler.END
-            
+            elapsed_hours = (datetime.now(timezone.utc).replace(tzinfo=None) - active.start_time).total_seconds() / 3600
+
+            if elapsed_hours >= settings.MAX_OVERTIME_HOURS:
+                # Автозакрываем зависшую сессию
+                from app.core.utils import split_interval_by_days
+                auto_end = active.start_time + timedelta(hours=settings.MAX_OVERTIME_HOURS)
+                intervals = split_interval_by_days(active.start_time, auto_end)
+                if not intervals:
+                    intervals = [(active.start_time, auto_end)]
+
+                active.start_time = intervals[0][0]
+                active.end_time = intervals[0][1]
+                active.status = OvertimeStatus.PENDING
+                if not active.description or active.description.strip() in ("", "[Бот]"):
+                    active.description = "[Автозакрытие: сессия превысила лимит]"
+
+                for s, e in intervals[1:]:
+                    session.add(Overtime(
+                        user_id=active.user_id,
+                        project_id=active.project_id,
+                        start_time=s,
+                        end_time=e,
+                        description=active.description,
+                        status=OvertimeStatus.PENDING,
+                    ))
+
+                await session.commit()
+
+                parts_info = ""
+                if len(intervals) > 1:
+                    tz_local = settings.tz_info
+                    parts_info = "\n\nЗаявка разбита на части по суткам:"
+                    for idx, (s, e) in enumerate(intervals, 1):
+                        s_loc = s.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                        e_loc = e.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                        parts_info += f"\n  {idx}. {s_loc.strftime('%d.%m %H:%M')} — {e_loc.strftime('%H:%M')}"
+
+                await update.message.reply_text(
+                    f"🚨 <b>Обнаружена зависшая сессия ({elapsed_hours:.1f}ч)!</b>\n\n"
+                    f"Она была автоматически закрыта и переведена в статус «Ожидает согласования»."
+                    f"{html.escape(parts_info)}\n\n"
+                    "Теперь вы можете начать новую переработку.",
+                    parse_mode="HTML",
+                )
+                # Продолжаем — разрешаем начать новую сессию
+            else:
+                await update.message.reply_text(
+                    "⚠️ <b>У вас уже запущена переработка!</b>\n\n"
+                    "Вы не можете начать новую переработку, пока не завершите текущую.\n"
+                    "Используйте кнопку «⏹ Остановить переработку», чтобы завершить её.",
+                    parse_mode="HTML",
+                    reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
+                )
+                return ConversationHandler.END
+
     await update.message.reply_text(
         "🔍 Введите название или номер проекта для поиска:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
@@ -219,7 +283,17 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_overtime_by_id(session, active_id)
         if active:
-            active.end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            
+            # Разделяем интервал по дням (00:00 локального времени)
+            from app.core.utils import split_interval_by_days
+            intervals = split_interval_by_days(active.start_time, end_time)
+            if not intervals:
+                intervals = [(active.start_time, end_time)]
+                
+            # Первую часть сохраняем в существующей записи
+            active.start_time = intervals[0][0]
+            active.end_time = intervals[0][1]
             active.description = comment_text
             active.status = OvertimeStatus.PENDING
             active.voice_url = voice_url
@@ -227,19 +301,88 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Сохраняем конечные координаты
             active.end_lat = end_lat
             active.end_lng = end_lng
+            
+            # Для остальных интервалов создаем новые записи
+            other_overtimes = []
+            for s, e in intervals[1:]:
+                new_ot = Overtime(
+                    user_id=active.user_id,
+                    project_id=active.project_id,
+                    start_time=s,
+                    end_time=e,
+                    description=comment_text,
+                    location_name=active.location_name,
+                    voice_url=voice_url,
+                    voice_summary=summary_text,
+                    start_lat=active.start_lat,
+                    start_lng=active.start_lng,
+                    end_lat=end_lat,
+                    end_lng=end_lng,
+                    status=OvertimeStatus.PENDING
+                )
+                session.add(new_ot)
+                other_overtimes.append(new_ot)
+                
             await session.commit()
             
-            from app.core.utils import calculate_overtime_hours
-            duration = active.end_time - active.start_time
-            total_seconds = int(duration.total_seconds())
+            # Релоадим все записи, чтобы подтянулись релейшны
+            all_overtimes = [active]
+            for ot in other_overtimes:
+                ot_full = await overtime_repo.get_overtime_by_id(session, ot.id)
+                if ot_full:
+                    all_overtimes.append(ot_full)
+                    
+            # Для каждой части отправляем уведомление руководителям
+            from app.services import notifications
+            for ot_full in all_overtimes:
+                # Получаем менеджера проекта
+                manager = None
+                if ot_full.project.manager_id:
+                    manager = await user_repo.get_user_by_id(session, ot_full.project.manager_id)
+                # Получаем начальника для стандартного уведомления
+                dept = await org_repo.get_department_by_id(session, ot_full.user.department_id)
+                head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
+                
+                await notifications.notify_new_overtime(session, ot_full, manager, head)
+            
+            # Вычисляем общую продолжительность и текст для бота
+            total_seconds = int((end_time - intervals[0][0]).total_seconds())
             hours = total_seconds // 3600
             minutes = (total_seconds % 3600) // 60
-            rounded_hours = int(calculate_overtime_hours(active.start_time, active.end_time))
-            dur_str = f"{hours}ч {minutes}м (округлено: {rounded_hours}ч)"
+            total_hours_float = total_seconds / 3600
+            
+            # Считаем сумму округленных часов по всем созданным частям
+            from app.core.utils import calculate_overtime_hours
+            rounded_hours = sum(int(calculate_overtime_hours(ot.start_time, ot.end_time)) for ot in all_overtimes)
+            
+            dur_str = f"{hours}ч {minutes}м (округлено по частям: {rounded_hours}ч)"
+            
+            # Если заявок больше одной, сообщаем об этом
+            split_info = ""
+            if len(all_overtimes) > 1:
+                split_info = f"\n\n📅 <b>Заявка разделена на {len(all_overtimes)} части (по суткам):</b>"
+                for idx, ot in enumerate(all_overtimes, 1):
+                    # Форматируем даты для локального времени вывода в бот
+                    tz_local = settings.tz_info
+                    ot_start_loc = ot.start_time.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                    ot_end_loc = ot.end_time.replace(tzinfo=timezone.utc).astimezone(tz_local)
+                    h_part = int(calculate_overtime_hours(ot.start_time, ot.end_time))
+                    split_info += f"\n  {idx}. {ot_start_loc.strftime('%d.%m %H:%M')} — {ot_end_loc.strftime('%H:%M')} ({h_part}ч)"
             
             escaped_summary = html.escape(summary_text)
             escaped_proj_name = html.escape(active.project.name)
             escaped_comment = html.escape(comment_text)
+
+            duration_warning = ""
+            if total_hours_float >= settings.MAX_OVERTIME_HOURS:
+                duration_warning = (
+                    f"\n\n🚨 <b>Внимание:</b> длительность ({total_hours_float:.1f}ч) превышает лимит "
+                    f"{settings.MAX_OVERTIME_HOURS}ч — проверьте корректность данных."
+                )
+            elif total_hours_float >= settings.MAX_OVERTIME_HOURS / 2:
+                duration_warning = (
+                    f"\n\n⚠️ Длительность переработки составила {total_hours_float:.1f}ч."
+                )
 
             report = (
                 "📊 <b>ОТЧЕТ ПО ПЕРЕРАБОТКЕ</b>\n"
@@ -251,6 +394,8 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📝 <b>Полный текст:</b>\n"
                 f"«{escaped_comment}»\n"
                 "━━━━━━━━━━━━━━━"
+                f"{split_info}"
+                f"{duration_warning}"
             )
             await update.message.reply_text(report, parse_mode="HTML", reply_markup=start_markup())
     return ConversationHandler.END

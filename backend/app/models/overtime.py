@@ -101,16 +101,20 @@ class Overtime(Base):
         """
         Метод-свойство. Рассчитывает длительность в часах 
         с применением бизнес-логики (например, округление).
+        Ограничена 24 часами (максимальная длительность одних суток).
         """
         if self.status == OvertimeStatus.IN_PROGRESS:
-            return calculate_overtime_hours(self.start_time, datetime.now(timezone.utc).replace(tzinfo=None))
-        return calculate_overtime_hours(self.start_time, self.end_time)
+            h = calculate_overtime_hours(self.start_time, datetime.now(timezone.utc).replace(tzinfo=None))
+        else:
+            h = calculate_overtime_hours(self.start_time, self.end_time)
+        return min(h, 24.0)
 
     @property
     def raw_hours(self) -> float:
         """
         Возвращает чистую разницу во времени без учета 
         бизнес-правил округления. Если сессия не завершена, возвращает 0.
+        Ограничена 24 часами (максимальная длительность одних суток).
         """
         if not self.start_time:
             return 0.0
@@ -118,11 +122,11 @@ class Overtime(Base):
             s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
             e = datetime.now(timezone.utc).replace(tzinfo=None)
             delta = e - s
-            return max(0.0, delta.total_seconds() / 3600.0)
+            return min(24.0, max(0.0, delta.total_seconds() / 3600.0))
         
         if not self.end_time:
             return 0.0
         s = self.start_time.replace(tzinfo=None) if self.start_time.tzinfo else self.start_time
         e = self.end_time.replace(tzinfo=None) if self.end_time.tzinfo else self.end_time
         delta = e - s
-        return max(0.0, delta.total_seconds() / 3600.0)
+        return min(24.0, max(0.0, delta.total_seconds() / 3600.0))

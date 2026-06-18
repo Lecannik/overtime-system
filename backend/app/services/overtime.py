@@ -13,6 +13,7 @@ from app.repositories import user as user_repo
 
 from datetime import datetime, timedelta, timezone
 from app.core.utils import calculate_overtime_hours, strip_timezone
+from app.core.config import settings
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
@@ -44,6 +45,18 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     start_time = strip_timezone(start_time)
     end_time = strip_timezone(end_time)
 
+    # Защита от аномально большой длительности
+    if end_time and start_time:
+        total_hours = (end_time - start_time).total_seconds() / 3600
+        if total_hours > settings.MAX_OVERTIME_HOURS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Длительность переработки ({total_hours:.1f}ч) превышает допустимый максимум "
+                    f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
+                )
+            )
+
     # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
     if start_time > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5):
         raise HTTPException(
@@ -63,41 +76,54 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
 
     # 3. Базовое создание
     data = overtime_in.model_dump()
-    data["start_time"] = start_time
-    data["end_time"] = end_time
-    overtime_db = Overtime(
-        **data,
-        user_id=user_id,
-        status=OvertimeStatus.PENDING
-    )
-    overtime = await overtime_repo.create_overtime(session, overtime_db)
-
-    # Релоадим с релейшнами
-    overtime = await overtime_repo.get_overtime_by_id(session, overtime.id)
-
-    # 4. Проверка недельных лимитов
-    weekly_hours = await overtime_repo.get_weekly_overtime_hours(
-        session, user_id, overtime.project_id
-    )
     
-    # Получаем менеджера проекта
-    manager = None
-    if overtime.project.manager_id:
-        manager = await user_repo.get_user_by_id(session, overtime.project.manager_id)
-    
-    # Если лимит превышен — уведомляем менеджера
-    if manager and weekly_hours > overtime.project.weekly_limit:
-        await notifications.notify_limit_exceeded(
-            session, overtime, manager, weekly_hours, overtime.project.weekly_limit
+    from app.core.utils import split_interval_by_days
+    intervals = []
+    if start_time and end_time:
+        intervals = split_interval_by_days(start_time, end_time)
+        
+    if not intervals:
+        intervals = [(start_time, end_time)]
+        
+    created_overtimes = []
+    for s, e in intervals:
+        item_data = data.copy()
+        item_data["start_time"] = s
+        item_data["end_time"] = e
+        overtime_db = Overtime(
+            **item_data,
+            user_id=user_id,
+            status=OvertimeStatus.PENDING
         )
-
-    # Получаем начальника для стандартного уведомления
-    dept = await org_repo.get_department_by_id(session, overtime.user.department_id)
-    head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
-
-    await notifications.notify_new_overtime(session, overtime, manager, head)
-
-    return overtime
+        ot = await overtime_repo.create_overtime(session, overtime_db)
+        
+        # Получаем полный объект с релейшнами
+        ot_full = await overtime_repo.get_overtime_by_id(session, ot.id)
+        created_overtimes.append(ot_full)
+        
+        # 4. Проверка недельных лимитов для каждой части
+        weekly_hours = await overtime_repo.get_weekly_overtime_hours(
+            session, user_id, ot_full.project_id
+        )
+        
+        # Получаем менеджера проекта
+        manager = None
+        if ot_full.project.manager_id:
+            manager = await user_repo.get_user_by_id(session, ot_full.project.manager_id)
+        
+        # Если лимит превышен — уведомляем менеджера
+        if manager and weekly_hours > ot_full.project.weekly_limit:
+            await notifications.notify_limit_exceeded(
+                session, ot_full, manager, weekly_hours, ot_full.project.weekly_limit
+            )
+    
+        # Получаем начальника для стандартного уведомления
+        dept = await org_repo.get_department_by_id(session, ot_full.user.department_id)
+        head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
+    
+        await notifications.notify_new_overtime(session, ot_full, manager, head)
+    
+    return created_overtimes[0]
 
 
 async def review_overtime(
@@ -334,6 +360,17 @@ async def update_overtime(
             detail="Время окончания должно быть позже времени начала."
         )
 
+    if new_end and new_start:
+        total_hours = (new_end - new_start).total_seconds() / 3600
+        if total_hours > settings.MAX_OVERTIME_HOURS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Длительность переработки ({total_hours:.1f}ч) превышает допустимый максимум "
+                    f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
+                )
+            )
+
     # 1. Проверка на пересечение (Overlap) при изменении времени
     if "start_time" in update_data or "end_time" in update_data:
         has_overlap = await overtime_repo.check_overlapping_overtimes(
@@ -359,3 +396,73 @@ async def update_overtime(
             update_data["status"] = OvertimeStatus.PENDING
 
     return await overtime_repo.update_overtime(session, overtime, update_data)
+
+
+async def auto_close_stale_sessions(session: AsyncSession) -> int:
+    """
+    Находит все IN_PROGRESS сессии старше MAX_OVERTIME_HOURS и автоматически закрывает их.
+    Конечное время выставляется как start_time + MAX_OVERTIME_HOURS (не текущее время),
+    чтобы не создавать раздутые записи при многодневных зависаниях.
+    Интервал разбивается по 00:00, создаются записи PENDING.
+    Возвращает количество закрытых сессий.
+    """
+    import logging
+    logger = logging.getLogger("auto_close")
+
+    from app.core.utils import split_interval_by_days
+    from app.repositories.overtime import get_all_stale_in_progress
+
+    stale = await get_all_stale_in_progress(session, settings.MAX_OVERTIME_HOURS)
+    if not stale:
+        return 0
+
+    count = 0
+    for active in stale:
+        auto_end = active.start_time + timedelta(hours=settings.MAX_OVERTIME_HOURS)
+
+        intervals = split_interval_by_days(active.start_time, auto_end)
+        if not intervals:
+            intervals = [(active.start_time, auto_end)]
+
+        original_start = active.start_time
+
+        active.start_time = intervals[0][0]
+        active.end_time = intervals[0][1]
+        active.status = OvertimeStatus.PENDING
+        if not active.description or active.description.strip() in ("", "[Бот]"):
+            active.description = "[Автозакрытие: сессия превысила лимит]"
+
+        for s, e in intervals[1:]:
+            new_ot = Overtime(
+                user_id=active.user_id,
+                project_id=active.project_id,
+                start_time=s,
+                end_time=e,
+                description=active.description,
+                status=OvertimeStatus.PENDING,
+            )
+            session.add(new_ot)
+
+        await audit_repo.create_audit_log(
+            session=session,
+            user_id=active.user_id,
+            action="AUTO_CLOSE_STALE",
+            target_type="overtime",
+            target_id=active.id,
+            details={
+                "reason": f"IN_PROGRESS exceeded {settings.MAX_OVERTIME_HOURS}h limit",
+                "original_start": original_start.isoformat(),
+                "auto_end": auto_end.isoformat(),
+                "intervals": len(intervals),
+            },
+        )
+        logger.warning(
+            "Auto-closed stale session id=%d user_id=%d started=%s",
+            active.id, active.user_id, original_start.isoformat()
+        )
+        count += 1
+
+    if count:
+        await session.commit()
+
+    return count

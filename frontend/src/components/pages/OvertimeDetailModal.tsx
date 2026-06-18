@@ -76,7 +76,10 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onC
                             <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Период</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <Calendar size={16} style={{ color: 'var(--accent)' }} />
-                                <span style={{ fontWeight: 600 }}>{formatDateTime(overtime.start_time)}</span>
+                                <span style={{ fontWeight: 600 }}>
+                                    {formatDateTime(overtime.start_time)}
+                                    {overtime.end_time ? ` — ${formatDateTime(overtime.end_time)}` : ''}
+                                </span>
                             </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

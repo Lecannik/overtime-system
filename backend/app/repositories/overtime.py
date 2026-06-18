@@ -160,6 +160,21 @@ async def get_active_session(session: AsyncSession, user_id: int) -> Overtime | 
     # MultipleResultsFound, если в БД по ошибке застряло несколько активных сессий.
     return result.scalars().first()
 
+async def get_all_stale_in_progress(session: AsyncSession, older_than_hours: int) -> list[Overtime]:
+    """Возвращает все IN_PROGRESS сессии, которые не закрыты дольше older_than_hours часов."""
+    from sqlalchemy.orm import selectinload as _sl
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=older_than_hours)
+    query = (
+        select(Overtime)
+        .where(
+            Overtime.status == OvertimeStatus.IN_PROGRESS,
+            Overtime.start_time < cutoff
+        )
+        .options(_sl(Overtime.project), _sl(Overtime.user))
+    )
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
 async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_data: dict) -> Overtime:
     """Обновляет поля переработки на основе словаря данных."""
     for key, value in update_data.items():
