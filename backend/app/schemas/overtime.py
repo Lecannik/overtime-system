@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.models.overtime import OvertimeStatus
 from app.models.user import UserRole
 
@@ -12,7 +12,7 @@ class OvertimeBase(BaseModel):
     project_id: int
     start_time: datetime
     end_time: datetime | None = None
-    description: str
+    description: str = Field(min_length=1, max_length=2000)
     location_name: str | None = None
     start_lat: float | None = None
     start_lng: float | None = None

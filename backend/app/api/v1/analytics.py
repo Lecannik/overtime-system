@@ -17,10 +17,19 @@ from app.models.user import User, UserRole, UserCompany
 from app.schemas.analytics import AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics
 from app.repositories import analytics as analytics_repo
 from app.services.excel_service import generate_excel_file
+from app.core.cache import cache_get, cache_set
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
- 
- 
+
+
+def _ck(scope: dict, **params) -> dict:
+    """Builds cache-key kwargs from scope + filter params."""
+    return {
+        "scope": f"{scope.get('manager_id')}:{scope.get('department_ids')}",
+        **{k: str(v) for k, v in params.items()},
+    }
+
+
 async def get_analytics_scope(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -56,7 +65,13 @@ async def get_reviews_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Аналитика по качеству согласования (запрошено vs одобрено)."""
-    return await analytics_repo.get_review_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("reviews", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_review_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    cache_set("reviews", data, ttl=300, **ck)
+    return data
 
 @router.get("/weekly")
 async def get_weekly_stats(
@@ -76,7 +91,13 @@ async def get_summary(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Общая сводка по переработкам (всего часов, заявок и т.д.)."""
-    return await analytics_repo.get_analytics_summary(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("summary", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_analytics_summary(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    cache_set("summary", data, ttl=300, **ck)
+    return data
 
 
 @router.get("/companies")
@@ -89,8 +110,13 @@ async def get_companies_comparison(
     """Сравнительный отчет по компаниям (Доступно только Админам)."""
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администраторов.")
-    
-    return await analytics_repo.get_company_comparison(session, start_date=start_date, end_date=end_date)
+    ck = _ck({}, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("companies", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_company_comparison(session, start_date=start_date, end_date=end_date)
+    cache_set("companies", data, ttl=300, **ck)
+    return data
 
 @router.get("/projects", response_model=List[ProjectAnalytics])
 async def get_projects_stats(
@@ -102,7 +128,13 @@ async def get_projects_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе проектов."""
-    return await analytics_repo.get_project_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("projects", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_project_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    cache_set("projects", data, ttl=300, **ck)
+    return data
 
 @router.get("/departments", response_model=List[DepartmentAnalytics])
 async def get_departments_stats(
@@ -114,7 +146,13 @@ async def get_departments_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе отделов."""
-    return await analytics_repo.get_department_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("departments", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_department_analytics(session, **scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    cache_set("departments", data, ttl=300, **ck)
+    return data
 
 @router.get("/users", response_model=List[UserAnalytics])
 async def get_users_stats(
@@ -126,7 +164,13 @@ async def get_users_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе пользователей (с возможностью фильтрации по проекту)."""
-    return await analytics_repo.get_user_analytics(session, project_id=project_id, company=company, **scope, start_date=start_date, end_date=end_date)
+    ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
+    hit, data = cache_get("users", **ck)
+    if hit:
+        return data
+    data = await analytics_repo.get_user_analytics(session, project_id=project_id, company=company, **scope, start_date=start_date, end_date=end_date)
+    cache_set("users", data, ttl=300, **ck)
+    return data
 
 @router.get("/export")
 async def export_analytics(

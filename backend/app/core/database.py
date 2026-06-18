@@ -16,7 +16,14 @@ class Base(DeclarativeBase):
     ...
 
 
-engine = create_async_engine(DATABASE_URL, echo=settings.SQL_ECHO)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=settings.SQL_ECHO,
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,   # проверяет соединение перед использованием
+    pool_recycle=3600,    # переподключение каждый час (избегает stale connections)
+)
 
 
 AsyncSessionLocal = async_sessionmaker(

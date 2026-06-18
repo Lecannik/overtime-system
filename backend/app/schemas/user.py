@@ -1,7 +1,7 @@
 """
 Модуль содержит Pydantic-схемы для валидации данных пользователей.
 """
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 
 from app.models.user import UserRole, UserCompany, NotificationLevel
@@ -16,6 +16,17 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.employee
     company: UserCompany = UserCompany.Polymedia
     department_id: Optional[int] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Пароль должен содержать не менее 8 символов")
+        has_digit = any(c.isdigit() for c in v)
+        has_special = any(not c.isalnum() for c in v)
+        if not (has_digit or has_special):
+            raise ValueError("Пароль должен содержать хотя бы одну цифру или специальный символ")
+        return v
 
 
 class UserCreateByAdmin(UserCreate):
@@ -98,6 +109,17 @@ class UserAdminUpdate (BaseModel):
 class UserChangePassword(BaseModel):
     old_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Пароль должен содержать не менее 8 символов")
+        has_digit = any(c.isdigit() for c in v)
+        has_special = any(not c.isalnum() for c in v)
+        if not (has_digit or has_special):
+            raise ValueError("Пароль должен содержать хотя бы одну цифру или специальный символ")
+        return v
 
 
 class PaginatedUsersResponse(BaseModel):

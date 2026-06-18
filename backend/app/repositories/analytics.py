@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
@@ -393,15 +393,34 @@ async def get_review_analytics(
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
     
-    query = select(Overtime).where(Overtime.status.in_([OvertimeStatus.APPROVED, OvertimeStatus.REJECTED]))
-    
+    # Выражение для запрошенных часов (округление вверх — бизнес-правило)
+    duration_expr = func.ceil(
+        func.extract('epoch', Overtime.end_time - Overtime.start_time) / 3600
+    )
+    approved_approved = Overtime.status == OvertimeStatus.APPROVED
+
+    query = select(
+        func.count(Overtime.id).label("total"),
+        func.coalesce(func.sum(duration_expr), 0).label("total_requested"),
+        func.coalesce(func.sum(Overtime.approved_hours), 0).label("total_approved"),
+        func.count(Overtime.id).filter(
+            approved_approved, Overtime.approved_hours > duration_expr
+        ).label("more_count"),
+        func.count(Overtime.id).filter(
+            approved_approved, Overtime.approved_hours < duration_expr
+        ).label("less_count"),
+        func.count(Overtime.id).filter(
+            approved_approved, Overtime.approved_hours == duration_expr
+        ).label("exact_count"),
+    ).where(Overtime.status.in_([OvertimeStatus.APPROVED, OvertimeStatus.REJECTED]))
+
     if manager_id:
         query = query.join(Project).where(Project.manager_id == manager_id)
     elif department_ids is not None:
         query = query.join(User).where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.join(User).where(User.department_id == department_id)
-        
+
     if project_id:
         if not manager_id:
             query = query.join(Project, Overtime.project_id == Project.id)
@@ -415,32 +434,18 @@ async def get_review_analytics(
         query = query.where(User.company == company)
 
     query = apply_date_filters(query, start_date, end_date)
-    
+
     result = await session.execute(query)
-    overtimes = result.scalars().all()
-    
-    stats = {
-        "total_requested_hours": 0.0,
-        "total_approved_hours": 0.0,
-        "more_than_requested_count": 0,
-        "less_than_requested_count": 0,
-        "exact_match_count": 0,
-        "total_reviewed_requests": len(overtimes)
+    row = result.fetchone()
+
+    return {
+        "total_requested_hours": float(row.total_requested),
+        "total_approved_hours": float(row.total_approved),
+        "more_than_requested_count": row.more_count,
+        "less_than_requested_count": row.less_count,
+        "exact_match_count": row.exact_count,
+        "total_reviewed_requests": row.total,
     }
-    
-    for ot in overtimes:
-        requested = ot.hours 
-        approved = ot.approved_hours or 0.0
-        stats["total_requested_hours"] += requested
-        stats["total_approved_hours"] += approved
-        if ot.status == OvertimeStatus.APPROVED:
-            if approved > requested:
-                stats["more_than_requested_count"] += 1
-            elif approved < requested:
-                stats["less_than_requested_count"] += 1
-            else:
-                stats["exact_match_count"] += 1
-    return stats
 
 
 async def get_company_comparison(

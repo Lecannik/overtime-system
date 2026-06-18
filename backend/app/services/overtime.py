@@ -14,6 +14,7 @@ from app.repositories import user as user_repo
 from datetime import datetime, timedelta, timezone
 from app.core.utils import calculate_overtime_hours, ensure_utc
 from app.core.config import settings
+from app.core.cache import cache_clear
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
@@ -122,7 +123,8 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
         head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
     
         await notifications.notify_new_overtime(session, ot_full, manager, head)
-    
+
+    cache_clear()
     return created_overtimes[0]
 
 
@@ -319,6 +321,7 @@ async def cancel_overtime(
 
     await session.commit()
     await session.refresh(overtime)
+    cache_clear()
     return overtime
 
 
@@ -395,7 +398,9 @@ async def update_overtime(
         else:
             update_data["status"] = OvertimeStatus.PENDING
 
-    return await overtime_repo.update_overtime(session, overtime, update_data)
+    result = await overtime_repo.update_overtime(session, overtime, update_data)
+    cache_clear()
+    return result
 
 
 async def auto_close_stale_sessions(session: AsyncSession) -> int:
