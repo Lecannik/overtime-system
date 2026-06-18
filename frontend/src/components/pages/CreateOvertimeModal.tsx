@@ -123,7 +123,14 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
-                            setEndTime(selectedDates[0].toISOString());
+                            let endDate = selectedDates[0];
+                            // Если время окончания раньше времени начала — ночная смена, +1 день
+                            const startVal = startFpRef.current?.selectedDates?.[0];
+                            if (startVal && endDate <= startVal) {
+                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                endFpRef.current?.setDate(endDate, false);
+                            }
+                            setEndTime(endDate.toISOString());
                         } else {
                             setEndTime('');
                         }

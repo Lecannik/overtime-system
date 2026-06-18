@@ -7,8 +7,8 @@ import {
 import api, {
     getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
-    updateDepartment, updateProject, getOdooProjects, importOdooProjects,
-    getAccessToken
+    updateDepartment, updateProject, getOdooStatus, getOdooProjects, importOdooProjects,
+    getAccessToken, getOdooIntegrationStatus, getOdooIntegrationProjects, importOdooIntegrationProjects
 } from '../../services/api';
 
 import type { OdooProjectPreview, User, Department, Project, AuditLog } from '../../types';
@@ -72,6 +72,7 @@ const UsersPage: React.FC = () => {
     const [localLimits, setLocalLimits] = useState<Record<number, number>>({});
 
     // ==================== Состояние Odoo-модала ====================
+    const [isOdooConfigured, setIsOdooConfigured] = useState(false);
     const [isOdooModalOpen, setIsOdooModalOpen] = useState(false);
     const [odooProjects, setOdooProjects] = useState<OdooProjectPreview[]>([]);
     const [odooLoading, setOdooLoading] = useState(false);
@@ -79,6 +80,18 @@ const UsersPage: React.FC = () => {
     const [selectedOdooIds, setSelectedOdooIds] = useState<Set<number>>(new Set());
     const [importLoading, setImportLoading] = useState(false);
     const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+
+    // ==================== Состояние Odoo Integration (Микросервис) ====================
+    const [isOdooIntConfigured, setIsOdooIntConfigured] = useState(false);
+    const [isOdooIntModalOpen, setIsOdooIntModalOpen] = useState(false);
+    const [odooIntProjects, setOdooIntProjects] = useState<any[]>([]);
+    const [odooIntLoading, setOdooIntLoading] = useState(false);
+    const [odooIntError, setOdooIntError] = useState('');
+    const [selectedOdooIntIds, setSelectedOdooIntIds] = useState<Set<number>>(new Set());
+    const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(['name', 'code']));
+    const [odooIntSearch, setOdooIntSearch] = useState('');
+    const [odooIntImportLoading, setOdooIntImportLoading] = useState(false);
+    const [odooIntImportResult, setOdooIntImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
 
     const handleSort = (field: string) => {
         if (sortBy === field) {
@@ -206,6 +219,123 @@ const UsersPage: React.FC = () => {
             setOdooError(axiosError.response?.data?.detail || 'Ошибка при импорте проектов');
         } finally {
             setImportLoading(false);
+        }
+    };
+
+    /** Проверить статус интеграции Odoo при монтировании */
+    useEffect(() => {
+        getOdooStatus()
+            .then(res => setIsOdooConfigured(res.configured))
+            .catch(err => console.error('Error checking legacy Odoo status:', err));
+
+        getOdooIntegrationStatus()
+            .then(res => setIsOdooIntConfigured(res.configured))
+            .catch(err => console.error('Error checking Odoo microservice status:', err));
+    }, []);
+
+    /** Загрузить проекты из микросервиса по выбранным полям. */
+    const loadOdooIntProjects = async (fields: string[]) => {
+        setOdooIntLoading(true);
+        setOdooIntError('');
+        try {
+            // Обязательно запрашиваем 'id', 'name' и 'code', так как они нужны для работы интерфейса и импорта
+            const queryFields = Array.from(new Set(['id', 'name', 'code', ...fields]));
+            const data = await getOdooIntegrationProjects(queryFields);
+            setOdooIntProjects(data);
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setOdooIntError(axiosError.response?.data?.detail || 'Ошибка подключения к сервису Odoo CRM');
+        } finally {
+            setOdooIntLoading(false);
+        }
+    };
+
+    /** Обновить список проектов (поиск производится на клиенте). */
+    const handleOdooIntSearch = () => {
+        loadOdooIntProjects(Array.from(selectedFields));
+    };
+
+    /** Загружать проекты при открытии модала и при изменении набора полей. */
+    useEffect(() => {
+        if (!isOdooIntModalOpen) return;
+        loadOdooIntProjects(Array.from(selectedFields));
+    }, [selectedFields, isOdooIntModalOpen]);
+
+    /** Открыть модал выгрузки Odoo. */
+    const handleOpenOdooIntModal = () => {
+        setIsOdooIntModalOpen(true);
+        setOdooIntError('');
+        setOdooIntImportResult(null);
+        setSelectedOdooIntIds(new Set());
+        setOdooIntSearch('');
+    };
+
+    /** Переключить выбор проекта в модале. */
+    const toggleOdooIntProject = (id: number) => {
+        setSelectedOdooIntIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    /** Переключить выбор поля для запроса. */
+    const toggleFieldSelection = (field: string) => {
+        // 'name' и 'code' обязательны для импорта, не позволяем их снимать
+        if (field === 'name' || field === 'code') return;
+        
+        setSelectedFields(prev => {
+            const next = new Set(prev);
+            if (next.has(field)) {
+                next.delete(field);
+            } else {
+                next.add(field);
+            }
+            return next;
+        });
+    };
+
+    /** Выбрать все отфильтрованные проекты / снять выбор. */
+    const toggleSelectAllOdooInt = (filteredProjects: any[]) => {
+        const allSelected = filteredProjects.every(p => selectedOdooIntIds.has(p.id));
+        setSelectedOdooIntIds(prev => {
+            const next = new Set(prev);
+            filteredProjects.forEach(p => {
+                if (allSelected) {
+                    next.delete(p.id);
+                } else {
+                    next.add(p.id);
+                }
+            });
+            return next;
+        });
+    };
+
+    /** Запустить импорт выбранных проектов из микросервиса. */
+    const handleImportOdooIntSelected = async () => {
+        const toImport = odooIntProjects
+            .filter(p => selectedOdooIntIds.has(p.id))
+            .map(p => ({
+                id: p.id,
+                name: p.name,
+                code: p.code,
+                status: p.status,
+            }));
+            
+        if (!toImport.length) return;
+        
+        setOdooIntImportLoading(true);
+        setOdooIntError('');
+        try {
+            const result = await importOdooIntegrationProjects(toImport);
+            setOdooIntImportResult(result);
+            refreshData();
+        } catch (err: unknown) {
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            setOdooIntError(axiosError.response?.data?.detail || 'Ошибка при импорте проектов');
+        } finally {
+            setOdooIntImportLoading(false);
         }
     };
 
@@ -528,15 +658,27 @@ const UsersPage: React.FC = () => {
                 )}
 
                 {activeTab === 'projects' && (
-                    <div style={{ padding: '16px 24px 0' }}>
-                        <button
-                            onClick={handleOpenOdooModal}
-                            className="secondary"
-                            style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', color: 'var(--accent)', border: '1px solid var(--accent)', padding: '10px 20px', fontWeight: 700 }}
-                        >
-                            <Download size={16} />
-                            Импорт из Odoo CRM
-                        </button>
+                    <div style={{ padding: '16px 24px 0', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        {isOdooConfigured && (
+                            <button
+                                onClick={handleOpenOdooModal}
+                                className="secondary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', color: 'var(--accent)', border: '1px solid var(--accent)', padding: '10px 20px', fontWeight: 700 }}
+                            >
+                                <Download size={16} />
+                                Импорт из Odoo CRM (XML-RPC)
+                            </button>
+                        )}
+                        {isOdooIntConfigured && (
+                            <button
+                                onClick={handleOpenOdooIntModal}
+                                className="primary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', padding: '10px 20px', fontWeight: 700 }}
+                            >
+                                <Globe size={16} />
+                                Выгрузка Odoo (API)
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -901,6 +1043,311 @@ const UsersPage: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* ==================== Odoo CRM Выгрузка (API) Модал ==================== */}
+            {isOdooIntModalOpen && (() => {
+                const filteredProjects = odooIntProjects.filter(p => {
+                    const search = odooIntSearch.toLowerCase().trim();
+                    if (!search) return true;
+                    const nameMatch = p.name ? p.name.toLowerCase().includes(search) : false;
+                    const codeMatch = p.code ? p.code.toLowerCase().includes(search) : false;
+                    return nameMatch || codeMatch;
+                });
+
+                const allFilteredSelected = filteredProjects.length > 0 && filteredProjects.every(p => selectedOdooIntIds.has(p.id));
+
+                return (
+                    <div style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 1100, backdropFilter: 'blur(6px)'
+                    }}>
+                        <div className="glass-card" style={{
+                            width: '800px', maxWidth: '95vw', maxHeight: '90vh',
+                            display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
+                        }}>
+                            {/* Заголовок */}
+                            <div style={{
+                                padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                background: 'var(--bg-secondary)'
+                            }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                                        Выгрузка проектов из Odoo CRM (API)
+                                    </h3>
+                                    {!odooIntLoading && !odooIntError && odooIntProjects.length > 0 && (
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            Всего проектов: <strong>{odooIntProjects.length}</strong> · Отфильтровано: <strong>{filteredProjects.length}</strong> · Выбрано: <strong>{selectedOdooIntIds.size}</strong>
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setIsOdooIntModalOpen(false)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                                >
+                                    <XIcon size={22} />
+                                </button>
+                            </div>
+
+                            {/* Панель фильтров и полей */}
+                            {!odooIntLoading && !odooIntError && (
+                                <div style={{ padding: '16px 28px', borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    {/* Выбор полей */}
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                            Выбор полей для выгрузки из Odoo:
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                                            {[
+                                                { id: 'name', label: 'Имя проекта', required: true },
+                                                { id: 'code', label: 'Код проекта', required: true },
+                                                { id: 'status', label: 'Статус', required: false },
+                                                { id: 'project_amount', label: 'Сумма', required: false },
+                                                { id: 'partner', label: 'Клиент', required: false },
+                                                { id: 'partner_company', label: 'Компания клиента', required: false },
+                                                { id: 'project_manager_ids', label: 'Менеджеры', required: false },
+                                            ].map(f => {
+                                                const isSelected = f.required || selectedFields.has(f.id);
+                                                return (
+                                                    <label
+                                                        key={f.id}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                                            fontSize: '0.8rem', fontWeight: 600, padding: '4px 10px',
+                                                            borderRadius: '8px', background: isSelected ? 'rgba(59,130,246,0.1)' : 'var(--bg-secondary)',
+                                                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                                            cursor: f.required ? 'not-allowed' : 'pointer',
+                                                            opacity: f.required ? 0.7 : 1,
+                                                            transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            disabled={f.required}
+                                                            onChange={() => toggleFieldSelection(f.id)}
+                                                            style={{ accentColor: 'var(--accent)' }}
+                                                        />
+                                                        {f.label}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Текстовый поиск с кнопкой */}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <div style={{ position: 'relative', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                value={odooIntSearch}
+                                                onChange={e => setOdooIntSearch(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && handleOdooIntSearch()}
+                                                placeholder="Поиск по названию или номеру проекта..."
+                                                style={{
+                                                    width: '100%', padding: '10px 16px 10px 42px',
+                                                    borderRadius: '10px', border: '1px solid var(--border)',
+                                                    background: 'var(--bg-secondary)', color: 'var(--text-main)',
+                                                    fontSize: '0.85rem', boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                                        </div>
+                                        <button
+                                            onClick={handleOdooIntSearch}
+                                            disabled={odooIntLoading}
+                                            className="primary"
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '10px 18px', borderRadius: '10px',
+                                                fontWeight: 700, fontSize: '0.85rem',
+                                                whiteSpace: 'nowrap', flexShrink: 0
+                                            }}
+                                        >
+                                            <Search size={15} />
+                                            Найти
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Тело со списком проектов */}
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px' }}>
+                                {odooIntLoading && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px' }}>
+                                        <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Загрузка проектов из Odoo CRM API...</p>
+                                    </div>
+                                )}
+
+                                {odooIntError && !odooIntLoading && (
+                                    <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600 }}>
+                                        ⚠️ {odooIntError}
+                                    </div>
+                                )}
+
+                                {/* Результат импорта */}
+                                {odooIntImportResult && (
+                                    <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(34,197,94,0.08)', border: '1px solid var(--success)' }}>
+                                        <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                                            ✅ Импорт успешно завершён
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                            Создано проектов: <strong>{odooIntImportResult.imported}</strong> · Пропущено (уже существуют): <strong>{odooIntImportResult.skipped}</strong>
+                                        </div>
+                                        {odooIntImportResult.errors.length > 0 && (
+                                            <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--warning)' }}>
+                                                {odooIntImportResult.errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {!odooIntLoading && !odooIntError && filteredProjects.length > 0 && (
+                                    <>
+                                        {/* Строка «Выбрать все» */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={allFilteredSelected}
+                                                onChange={() => toggleSelectAllOdooInt(filteredProjects)}
+                                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                            />
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => toggleSelectAllOdooInt(filteredProjects)}>
+                                                {allFilteredSelected ? 'Снять выделение со всех отфильтрованных' : 'Выбрать все отфильтрованные'}
+                                            </span>
+                                        </div>
+
+                                        {/* Список проектов */}
+                                        {filteredProjects.map(p => {
+                                            const isSelected = selectedOdooIntIds.has(p.id);
+                                            return (
+                                                <div
+                                                    key={p.id}
+                                                    onClick={() => toggleOdooIntProject(p.id)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '16px',
+                                                        padding: '14px 16px', borderRadius: '10px', cursor: 'pointer',
+                                                        background: isSelected ? 'rgba(59,130,246,0.07)' : 'transparent',
+                                                        border: `1px solid ${isSelected ? 'var(--accent)' : 'transparent'}`,
+                                                        marginBottom: '6px', transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleOdooIntProject(p.id)}
+                                                        onClick={e => e.stopPropagation()}
+                                                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', flexShrink: 0 }}
+                                                    />
+                                                    <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {p.name}
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                {p.code && (
+                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 700, background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
+                                                                        {p.code}
+                                                                    </span>
+                                                                )}
+                                                                {!p.code && (
+                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontStyle: 'italic' }}>
+                                                                        Без кода
+                                                                    </span>
+                                                                )}
+                                                                {/* Дополнительные поля в зависимости от выбора */}
+                                                                {selectedFields.has('partner') && p.partner && (
+                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                        🤝 Клиент: <strong>{Array.isArray(p.partner) ? p.partner[1] : (typeof p.partner === 'object' ? p.partner.name : p.partner)}</strong>
+                                                                    </span>
+                                                                )}
+                                                                {selectedFields.has('partner_company') && p.partner_company && (
+                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                        🏢 Компания: <strong>{Array.isArray(p.partner_company) ? p.partner_company[1] : (typeof p.partner_company === 'object' ? p.partner_company.name : p.partner_company)}</strong>
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Блок с дополнительной информацией справа */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                                            {selectedFields.has('status') && p.status && (
+                                                                <span style={{
+                                                                    fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase',
+                                                                    padding: '2px 6px', borderRadius: '6px',
+                                                                    background: p.status === 'worked' || p.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
+                                                                    color: p.status === 'worked' || p.status === 'active' ? 'var(--success)' : 'var(--text-muted)'
+                                                                }}>
+                                                                    {p.status}
+                                                                </span>
+                                                            )}
+                                                            {selectedFields.has('project_amount') && p.project_amount !== undefined && (
+                                                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                                                    {new Intl.NumberFormat('ru-RU').format(p.project_amount)} ₸
+                                                                </span>
+                                                            )}
+                                                            {selectedFields.has('project_manager_ids') && Array.isArray(p.project_manager_ids) && p.project_manager_ids.length > 0 && (
+                                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                                                    PM: {p.project_manager_ids.join(', ')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>
+                                                        #{p.id}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </>
+                                )}
+
+                                {!odooIntLoading && !odooIntError && filteredProjects.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                        <Globe size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                                        <p>Проекты с такими параметрами не найдены в Odoo CRM API</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Футер с кнопками */}
+                            <div style={{
+                                padding: '16px 28px', borderTop: '1px solid var(--border)',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                background: 'var(--bg-secondary)', gap: '12px'
+                            }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                    {selectedOdooIntIds.size > 0
+                                        ? `Выбрано ${selectedOdooIntIds.size} из ${filteredProjects.length} отфильтрованных`
+                                        : 'Выберите проекты для добавления'}
+                                </span>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <button
+                                        onClick={() => setIsOdooIntModalOpen(false)}
+                                        style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                                    >
+                                        Закрыть
+                                    </button>
+                                    <button
+                                        onClick={handleImportOdooIntSelected}
+                                        disabled={selectedOdooIntIds.size === 0 || odooIntImportLoading}
+                                        className="primary"
+                                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        {odooIntImportLoading ? (
+                                            <>Импорт...</>
+                                        ) : (
+                                            <><Plus size={16} /> Добавить выбранные ({selectedOdooIntIds.size})</>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Модал редактирования отдела */}
             {editDeptId !== null && (
