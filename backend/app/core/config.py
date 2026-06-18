@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     ODOO_USER: str | None = None      # Email пользователя Odoo
     ODOO_PASSWORD: str | None = None  # Пароль пользователя Odoo
 
+    # Odoo CRM Integration Microservice (API)
+    ODOO_INTEGRATION_URL: str | None = None
+    ODOO_INTEGRATION_KEY: str | None = None
+
     # Authentik OIDC Integration
     AUTHENTIK_BASE_URL: str | None = None
     AUTHENTIK_CLIENT_ID: str | None = None

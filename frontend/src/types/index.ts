@@ -189,6 +189,18 @@ export interface OdooProjectImportItem {
   manager_email: string | null;
 }
 
+/** Проект из микросервиса интеграции Odoo */
+export interface OdooIntegrationProject {
+  id: number;
+  name: string;
+  code: string | null;
+  partner?: string | [number, string] | { name: string } | null;
+  partner_company?: string | [number, string] | { name: string } | null;
+  status?: string | null;
+  project_amount?: number | null;
+  project_manager_ids?: string[] | null;
+}
+
 // ==================== АНАЛИТИКА ====================
 
 /** Итоговая статистика за период. */

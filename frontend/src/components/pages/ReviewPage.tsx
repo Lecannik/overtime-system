@@ -277,17 +277,13 @@ const ReviewPage: React.FC = () => {
     };
 
     const safeOvertimes = Array.isArray(overtimes) ? overtimes : [];
-    const filteredOvertimes = (user?.role === 'admin'
-        ? safeOvertimes
-        : safeOvertimes.filter(ot =>
-            ot.status === 'PENDING' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED'
-        )).filter((ot: Overtime) => {
-            const empName = (ot.user?.full_name || '').toLowerCase();
-            const projName = (ot.project?.name || '').toLowerCase();
-            const desc = (ot.description || '').toLowerCase();
-            const query = searchQuery.toLowerCase();
-            return empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
-        });
+    const filteredOvertimes = safeOvertimes.filter((ot: Overtime) => {
+        const empName = (ot.user?.full_name || '').toLowerCase();
+        const projName = (ot.project?.name || '').toLowerCase();
+        const desc = (ot.description || '').toLowerCase();
+        const query = searchQuery.toLowerCase();
+        return empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
+    });
 
     if (loading && !overtimes.length) return <LoadingOverlay />;
 
@@ -486,13 +482,15 @@ const ReviewPage: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => { setReviewingId(ot.id); setApprovedHours((ot.hours || 0).toString()); }}
-                                        className="primary"
-                                        style={{ width: 'auto', padding: '0 20px', height: '40px' }}
-                                    >
-                                        Рассмотреть
-                                    </button>
+                                    {(user?.role === 'admin' || (ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED')) && (
+                                        <button
+                                            onClick={() => { setReviewingId(ot.id); setApprovedHours((ot.hours || 0).toString()); }}
+                                            className="primary"
+                                            style={{ width: 'auto', padding: '0 20px', height: '40px' }}
+                                        >
+                                            Рассмотреть
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>

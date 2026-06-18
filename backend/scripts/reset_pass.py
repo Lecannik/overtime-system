@@ -11,8 +11,10 @@ async def main():
         user = result.scalar_one_or_none()
         if user:
             user.hashed_password = hash_password('Polymedia!10')
+            user.must_change_password = False
+            user.is_active = True
             await session.commit()
-            print("Password reset successful for admin@example.com")
+            print("Password reset successful for admin@example.com (must_change_password=False)")
         else:
             print("User not found")
 

@@ -3,7 +3,7 @@ import type {
     LoginResponse, User, Project, Department, Overtime, 
     PaginatedResponse, UserStats, AuditLog, Notification,
     AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics,
-    AnalyticsParams, OdooProjectPreview
+    AnalyticsParams, OdooProjectPreview, OdooIntegrationProject
 } from '../types';
 
 let inMemoryToken: string | null = null;
@@ -16,7 +16,7 @@ export const getAccessToken = () => {
     return inMemoryToken;
 };
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 export const api = axios.create({
     baseURL: `${API_URL}/api/v1`,
@@ -161,8 +161,28 @@ export const updateProject = (id: number, data: Partial<Project>) => api.patch<P
 export const deleteProject = (id: number) => api.delete(`/admin/projects/${id}`).then(r => r.data);
 
 // Odoo Projects
+// Odoo Projects
+export const getOdooStatus = () => api.get<{ configured: boolean }>('/admin/odoo/status').then(r => r.data);
 export const getOdooProjects = () => api.get<{ projects: OdooProjectPreview[] }>('/admin/odoo/projects').then(r => r.data);
 export const importOdooProjects = (projects: Partial<OdooProjectPreview>[]) => api.post('/admin/odoo/import', projects).then(r => r.data);
+
+// Odoo Projects Integration Microservice
+export const getOdooIntegrationStatus = () => api.get<{ configured: boolean; url: string | null }>('/admin/odoo-integration/status').then(r => r.data);
+export const getOdooIntegrationProjects = (fields?: string[], name?: string, code?: string) => {
+    const params = new URLSearchParams();
+    if (fields) {
+        fields.forEach(f => params.append('fields', f));
+    }
+    if (name) {
+        params.append('name', name);
+    }
+    if (code) {
+        params.append('code', code);
+    }
+    return api.get<OdooIntegrationProject[]>('/admin/odoo-integration/projects', { params }).then(r => r.data);
+};
+export const importOdooIntegrationProjects = (projects: { id: number; name?: string; code?: string | null; status?: string | null }[]) => 
+    api.post('/admin/odoo-integration/import', projects).then(r => r.data);
 
 // --- OVERTIMES ---
 export const getMyOvertimes = (params?: Record<string, unknown>) => 

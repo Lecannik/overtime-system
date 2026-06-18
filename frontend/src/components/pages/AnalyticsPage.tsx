@@ -480,7 +480,7 @@ const AnalyticsPage: React.FC = () => {
                                     width={compareBy === 'users' ? 40 : 120}
                                 />
                                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-tertiary)', opacity: 0.4 }} />
-                                <Bar dataKey="total_hours" fill="var(--primary)" radius={compareBy !== 'users' ? [0, 6, 6, 0] : [6, 6, 0, 0]} barSize={compareBy === 'users' ? 30 : 16} />
+                                <Bar name="Часы" dataKey="total_hours" fill="var(--primary)" radius={compareBy !== 'users' ? [0, 6, 6, 0] : [6, 6, 0, 0]} barSize={compareBy === 'users' ? 30 : 16} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>

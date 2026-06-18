@@ -11,7 +11,7 @@ import api, {
     getAccessToken, getOdooIntegrationStatus, getOdooIntegrationProjects, importOdooIntegrationProjects
 } from '../../services/api';
 
-import type { OdooProjectPreview, User, Department, Project, AuditLog } from '../../types';
+import type { OdooProjectPreview, User, Department, Project, AuditLog, OdooIntegrationProject } from '../../types';
 import Header from '../layout/Header';
 
 import Skeleton from '../common/Skeleton';
@@ -30,6 +30,8 @@ const UsersPage: React.FC = () => {
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const [authChecked, setAuthChecked] = useState(false);
     const [roleFilter, setRoleFilter] = useState('ALL');
     const [deptFilter, setDeptFilter] = useState('ALL');
     const [companyFilter] = useState('ALL');
@@ -84,7 +86,7 @@ const UsersPage: React.FC = () => {
     // ==================== Состояние Odoo Integration (Микросервис) ====================
     const [isOdooIntConfigured, setIsOdooIntConfigured] = useState(false);
     const [isOdooIntModalOpen, setIsOdooIntModalOpen] = useState(false);
-    const [odooIntProjects, setOdooIntProjects] = useState<any[]>([]);
+    const [odooIntProjects, setOdooIntProjects] = useState<OdooIntegrationProject[]>([]);
     const [odooIntLoading, setOdooIntLoading] = useState(false);
     const [odooIntError, setOdooIntError] = useState('');
     const [selectedOdooIntIds, setSelectedOdooIntIds] = useState<Set<number>>(new Set());
@@ -234,13 +236,14 @@ const UsersPage: React.FC = () => {
     }, []);
 
     /** Загрузить проекты из микросервиса по выбранным полям. */
-    const loadOdooIntProjects = async (fields: string[]) => {
+    const loadOdooIntProjects = async (fields: string[], search?: string) => {
         setOdooIntLoading(true);
         setOdooIntError('');
         try {
             // Обязательно запрашиваем 'id', 'name' и 'code', так как они нужны для работы интерфейса и импорта
             const queryFields = Array.from(new Set(['id', 'name', 'code', ...fields]));
-            const data = await getOdooIntegrationProjects(queryFields);
+            const trimmedSearch = search?.trim() || undefined;
+            const data = await getOdooIntegrationProjects(queryFields, trimmedSearch, trimmedSearch);
             setOdooIntProjects(data);
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
@@ -252,14 +255,8 @@ const UsersPage: React.FC = () => {
 
     /** Обновить список проектов (поиск производится на клиенте). */
     const handleOdooIntSearch = () => {
-        loadOdooIntProjects(Array.from(selectedFields));
+        loadOdooIntProjects(Array.from(selectedFields), odooIntSearch);
     };
-
-    /** Загружать проекты при открытии модала и при изменении набора полей. */
-    useEffect(() => {
-        if (!isOdooIntModalOpen) return;
-        loadOdooIntProjects(Array.from(selectedFields));
-    }, [selectedFields, isOdooIntModalOpen]);
 
     /** Открыть модал выгрузки Odoo. */
     const handleOpenOdooIntModal = () => {
@@ -268,6 +265,7 @@ const UsersPage: React.FC = () => {
         setOdooIntImportResult(null);
         setSelectedOdooIntIds(new Set());
         setOdooIntSearch('');
+        loadOdooIntProjects(Array.from(selectedFields), '');
     };
 
     /** Переключить выбор проекта в модале. */
@@ -285,19 +283,18 @@ const UsersPage: React.FC = () => {
         // 'name' и 'code' обязательны для импорта, не позволяем их снимать
         if (field === 'name' || field === 'code') return;
         
-        setSelectedFields(prev => {
-            const next = new Set(prev);
-            if (next.has(field)) {
-                next.delete(field);
-            } else {
-                next.add(field);
-            }
-            return next;
-        });
+        const next = new Set(selectedFields);
+        if (next.has(field)) {
+            next.delete(field);
+        } else {
+            next.add(field);
+        }
+        setSelectedFields(next);
+        loadOdooIntProjects(Array.from(next), odooIntSearch);
     };
 
     /** Выбрать все отфильтрованные проекты / снять выбор. */
-    const toggleSelectAllOdooInt = (filteredProjects: any[]) => {
+    const toggleSelectAllOdooInt = (filteredProjects: OdooIntegrationProject[]) => {
         const allSelected = filteredProjects.every(p => selectedOdooIntIds.has(p.id));
         setSelectedOdooIntIds(prev => {
             const next = new Set(prev);
@@ -352,11 +349,19 @@ const UsersPage: React.FC = () => {
                 const res = await api.get('/auth/me');
                 setCurrentUser(res.data);
                 if (res.data.role !== 'admin') { navigate('/dashboard'); return; }
-                refreshData();
+                setAuthChecked(true);
             } catch { navigate('/login'); }
         };
         checkAuth();
-    }, [refreshData, navigate]);
+    }, [navigate]);
+
+    useEffect(() => {
+        if (authChecked) {
+            Promise.resolve().then(() => {
+                refreshData();
+            });
+        }
+    }, [authChecked, refreshData]);
 
     const handleAdd = async () => {
         if (activeTab === 'users') {
@@ -517,7 +522,7 @@ const UsersPage: React.FC = () => {
                 {(['users', 'departments', 'projects', 'audit'] as const).map(tab => (
                     <button
                         key={tab}
-                        onClick={() => { setActiveTab(tab); setCurrentPage(1); setSearchQuery(''); }}
+                        onClick={() => { setActiveTab(tab); setCurrentPage(1); setSearchQuery(''); setSearchInput(''); }}
                         style={{
                             padding: '10px 24px',
                             borderRadius: '10px',
@@ -535,14 +540,43 @@ const UsersPage: React.FC = () => {
             </div>
 
             <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
-                    <input
-                        placeholder="Поиск..."
-                        value={searchQuery}
-                        onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                        style={{ paddingLeft: '40px' }}
-                    />
+                <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                        <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
+                        <input
+                            placeholder="Поиск..."
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    setSearchQuery(searchInput);
+                                    setCurrentPage(1);
+                                }
+                            }}
+                            style={{ paddingLeft: '40px' }}
+                        />
+                    </div>
+                    <button
+                        onClick={() => {
+                            setSearchQuery(searchInput);
+                            setCurrentPage(1);
+                        }}
+                        className="primary"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '10px 18px',
+                            borderRadius: '10px',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            whiteSpace: 'nowrap',
+                            height: '42px'
+                        }}
+                    >
+                        <Search size={15} />
+                        Найти
+                    </button>
                 </div>
                 {activeTab === 'users' && (
                     <>
@@ -1285,7 +1319,7 @@ const UsersPage: React.FC = () => {
                                                             )}
                                                             {selectedFields.has('project_amount') && p.project_amount !== undefined && (
                                                                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                                                                    {new Intl.NumberFormat('ru-RU').format(p.project_amount)} ₸
+                                                                    {new Intl.NumberFormat('ru-RU').format(p.project_amount ?? 0)} ₸
                                                                 </span>
                                                             )}
                                                             {selectedFields.has('project_manager_ids') && Array.isArray(p.project_manager_ids) && p.project_manager_ids.length > 0 && (
