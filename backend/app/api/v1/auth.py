@@ -421,6 +421,14 @@ async def microsoft_callback(
         session.add(user)
         await session.commit()
         await session.refresh(user)
+    else:
+        # Если пользователь входит через SSO, ему не нужно менять пароль локально,
+        # даже если администратор импортировал его с флагом must_change_password=True.
+        if user.must_change_password:
+            user.must_change_password = False
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
 
     if not user.is_active:
         raise HTTPException(

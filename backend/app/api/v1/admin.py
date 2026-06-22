@@ -519,7 +519,7 @@ async def import_microsoft_users(
             role=UserRole.employee,
             company=company_val,
             is_active=True,
-            must_change_password=True
+            must_change_password=False
         )
         db.add(new_user)
         
