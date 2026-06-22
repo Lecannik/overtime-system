@@ -64,7 +64,7 @@ async def generate_excel_file(
     df = pd.DataFrame(data)
     
     # Колонки и их порядок
-    cols_order = ["id", "employee", "project", "start_time", "end_time", "hours", "approved_hours", "description", "status"]
+    cols_order = ["id", "employee", "author", "project", "start_time", "end_time", "hours", "approved_hours", "description", "status"]
     # Проверяем наличие всех колонок в data, если нет - добавляем пустые
     for col in cols_order:
         if col not in df.columns:
@@ -87,8 +87,10 @@ async def generate_excel_file(
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(settings.tz_info).strftime('%d.%m.%Y %H:%M')
 
-    df.loc[:, 'start_time'] = df['start_time'].apply(format_datetime_local)
-    df.loc[:, 'end_time'] = df['end_time'].apply(format_datetime_local)
+    df = df.assign(
+        start_time=df['start_time'].apply(format_datetime_local).astype(str),
+        end_time=df['end_time'].apply(format_datetime_local).astype(str)
+    )
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -107,6 +109,7 @@ async def generate_excel_file(
         df_export = df.rename(columns={
             "id": "ID",
             "employee": "Сотрудник",
+            "author": "Автор",
             "project": "Проект",
             "start_time": "Начало",
             "end_time": "Окончание",
@@ -122,12 +125,12 @@ async def generate_excel_file(
         # Заголовок
         title_text = "ПЕРСОНАЛЬНЫЙ ОТЧЕТ" if is_personal else "ОТЧЕТ ПО ПЕРЕРАБОТКАМ"
         title = f"{title_text} — {period_str}"
-        worksheet.merge_cells('A1:I1')
+        worksheet.merge_cells('A1:J1')
         worksheet['A1'] = title
         worksheet['A1'].font = Font(size=16, bold=True, color="1e40af")
         worksheet['A1'].alignment = Alignment(horizontal='center')
         
-        worksheet.merge_cells('A2:I2')
+        worksheet.merge_cells('A2:J2')
         worksheet['A2'] = f"Выгрузил: {current_user.full_name}"
         worksheet['A2'].alignment = Alignment(horizontal='center')
 
@@ -136,7 +139,7 @@ async def generate_excel_file(
         header_font = Font(color="FFFFFF", bold=True)
         border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-        for col in range(1, 10):
+        for col in range(1, 11):
             cell = worksheet.cell(row=4, column=col)
             cell.fill = header_fill
             cell.font = header_font
@@ -144,10 +147,10 @@ async def generate_excel_file(
             cell.alignment = Alignment(horizontal='center')
 
         for row_idx in range(5, 5 + len(df)):
-            for col_idx in range(1, 10):
+            for col_idx in range(1, 11):
                 cell = worksheet.cell(row=row_idx, column=col_idx)
                 cell.border = border
-                if col_idx in [6, 7]:
+                if col_idx in [7, 8]:
                     cell.alignment = Alignment(horizontal='center')
 
         # Ширина колонок
@@ -159,19 +162,19 @@ async def generate_excel_file(
 
         # Итого
         total_row = 5 + len(df)
-        worksheet.cell(row=total_row, column=5).value = "ИТОГО:"
-        worksheet.cell(row=total_row, column=5).font = Font(bold=True)
-        worksheet.cell(row=total_row, column=5).border = border
-        
-        worksheet.cell(row=total_row, column=6).value = df['hours'].sum()
+        worksheet.cell(row=total_row, column=6).value = "ИТОГО:"
         worksheet.cell(row=total_row, column=6).font = Font(bold=True)
         worksheet.cell(row=total_row, column=6).border = border
         
-        worksheet.cell(row=total_row, column=7).value = df['approved_hours'].sum()
-        worksheet.cell(row=total_row, column=7).font = Font(bold=True, color="15803d")
+        worksheet.cell(row=total_row, column=7).value = df['hours'].sum()
+        worksheet.cell(row=total_row, column=7).font = Font(bold=True)
         worksheet.cell(row=total_row, column=7).border = border
         
-        for col_idx in [1, 2, 3, 4, 8, 9]:
+        worksheet.cell(row=total_row, column=8).value = df['approved_hours'].sum()
+        worksheet.cell(row=total_row, column=8).font = Font(bold=True, color="15803d")
+        worksheet.cell(row=total_row, column=8).border = border
+        
+        for col_idx in [1, 2, 3, 4, 5, 9, 10]:
             worksheet.cell(row=total_row, column=col_idx).border = border
 
         # Группировка сотрудников для дополнительных листов (табелей)
@@ -203,14 +206,14 @@ async def generate_excel_file(
             for emp_name, info in emp_totals.items():
                 total_approved = info["total_approved"]
                 company = info["company"]
-                if total_approved > 16:
-                    if company == "Polymedia":
+                if company == "Polymedia":
+                    if total_approved > 16:
                         polymedia_gt16_members.add(emp_name)
                     else:
-                        ajtech_gt16_members.add(emp_name)
-                else:
-                    if company == "Polymedia":
                         polymedia_lte16_members.add(emp_name)
+                elif company == "AJ-techCom":
+                    if total_approved > 16:
+                        ajtech_gt16_members.add(emp_name)
                     else:
                         ajtech_lte16_members.add(emp_name)
 

@@ -79,6 +79,12 @@ async def test_generate_excel_file():
     assert isinstance(excel_data, io.BytesIO)
 
     wb = openpyxl.load_workbook(excel_data)
+    
+    # Проверяем лист детального отчета Report и наличие колонки Автор
+    ws_report = wb["Report"]
+    report_headers = [ws_report.cell(row=4, column=col).value for col in range(1, 11)]
+    assert report_headers == ["ID", "Сотрудник", "Автор", "Проект", "Начало", "Окончание", "Запрошено", "Согласовано", "Описание", "Статус"]
+
     ws_poly = wb["Polymedia (<=16ч)"]
     a2_val = ws_poly['A2'].value
     assert "Выгрузил: Иван Иванов" in a2_val

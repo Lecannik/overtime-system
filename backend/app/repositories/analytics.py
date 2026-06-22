@@ -301,6 +301,7 @@ async def get_export_data(
     query = select(
         Overtime.id,
         User.full_name.label("employee"),
+        User.full_name.label("author"),
         User.company.label("employee_company"),
         Department.name.label("department"),
         Project.name.label("project"),
