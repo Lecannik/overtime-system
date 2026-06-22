@@ -450,9 +450,14 @@ const ReviewPage: React.FC = () => {
                                     )}
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                         <input
-                                            type="number" step="0.5"
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
                                             value={approvedHours}
-                                            onChange={e => setApprovedHours(e.target.value)}
+                                            onChange={e => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                setApprovedHours(val);
+                                            }}
                                             placeholder="Часов..."
                                             style={{ height: '40px', background: 'var(--bg-secondary)', width: '100px' }}
                                         />
@@ -487,7 +492,7 @@ const ReviewPage: React.FC = () => {
                                     </div>
                                     {(user?.role === 'admin' || (ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED')) && (
                                         <button
-                                            onClick={() => { setReviewingId(ot.id); setApprovedHours((ot.hours || 0).toString()); }}
+                                            onClick={() => { setReviewingId(ot.id); setApprovedHours(Math.round(ot.hours || 0).toString()); }}
                                             className="primary"
                                             style={{ width: 'auto', padding: '0 20px', height: '40px' }}
                                         >
