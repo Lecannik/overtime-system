@@ -186,9 +186,6 @@ async def logout(
     response.delete_cookie(key="refresh_token")
     
     sso_logout_url = None
-    if settings.AUTHENTIK_BASE_URL:
-        frontend_url = settings.FRONTEND_BASE_URL
-        sso_logout_url = f"{settings.AUTHENTIK_BASE_URL}/if/flow/default-invalidation-flow/?next={frontend_url}/login"
         
     return {
         "detail": "Успешный выход из системы",
