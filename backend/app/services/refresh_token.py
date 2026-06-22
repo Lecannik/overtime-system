@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
@@ -6,6 +7,8 @@ from sqlalchemy.future import select
 
 from app.core.config import settings
 from app.models.user import User, RefreshToken
+
+logger = logging.getLogger(__name__)
 
 
 async def create_refresh_token(session: AsyncSession, user_id: int) -> str:
@@ -38,6 +41,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     db_token = result.scalar_one_or_none()
     
     if not db_token:
+        logger.warning("verify_and_rotate_refresh_token: Token not found in DB: %s...", token[:10] if token else "None")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недействительный сессионный токен"
@@ -46,6 +50,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     # Если токен уже был отозван — возможно, это атака повторного использования!
     # В целях безопасности отзываем все токены этого пользователя.
     if db_token.revoked:
+        logger.error("verify_and_rotate_refresh_token: Token %s... is ALREADY revoked! Potential token reuse attack! Revoking all tokens for user_id=%s", token[:10] if token else "None", db_token.user_id)
         # Отзываем все токены пользователя
         await session.execute(
             RefreshToken.__table__.update()
@@ -61,6 +66,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     # Проверка на истечение срока действия
     expires_aware = db_token.expires_at if db_token.expires_at.tzinfo else db_token.expires_at.replace(tzinfo=timezone.utc)
     if expires_aware < datetime.now(timezone.utc):
+        logger.warning("verify_and_rotate_refresh_token: Token %s... has expired at %s (now: %s)", token[:10] if token else "None", expires_aware, datetime.now(timezone.utc))
         db_token.revoked = True
         await session.commit()
         raise HTTPException(
@@ -81,6 +87,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     user = user_result.scalar_one_or_none()
     
     if not user or not user.is_active:
+        logger.warning("verify_and_rotate_refresh_token: User not found or inactive for user_id=%s", db_token.user_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Пользователь заблокирован или не найден"
