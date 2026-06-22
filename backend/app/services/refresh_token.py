@@ -28,12 +28,45 @@ async def create_refresh_token(session: AsyncSession, user_id: int) -> str:
     return token
 
 
+# Кэш в памяти для недавно отозванных токенов для предотвращения race condition на клиенте.
+# Хранит: token -> (new_token, grace_expires_at, user_id)
+_rotated_tokens_grace_cache = {}
+
+
 async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> tuple[str, User]:
     """
     Проверяет переданный Refresh Token и возвращает новый Refresh Token и объект пользователя.
     Реализует механизм Token Rotation: старый токен отзывается, выдается новый.
     При попытке повторного использования отозванного токена отзываются все токены пользователя.
+    Включает 10-секундный Grace Period для предотвращения гонок при параллельных запросах.
     """
+    now = datetime.now(timezone.utc)
+    
+    # 1. Проверяем Grace Period кэш в памяти
+    if token in _rotated_tokens_grace_cache:
+        new_token, grace_expires_at, user_id = _rotated_tokens_grace_cache[token]
+        if now < grace_expires_at:
+            logger.info("verify_and_rotate_refresh_token: Prevented race condition (grace period). Token %s... was rotated recently. Returning existing new token.", token[:10])
+            user_result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user and user.is_active:
+                return new_token, user
+            else:
+                logger.warning("verify_and_rotate_refresh_token: User not found or inactive during grace period bypass for user_id=%s", user_id)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Пользователь заблокирован или не найден"
+                )
+        else:
+            del _rotated_tokens_grace_cache[token]
+
+    # Очищаем устаревшие записи из кэша (чтобы избежать утечек памяти)
+    expired_keys = [k for k, v in _rotated_tokens_grace_cache.items() if now >= v[1]]
+    for k in expired_keys:
+        _rotated_tokens_grace_cache.pop(k, None)
+
     # Ищем токен в базе
     result = await session.execute(
         select(RefreshToken).where(RefreshToken.token == token)
@@ -93,6 +126,10 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
             detail="Пользователь заблокирован или не найден"
         )
         
+    # Добавляем старый токен в Grace Period кэш
+    grace_expires = datetime.now(timezone.utc) + timedelta(seconds=10)
+    _rotated_tokens_grace_cache[token] = (new_token, grace_expires, db_token.user_id)
+    
     await session.commit()
     return new_token, user
 
