@@ -188,7 +188,7 @@ async def logout(
     sso_logout_url = None
     if settings.AUTHENTIK_BASE_URL:
         frontend_url = settings.FRONTEND_BASE_URL
-        sso_logout_url = f"{settings.AUTHENTIK_BASE_URL}/flows/user/logout/?next={frontend_url}/login"
+        sso_logout_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/{settings.AUTHENTIK_APPLICATION_SLUG}/end-session/?post_logout_redirect_uri={frontend_url}/login"
         
     return {
         "detail": "Успешный выход из системы",

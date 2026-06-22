@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     AUTHENTIK_CLIENT_ID: str | None = None
     AUTHENTIK_CLIENT_SECRET: str | None = None
     AUTHENTIK_REDIRECT_URI: str | None = None
+    AUTHENTIK_APPLICATION_SLUG: str = "overtime"
 
     model_config = {
         "env_file": ".env",
