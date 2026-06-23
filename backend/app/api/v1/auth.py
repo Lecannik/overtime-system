@@ -340,7 +340,6 @@ async def microsoft_login_redirect():
 @router.get("/microsoft/callback")
 async def microsoft_callback(
     code: str,
-    response: Response,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -445,8 +444,18 @@ async def microsoft_callback(
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
     
-    # Установка сессионного токена в HTTPOnly Cookie
-    response.set_cookie(
+    local_access_token = create_access_token(data={"sub": str(user.id)})
+    
+    # Перенаправляем пользователя на фронтенд-страницу успешного входа
+    # ВАЖНО: Базовый домен должен совпадать с настройками фронтенда
+    frontend_url = settings.FRONTEND_BASE_URL
+
+    redirect_response = RedirectResponse(
+        url=f"{frontend_url}/auth/success?token={local_access_token}"
+    )
+    
+    # Установка сессионного токена в HTTPOnly Cookie на объекте RedirectResponse
+    redirect_response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
@@ -456,13 +465,5 @@ async def microsoft_callback(
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
-    
-    local_access_token = create_access_token(data={"sub": str(user.id)})
-    
-    # Перенаправляем пользователя на фронтенд-страницу успешного входа
-    # ВАЖНО: Базовый домен должен совпадать с настройками фронтенда
-    frontend_url = settings.FRONTEND_BASE_URL
 
-    return RedirectResponse(
-        url=f"{frontend_url}/auth/success?token={local_access_token}"
-    )
+    return redirect_response
