@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -28,8 +29,16 @@ async def create_refresh_token(session: AsyncSession, user_id: int) -> str:
     return token
 
 
-# Кэш в памяти для недавно отозванных токенов для предотвращения race condition на клиенте.
-# Хранит: token -> (new_token, grace_expires_at, user_id)
+# Кэш в памяти для недавно отозванных и обновляемых токенов.
+# Предотвращает race condition при параллельных запросах со стороны клиента.
+# Структура:
+# {
+#     token_str: {
+#         "event": asyncio.Event,            # Асинхронное событие для ожидания завершения транзакции
+#         "grace_expires_at": datetime,     # Время жизни записи в кэше
+#         "result": tuple[str, User] | Exception | None  # Результат ротации (токен, пользователь) или ошибка
+#     }
+# }
 _rotated_tokens_grace_cache = {}
 
 
@@ -39,99 +48,139 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     Реализует механизм Token Rotation: старый токен отзывается, выдается новый.
     При попытке повторного использования отозванного токена отзываются все токены пользователя.
     Включает 10-секундный Grace Period для предотвращения гонок при параллельных запросах.
+
+    Синхронизирует параллельные запросы в рамках одного процесса с помощью asyncio.Event,
+    что исключает ложное срабатывание защиты от повторного использования (Token Reuse Attack).
+
+    Аргументы:
+        session (AsyncSession): Асинхронная сессия SQLAlchemy для работы с БД.
+        token (str): Проверяемый refresh-токен в виде строки.
+
+    Возвращает:
+        tuple[str, User]: Кортеж из нового refresh-токена (строка) и объекта пользователя.
+
+    Исключения:
+        HTTPException (401): Если токен недействителен, просрочен, отозван или пользователь не найден/неактивен.
     """
     now = datetime.now(timezone.utc)
     
-    # 1. Проверяем Grace Period кэш в памяти
+    # 1. Проверяем Grace Period / состояние ротации в памяти
     if token in _rotated_tokens_grace_cache:
-        new_token, grace_expires_at, user_id = _rotated_tokens_grace_cache[token]
-        if now < grace_expires_at:
-            logger.info("verify_and_rotate_refresh_token: Prevented race condition (grace period). Token %s... was rotated recently. Returning existing new token.", token[:10])
-            user_result = await session.execute(
-                select(User).where(User.id == user_id)
+        entry = _rotated_tokens_grace_cache[token]
+        if now < entry["grace_expires_at"]:
+            logger.info(
+                "verify_and_rotate_refresh_token: Обнаружен параллельный запрос или недавняя ротация токена %s... Ожидаем результат.",
+                token[:10]
             )
-            user = user_result.scalar_one_or_none()
-            if user and user.is_active:
-                return new_token, user
-            else:
-                logger.warning("verify_and_rotate_refresh_token: User not found or inactive during grace period bypass for user_id=%s", user_id)
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Пользователь заблокирован или не найден"
+            # Ждем завершения первой транзакции
+            await entry["event"].wait()
+            
+            # Если первый запрос завершился ошибкой, пробрасываем её же
+            if isinstance(entry["result"], Exception):
+                raise entry["result"]
+            
+            if entry["result"] is not None:
+                logger.info(
+                    "verify_and_rotate_refresh_token: Параллельный запрос успешно разрешен с использованием токена %s...",
+                    token[:10]
                 )
+                return entry["result"]
         else:
-            del _rotated_tokens_grace_cache[token]
+            _rotated_tokens_grace_cache.pop(token, None)
 
     # Очищаем устаревшие записи из кэша (чтобы избежать утечек памяти)
-    expired_keys = [k for k, v in _rotated_tokens_grace_cache.items() if now >= v[1]]
+    expired_keys = [k for k, v in _rotated_tokens_grace_cache.items() if now >= v["grace_expires_at"]]
     for k in expired_keys:
         _rotated_tokens_grace_cache.pop(k, None)
 
-    # Ищем токен в базе
-    result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token == token)
-    )
-    db_token = result.scalar_one_or_none()
-    
-    if not db_token:
-        logger.warning("verify_and_rotate_refresh_token: Token not found in DB: %s...", token[:10] if token else "None")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный сессионный токен"
+    # Инициализируем событие блокировки для текущего токена в кэше до начала асинхронных операций
+    event = asyncio.Event()
+    grace_expires = now + timedelta(seconds=10)
+    _rotated_tokens_grace_cache[token] = {
+        "event": event,
+        "grace_expires_at": grace_expires,
+        "result": None
+    }
+
+    try:
+        # Ищем токен в базе
+        result = await session.execute(
+            select(RefreshToken).where(RefreshToken.token == token)
         )
+        db_token = result.scalar_one_or_none()
         
-    # Если токен уже был отозван — возможно, это атака повторного использования!
-    # В целях безопасности отзываем все токены этого пользователя.
-    if db_token.revoked:
-        logger.error("verify_and_rotate_refresh_token: Token %s... is ALREADY revoked! Potential token reuse attack! Revoking all tokens for user_id=%s", token[:10] if token else "None", db_token.user_id)
-        # Отзываем все токены пользователя
-        await session.execute(
-            RefreshToken.__table__.update()
-            .where(RefreshToken.user_id == db_token.user_id)
-            .values(revoked=True)
-        )
-        await session.commit()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Сессия скомпрометирована. Пожалуйста, войдите снова."
-        )
-        
-    # Проверка на истечение срока действия
-    expires_aware = db_token.expires_at if db_token.expires_at.tzinfo else db_token.expires_at.replace(tzinfo=timezone.utc)
-    if expires_aware < datetime.now(timezone.utc):
-        logger.warning("verify_and_rotate_refresh_token: Token %s... has expired at %s (now: %s)", token[:10] if token else "None", expires_aware, datetime.now(timezone.utc))
+        if not db_token:
+            logger.warning("verify_and_rotate_refresh_token: Токен не найден в БД: %s...", token[:10] if token else "None")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Недействительный сессионный токен"
+            )
+            
+        # Если токен уже был отозван — возможно, это атака повторного использования!
+        # В целях безопасности отзываем все токены этого пользователя.
+        if db_token.revoked:
+            logger.error(
+                "verify_and_rotate_refresh_token: Токен %s... УЖЕ отозван! Возможна атака повторного использования. Отзываем все токены для user_id=%s",
+                token[:10] if token else "None",
+                db_token.user_id
+            )
+            # Отзываем все токены пользователя
+            await session.execute(
+                RefreshToken.__table__.update()
+                .where(RefreshToken.user_id == db_token.user_id)
+                .values(revoked=True)
+            )
+            await session.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Сессия скомпрометирована. Пожалуйста, войдите снова."
+            )
+            
+        # Проверка на истечение срока действия
+        expires_aware = db_token.expires_at if db_token.expires_at.tzinfo else db_token.expires_at.replace(tzinfo=timezone.utc)
+        if expires_aware < now:
+            logger.warning("verify_and_rotate_refresh_token: Токен %s... истек в %s (текущее время: %s)", token[:10] if token else "None", expires_aware, now)
+            db_token.revoked = True
+            await session.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Срок действия сессии истек. Войдите снова."
+            )
+            
+        # Отзываем текущий токен
         db_token.revoked = True
+        
+        # Генерируем новый токен взамен
+        new_token = await create_refresh_token(session, db_token.user_id)
+        
+        # Получаем пользователя
+        user_result = await session.execute(
+            select(User).where(User.id == db_token.user_id)
+        )
+        user = user_result.scalar_one_or_none()
+        
+        if not user or not user.is_active:
+            logger.warning("verify_and_rotate_refresh_token: Пользователь не найден или неактивен для user_id=%s", db_token.user_id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Пользователь заблокирован или не найден"
+            )
+            
         await session.commit()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Срок действия сессии истек. Войдите снова."
-        )
         
-    # Отзываем текущий токен
-    db_token.revoked = True
-    
-    # Генерируем новый токен взамен
-    new_token = await create_refresh_token(session, db_token.user_id)
-    
-    # Получаем пользователя
-    user_result = await session.execute(
-        select(User).where(User.id == db_token.user_id)
-    )
-    user = user_result.scalar_one_or_none()
-    
-    if not user or not user.is_active:
-        logger.warning("verify_and_rotate_refresh_token: User not found or inactive for user_id=%s", db_token.user_id)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь заблокирован или не найден"
-        )
-        
-    # Добавляем старый токен в Grace Period кэш
-    grace_expires = datetime.now(timezone.utc) + timedelta(seconds=10)
-    _rotated_tokens_grace_cache[token] = (new_token, grace_expires, db_token.user_id)
-    
-    await session.commit()
-    return new_token, user
+        # Сохраняем успешный результат ротации в кэш для параллельных запросов
+        _rotated_tokens_grace_cache[token]["result"] = (new_token, user)
+        return new_token, user
+
+    except Exception as exc:
+        # Сохраняем исключение в кэш, чтобы параллельные запросы тоже получили его
+        if token in _rotated_tokens_grace_cache:
+            _rotated_tokens_grace_cache[token]["result"] = exc
+        raise
+    finally:
+        # Сигнализируем всем ожидающим корутинам, что обработка завершена
+        if token in _rotated_tokens_grace_cache:
+            _rotated_tokens_grace_cache[token]["event"].set()
 
 
 async def revoke_refresh_token(session: AsyncSession, token: str) -> None:

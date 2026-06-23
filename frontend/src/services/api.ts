@@ -16,6 +16,37 @@ export const getAccessToken = () => {
     return inMemoryToken;
 };
 
+let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * Обновляет локальный Access Token, выполняя запрос к эндпоинту /auth/refresh.
+ * Использует паттерн Singleton для Promise, предотвращая одновременную отправку
+ * нескольких параллельных запросов на обновление токена (например, в React Strict Mode).
+ * 
+ * @returns {Promise<string | null>} Промис, возвращающий Access Token или null.
+ */
+export const refreshAccessToken = (): Promise<string | null> => {
+    if (refreshPromise) {
+        return refreshPromise;
+    }
+
+    refreshPromise = api.post<LoginResponse>('/auth/refresh')
+        .then((res) => {
+            const token = res.data.access_token;
+            setAccessToken(token || null);
+            return token || null;
+        })
+        .catch((err) => {
+            setAccessToken(null);
+            return Promise.reject(err);
+        })
+        .finally(() => {
+            refreshPromise = null;
+        });
+
+    return refreshPromise;
+};
+
 const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 export const api = axios.create({
@@ -81,9 +112,7 @@ api.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                const res = await api.post('/auth/refresh');
-                const token = res.data.access_token;
-                setAccessToken(token || null);
+                const token = await refreshAccessToken();
                 
                 processQueue(null, token);
                 

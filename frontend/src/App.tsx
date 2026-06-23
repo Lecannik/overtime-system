@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import React, { useEffect, useState, useCallback } from 'react';
 import { ThemeProvider } from './context/ThemeProvider';
-import api, { setAccessToken, getAccessToken } from './services/api';
+import api, { setAccessToken, getAccessToken, refreshAccessToken } from './services/api';
 import type { User } from './types';
 
 import LoginPage from './components/pages/LoginPage';
@@ -64,19 +64,22 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const initAuth = async () => {
       try {
-        const res = await api.post('/auth/refresh');
-        if (res.data.access_token) {
-          setAccessToken(res.data.access_token);
-        }
+        await refreshAccessToken();
       } catch (err) {
         console.log('No active session on startup / token refresh failed', err);
       } finally {
-        setIsInitializing(false);
+        if (isMounted) {
+          setIsInitializing(false);
+        }
       }
     };
     initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (isInitializing) {
