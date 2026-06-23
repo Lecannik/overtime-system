@@ -96,7 +96,7 @@ const DashboardPage: React.FC = () => {
   const [isColConfigOpen, setIsColConfigOpen] = useState(false);
 
   // Сортировка: ключ поля и направление
-  type SortKey = 'date' | 'project' | 'hours' | 'status' | null;
+  type SortKey = 'date' | 'user' | 'project' | 'hours' | 'status' | null;
   type SortDir = 'asc' | 'desc';
   const [sortKey, setSortKey] = useState<SortKey>(null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -115,16 +115,9 @@ const DashboardPage: React.FC = () => {
   };
 
   const [columns, setColumns] = useState<ColumnConfig[]>(() => {
-    const saved = localStorage.getItem('dashboard_columns');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return [
+    const defaultCols = [
       { id: 'date', label: 'Дата', visible: true },
+      { id: 'user', label: 'Автор', visible: true },
       { id: 'project', label: 'Проект', visible: true },
       { id: 'hours', label: 'Часы', visible: true },
       { id: 'status', label: 'Статус', visible: true },
@@ -133,6 +126,27 @@ const DashboardPage: React.FC = () => {
       { id: 'end_time', label: 'Окончание', visible: false },
       { id: 'actions', label: 'Действия', visible: true }
     ];
+    const saved = localStorage.getItem('dashboard_columns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as ColumnConfig[];
+        const merged = [...parsed];
+        defaultCols.forEach(dCol => {
+          if (!merged.some(c => c.id === dCol.id)) {
+            const actionsIdx = merged.findIndex(c => c.id === 'actions');
+            if (actionsIdx !== -1) {
+              merged.splice(actionsIdx, 0, dCol);
+            } else {
+              merged.push(dCol);
+            }
+          }
+        });
+        return merged;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return defaultCols;
   });
 
   useEffect(() => {
@@ -407,6 +421,10 @@ const DashboardPage: React.FC = () => {
         case 'date':
           valA = new Date(a.start_time).getTime();
           valB = new Date(b.start_time).getTime();
+          break;
+        case 'user':
+          valA = (a.user?.full_name || '').toLowerCase();
+          valB = (b.user?.full_name || '').toLowerCase();
           break;
         case 'project':
           valA = (a.project?.name || '').toLowerCase();
@@ -707,7 +725,7 @@ const DashboardPage: React.FC = () => {
               <thead>
                 <tr>
                   {columns.filter(c => c.visible).map(col => {
-                    const isSortable = ['date', 'project', 'hours', 'status'].includes(col.id);
+                    const isSortable = ['date', 'user', 'project', 'hours', 'status'].includes(col.id);
                     const isActive = sortKey === col.id;
                     return (
                     <th
@@ -752,6 +770,13 @@ const DashboardPage: React.FC = () => {
                       switch (col.id) {
                         case 'date':
                           return <td key={col.id} className="table-cell">{formatDate(ot.start_time)}</td>;
+                        case 'user':
+                          return (
+                            <td key={col.id} className="table-cell" style={{ maxWidth: '200px', wordBreak: 'break-word' }}>
+                              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ot.user?.full_name || '-'}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{ot.user?.email}</div>
+                            </td>
+                          );
                         case 'project':
                           return (
                             <td key={col.id} className="table-cell" style={{ maxWidth: '240px', wordBreak: 'break-word' }}>
