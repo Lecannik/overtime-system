@@ -319,3 +319,21 @@ async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project
     
     from app.core.utils import calculate_overtime_hours
     return sum(calculate_overtime_hours(ot.start_time, ot.end_time) for ot in overtimes)
+
+async def get_last_user_overtime(session: AsyncSession, user_id: int) -> Overtime | None:
+    """
+    Возвращает последнюю запись о переработке пользователя
+    (в любом статусе, кроме CANCELLED) с подгруженным проектом.
+    """
+    query = (
+        select(Overtime)
+        .where(
+            Overtime.user_id == user_id,
+            Overtime.status != OvertimeStatus.CANCELLED
+        )
+        .order_by(Overtime.start_time.desc())
+        .options(selectinload(Overtime.project))
+    )
+    result = await session.execute(query)
+    return result.scalars().first()
+

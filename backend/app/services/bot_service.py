@@ -154,11 +154,32 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
                 return ConversationHandler.END
 
-    await update.message.reply_text(
-        "🔍 Введите название или номер проекта для поиска:",
-        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
-    )
+    async with AsyncSessionLocal() as session:
+        last_ot = await overtime_repo.get_last_user_overtime(session, user.id)
+
+    if last_ot:
+        await update.message.reply_text(
+            "Начало выбора проекта. Вы можете отменить операцию в любой момент кнопкой ниже.",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+        )
+        proj_name = last_ot.project.name
+        text = f"Вы можете быстро выбрать предыдущий проект «<b>{html.escape(proj_name)}</b>» или ввести название/номер для поиска нового:"
+        reply_markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"⏮ {proj_name}", callback_data=f"proj_{last_ot.project_id}")
+        ]])
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            "🔍 Введите название или номер проекта для поиска:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+        )
     return CHOOSING_PROJECT
+
 
 async def project_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)

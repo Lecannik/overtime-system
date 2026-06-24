@@ -62,6 +62,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
     const [projectId, setProjectId] = useState('');
     const [projectSearch, setProjectSearch] = useState('');
     const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+    const [lastProject, setLastProject] = useState<Project | null>(null);
     
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
@@ -184,9 +185,24 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         }
     }, []);
 
+    const fetchLastProject = useCallback(async () => {
+        try {
+            const res = await api.get('/overtimes/?page=1&page_size=1');
+            if (res.data && res.data.items && res.data.items.length > 0) {
+                const lastOt = res.data.items[0];
+                if (lastOt && lastOt.project) {
+                    setLastProject(lastOt.project);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load last project', err);
+        }
+    }, []);
+
     useEffect(() => {
         initProjects();
-    }, [initProjects]);
+        fetchLastProject();
+    }, [initProjects, fetchLastProject]);
 
     useEffect(() => {
         const initForm = () => {
@@ -357,6 +373,25 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', 
                                 maxHeight: '200px', overflowY: 'auto', zIndex: 10, padding: '8px', gap: '4px', display: 'flex', flexDirection: 'column'
                             }}>
+                                {lastProject && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setProjectId(lastProject.id.toString());
+                                            setProjectSearch(lastProject.name);
+                                            setIsProjectDropdownOpen(false);
+                                        }}
+                                        style={{
+                                            padding: '10px 16px', textAlign: 'left',
+                                            background: projectId === lastProject.id.toString() ? 'var(--bg-secondary)' : 'transparent',
+                                            border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)',
+                                            borderBottom: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>⏮ Предыдущий:</span>
+                                        <span style={{ fontWeight: 600 }}>{lastProject.name}</span>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => {
