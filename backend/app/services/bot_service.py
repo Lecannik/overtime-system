@@ -181,6 +181,13 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
     return CHOOSING_PROJECT
 
 
+def clean_project_code(code: str | None) -> str:
+    """Удаляет все спецсимволы (дефисы, тире, пробелы) для нечувствительного поиска."""
+    if not code:
+        return ""
+    import re
+    return re.sub(r"[^a-zA-Z0-9а-яА-Я]", "", code).lower()
+
 async def project_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user: return ConversationHandler.END
@@ -188,10 +195,21 @@ async def project_search_handler(update: Update, context: ContextTypes.DEFAULT_T
     
     async with AsyncSessionLocal() as session:
         projects = await org_repo.get_projects(session, only_active=True)
-        matching = [
-            p for p in projects
-            if search_text.lower() in p.name.lower() or (p.code and search_text.lower() in p.code.lower())
-        ]
+        
+        search_clean = clean_project_code(search_text)
+        matching = []
+        for p in projects:
+            # 1. Поиск по названию (обычное совпадение подстроки без учета регистра)
+            if search_text.lower() in p.name.lower():
+                matching.append(p)
+                continue
+            
+            # 2. Поиск по очищенному коду/номеру проекта
+            if p.code:
+                p_code_clean = clean_project_code(p.code)
+                if search_clean and search_clean in p_code_clean:
+                    matching.append(p)
+
         
         if not matching:
             await update.message.reply_text(

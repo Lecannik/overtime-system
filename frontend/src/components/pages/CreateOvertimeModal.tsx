@@ -319,7 +319,22 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         }
     };
 
-    const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
+    const cleanCode = (str: string) => str.replace(/[^a-zA-Z0-9а-яА-Я]/g, '').toLowerCase();
+
+    const filteredProjects = projects.filter(p => {
+        const searchLower = projectSearch.toLowerCase();
+        
+        // 1. Поиск по названию
+        if (p.name.toLowerCase().includes(searchLower)) return true;
+        
+        // 2. Поиск по коду/номеру проекта
+        if (p.code) {
+            const cleanPCode = cleanCode(p.code);
+            const cleanSearch = cleanCode(projectSearch);
+            return cleanSearch && cleanPCode.includes(cleanSearch);
+        }
+        return false;
+    });
 
     return (
         <div className="modal-overlay" onClick={handleOverlayClick} style={{ zIndex: 2000 }}>
