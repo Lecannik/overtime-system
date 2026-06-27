@@ -260,7 +260,10 @@ async def start_location_handler(update: Update, context: ContextTypes.DEFAULT_T
     return ConversationHandler.END
 
 async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос геопозиции при ЗАВЕРШЕНИИ."""
+    """
+    Запрос геопозиции при ЗАВЕРШЕНИИ.
+    Фиксирует время завершения переработки.
+    """
     user = await verify_user(update)
     if not user:
         return ConversationHandler.END
@@ -270,6 +273,7 @@ async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("Нет активной сессии.", reply_markup=start_markup())
             return ConversationHandler.END
         context.user_data['active_id'] = active.id
+        context.user_data['end_time'] = datetime.now(timezone.utc)
         await update.message.reply_text(
             "⏹ Завершение работы. Пожалуйста, отправьте геопозицию (ФИНИШ):",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton("📍 Отправить местоположение (ФИНИШ)", request_location=True)], [KeyboardButton("❌ Отмена")]], resize_keyboard=True)
@@ -286,13 +290,19 @@ async def end_location_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     return SENDING_COMMENT
 
 async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Финальный шаг: комментарий + сохранение всех данных."""
+    """
+    Финальный шаг: сохранение комментария, геопозиции финиша
+    и запись данных о переработке в БД.
+    """
     user = await verify_user(update)
     if not user:
         return ConversationHandler.END
     active_id = context.user_data.get('active_id')
     end_lat = context.user_data.get('end_lat')
     end_lng = context.user_data.get('end_lng')
+    
+    # Получаем зафиксированное при нажатии кнопки остановки время завершения
+    end_time = context.user_data.get('end_time') or datetime.now(timezone.utc)
     
     comment_text = ""
     summary_text = ""
@@ -328,8 +338,6 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_overtime_by_id(session, active_id)
         if active:
-            end_time = datetime.now(timezone.utc)
-            
             # Разделяем интервал по дням (00:00 локального времени)
             from app.core.utils import split_interval_by_days
             intervals = split_interval_by_days(active.start_time, end_time)
@@ -443,6 +451,11 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{duration_warning}"
             )
             await update.message.reply_text(report, parse_mode="HTML", reply_markup=start_markup())
+            
+    # Очищаем временные переменные из context.user_data
+    for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+        context.user_data.pop(key, None)
+        
     return ConversationHandler.END
 
 async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
