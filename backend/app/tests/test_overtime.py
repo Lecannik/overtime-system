@@ -156,11 +156,12 @@ async def test_cannot_review_in_progress_overtime(
     # Создаем заявку
     now = datetime.now(timezone.utc)
     start_time = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
+    end_time = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
 
     overtime_data = {
         "project_id": test_project.id,
         "start_time": start_time,
-        "end_time": None,
+        "end_time": end_time,
         "description": "Active Session Overtime",
         "start_lat": 10.0,
         "start_lng": 20.0

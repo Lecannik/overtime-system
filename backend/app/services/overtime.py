@@ -35,8 +35,15 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     start_time = overtime_in.start_time
     end_time = overtime_in.end_time
     
+    # 0. Валидация обязательного заполнения времени окончания при ручном создании
+    if not end_time:
+        raise HTTPException(
+            status_code=400,
+            detail="Время окончания переработки обязательно для заполнения при ручном вводе."
+        )
+        
     # 0. Валидация порядка времени (защита от "отрицательных" часов)
-    if end_time and start_time and end_time <= start_time:
+    if end_time <= start_time:
         raise HTTPException(
             status_code=400,
             detail="Время окончания должно быть позже времени начала."

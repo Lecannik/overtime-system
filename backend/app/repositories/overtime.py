@@ -276,10 +276,12 @@ async def check_overlapping_overtimes(
     """
     Проверяет пересечение периодов. 
     Алгоритм: если (Начало1 < Конец2) и (Конец1 > Начало2), то есть пересечение.
-    Учитывает, что конец периода может быть None (активная сессия).
+    Учитывает, что конец периода может быть None (активная сессия в статусе IN_PROGRESS).
     """
     is_active_session = end_time is None
-    db_active_condition = Overtime.end_time.is_(None)
+    
+    # Активной бесконечной сессией считаем только те, которые реально находятся в процессе (IN_PROGRESS)
+    db_active_condition = (Overtime.end_time.is_(None)) & (Overtime.status == OvertimeStatus.IN_PROGRESS)
 
     if is_active_session:
         overlap_condition = db_active_condition | (Overtime.end_time > start_time)
