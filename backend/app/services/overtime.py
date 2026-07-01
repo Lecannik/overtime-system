@@ -347,6 +347,11 @@ async def update_overtime(
     if not overtime:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
+    # Сохраняем исходные значения времени для сравнения в аудит-логе
+    old_start = overtime.start_time
+    old_end = overtime.end_time
+    old_hours = overtime.hours
+
     # Только владелец или админ
     if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Вы можете редактировать только свои заявки")
@@ -392,6 +397,13 @@ async def update_overtime(
                 detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
             )
 
+    # Выявляем факт изменения времени
+    time_changed = False
+    if "start_time" in update_data and ensure_utc(update_data["start_time"]) != ensure_utc(old_start):
+        time_changed = True
+    if "end_time" in update_data and ensure_utc(update_data["end_time"]) != ensure_utc(old_end):
+        time_changed = True
+
     # Убираем таймзоны для итогового словаря
     if "start_time" in update_data: update_data["start_time"] = new_start
     if "end_time" in update_data: update_data["end_time"] = new_end
@@ -406,6 +418,31 @@ async def update_overtime(
             update_data["status"] = OvertimeStatus.PENDING
 
     result = await overtime_repo.update_overtime(session, overtime, update_data)
+
+    # Запись аудит-лога при изменении времени
+    if time_changed:
+        from app.repositories import audit as audit_repo
+        await audit_repo.create_audit_log(
+            session=session,
+            user_id=current_user.id,
+            action="UPDATE_OVERTIME_TIME",
+            target_type="overtime",
+            target_id=overtime.id,
+            details={
+                "updated_by": current_user.email,
+                "role": current_user.role,
+                "is_own": overtime.user_id == current_user.id,
+                "description": overtime.description,
+                "employee_id": overtime.user_id,
+                "old_start": ensure_utc(old_start).isoformat() if old_start else None,
+                "new_start": ensure_utc(result.start_time).isoformat() if result.start_time else None,
+                "old_end": ensure_utc(old_end).isoformat() if old_end else None,
+                "new_end": ensure_utc(result.end_time).isoformat() if result.end_time else None,
+                "old_hours": old_hours,
+                "new_hours": result.hours,
+            }
+        )
+
     cache_clear()
     return result
 

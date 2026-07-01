@@ -292,3 +292,55 @@ async def test_max_overtime_duration_rejected(
     assert response.status_code == 400
     assert "максимум" in response.json()["detail"].lower()
 
+
+@pytest.mark.asyncio
+async def test_update_overtime_time_logs_audit(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    admin_token_headers: dict,
+    test_project: Project,
+):
+    """Тест: изменение времени переработки вызывает запись в журнал аудита."""
+    from app.models.audit import AuditLog
+    from app.models.overtime import Overtime
+    from sqlalchemy import select
+
+    # 1. Создаем переработку
+    overtime_data = {
+        "project_id": test_project.id,
+        "start_time": "2026-03-01T04:00:00",
+        "end_time": "2026-03-01T06:30:00",
+        "description": "Log test",
+        "start_lat": 10.0,
+        "start_lng": 20.0
+    }
+    response = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
+    assert response.status_code == 200
+    ot_id = response.json()["id"]
+
+    # 2. Обновляем время окончания
+    update_data = {
+        "end_time": "2026-03-01T06:00:00"
+    }
+    patch_resp = await client.patch(f"/api/v1/overtimes/{ot_id}", json=update_data, headers=admin_token_headers)
+    assert patch_resp.status_code == 200
+
+    # 3. Проверяем, что в аудит-логе появилась запись
+    db_session.expire_all()
+    audit_res = await db_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "UPDATE_OVERTIME_TIME",
+            AuditLog.target_id == ot_id
+        )
+    )
+    logs = audit_res.scalars().all()
+    assert len(logs) == 1
+    log = logs[0]
+    
+    # Проверяем структуру деталей
+    assert log.target_type == "overtime"
+    assert log.details["new_end"].startswith("2026-03-01T06:00:00")
+    assert log.details["old_end"].startswith("2026-03-01T06:30:00")
+    assert log.details["old_hours"] == 3.0
+    assert log.details["new_hours"] == 2.0
+
