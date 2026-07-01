@@ -834,141 +834,144 @@ const UsersPage: React.FC = () => {
             </div>
 
             {/* Модал детального просмотра лога аудита */}
-            {selectedAuditLog && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000, backdropFilter: 'blur(4px)'
-                }}>
-                    <div className="glass-card" style={{ width: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Детали лога аудита</h3>
-                            <button onClick={() => setSelectedAuditLog(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div>
-                                <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Дата и время: </strong>
-                                <span style={{ fontSize: '0.9rem' }}>{formatDateTime(selectedAuditLog.timestamp)}</span>
-                            </div>
-                            <div>
-                                <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Кто выполнил: </strong>
-                                <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{selectedAuditLog.user?.full_name || 'Система'}</span>
-                            </div>
-                            <div>
-                                <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Действие: </strong>
-                                <span className="badge badge-info">{selectedAuditLog.action}</span>
-                            </div>
-                            <div>
-                                <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Объект: </strong>
-                                <span style={{ fontSize: '0.9rem' }}>{selectedAuditLog.target_type} (ID: {selectedAuditLog.target_id})</span>
+            {selectedAuditLog && (() => {
+                const details = selectedAuditLog.details as any;
+                return (
+                    <div style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 1000, backdropFilter: 'blur(4px)'
+                    }}>
+                        <div className="glass-card" style={{ width: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Детали лога аудита</h3>
+                                <button onClick={() => setSelectedAuditLog(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
                             </div>
 
-                            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
-                                <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700 }}>Подробные данные</h4>
-                                
-                                {selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' && selectedAuditLog.details && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                            Изменение параметров времени заявки пользователем <strong>{selectedAuditLog.details.updated_by}</strong> ({selectedAuditLog.details.role}).
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div>
+                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Дата и время: </strong>
+                                    <span style={{ fontSize: '0.9rem' }}>{formatDateTime(selectedAuditLog.timestamp)}</span>
+                                </div>
+                                <div>
+                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Кто выполнил: </strong>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{selectedAuditLog.user?.full_name || 'Система'}</span>
+                                </div>
+                                <div>
+                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Действие: </strong>
+                                    <span className="badge badge-info">{selectedAuditLog.action}</span>
+                                </div>
+                                <div>
+                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Объект: </strong>
+                                    <span style={{ fontSize: '0.9rem' }}>{selectedAuditLog.target_type} (ID: {selectedAuditLog.target_id})</span>
+                                </div>
+
+                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
+                                    <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700 }}>Подробные данные</h4>
+                                    
+                                    {selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' && details && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                                Изменение параметров времени заявки пользователем <strong>{details.updated_by}</strong> ({details.role}).
+                                            </div>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                                <thead>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Параметр</th>
+                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Было</th>
+                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Стало</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Начало</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_start ? formatDateTime(details.old_start) : '-'}</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_start ? formatDateTime(details.new_start) : '-'}</td>
+                                                    </tr>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Окончание</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_end ? formatDateTime(details.old_end) : '-'}</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_end ? formatDateTime(details.new_end) : '-'}</td>
+                                                    </tr>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Часы (округленные)</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_hours} ч.</td>
+                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_hours} ч.</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         </div>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                            <thead>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Параметр</th>
-                                                    <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Было</th>
-                                                    <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Стало</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <td style={{ padding: '8px 0', fontWeight: 600 }}>Начало</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{selectedAuditLog.details.old_start ? formatDateTime(selectedAuditLog.details.old_start) : '-'}</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{selectedAuditLog.details.new_start ? formatDateTime(selectedAuditLog.details.new_start) : '-'}</td>
-                                                </tr>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <td style={{ padding: '8px 0', fontWeight: 600 }}>Окончание</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{selectedAuditLog.details.old_end ? formatDateTime(selectedAuditLog.details.old_end) : '-'}</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{selectedAuditLog.details.new_end ? formatDateTime(selectedAuditLog.details.new_end) : '-'}</td>
-                                                </tr>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <td style={{ padding: '8px 0', fontWeight: 600 }}>Часы (округленные)</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{selectedAuditLog.details.old_hours} ч.</td>
-                                                    <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{selectedAuditLog.details.new_hours} ч.</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
+                                    )}
 
-                                {selectedAuditLog.action.startsWith('REVIEW_') && selectedAuditLog.details && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                        <div>
-                                            <strong>Согласовано: </strong>
-                                            <span style={{ fontWeight: 600, color: selectedAuditLog.details.approved ? 'var(--success)' : 'var(--danger)' }}>
-                                                {selectedAuditLog.details.approved ? 'Да' : 'Нет'}
-                                            </span>
-                                        </div>
-                                        {selectedAuditLog.details.approved_hours !== undefined && (
+                                    {selectedAuditLog.action.startsWith('REVIEW_') && details && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
                                             <div>
-                                                <strong>Согласованные часы: </strong>
-                                                <span>{selectedAuditLog.details.approved_hours} ч. (запрошено было: {selectedAuditLog.details.requested_hours} ч.)</span>
+                                                <strong>Согласовано: </strong>
+                                                <span style={{ fontWeight: 600, color: details.approved ? 'var(--success)' : 'var(--danger)' }}>
+                                                    {details.approved ? 'Да' : 'Нет'}
+                                                </span>
                                             </div>
-                                        )}
-                                        {selectedAuditLog.details.comment && (
-                                            <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid var(--primary)', marginTop: '8px' }}>
-                                                <strong>Комментарий: </strong>
-                                                <span style={{ fontStyle: 'italic' }}>{selectedAuditLog.details.comment}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                            {details.approved_hours !== undefined && (
+                                                <div>
+                                                    <strong>Согласованные часы: </strong>
+                                                    <span>{details.approved_hours} ч. (запрошено было: {details.requested_hours} ч.)</span>
+                                                </div>
+                                            )}
+                                            {details.comment && (
+                                                <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid var(--primary)', marginTop: '8px' }}>
+                                                    <strong>Комментарий: </strong>
+                                                    <span style={{ fontStyle: 'italic' }}>{details.comment}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
-                                {selectedAuditLog.action === 'CANCEL_OVERTIME' && selectedAuditLog.details && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                        <div><strong>Инициатор отмены: </strong><span>{selectedAuditLog.details.cancelled_by}</span></div>
-                                        <div><strong>Предыдущий статус: </strong><span>{selectedAuditLog.details.previous_status}</span></div>
-                                        {selectedAuditLog.details.description && <div><strong>Описание переработки: </strong><span>{selectedAuditLog.details.description}</span></div>}
-                                    </div>
-                                )}
+                                    {selectedAuditLog.action === 'CANCEL_OVERTIME' && details && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+                                            <div><strong>Инициатор отмены: </strong><span>{details.cancelled_by}</span></div>
+                                            <div><strong>Предыдущий статус: </strong><span>{details.previous_status}</span></div>
+                                            {details.description && <div><strong>Описание переработки: </strong><span>{details.description}</span></div>}
+                                        </div>
+                                    )}
 
-                                {selectedAuditLog.action === 'AUTO_CLOSE_STALE' && selectedAuditLog.details && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                        <div><strong>Причина автозакрытия: </strong><span>{selectedAuditLog.details.reason}</span></div>
-                                        <div><strong>Время старта: </strong><span>{selectedAuditLog.details.original_start ? formatDateTime(selectedAuditLog.details.original_start) : '-'}</span></div>
-                                        <div><strong>Авто-завершение: </strong><span>{selectedAuditLog.details.auto_end ? formatDateTime(selectedAuditLog.details.auto_end) : '-'}</span></div>
-                                    </div>
-                                )}
+                                    {selectedAuditLog.action === 'AUTO_CLOSE_STALE' && details && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+                                            <div><strong>Причина автозакрытия: </strong><span>{details.reason}</span></div>
+                                            <div><strong>Время старта: </strong><span>{details.original_start ? formatDateTime(details.original_start) : '-'}</span></div>
+                                            <div><strong>Авто-завершение: </strong><span>{details.auto_end ? formatDateTime(details.auto_end) : '-'}</span></div>
+                                        </div>
+                                    )}
 
-                                {!(selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && selectedAuditLog.details && (
-                                    <pre style={{
-                                        background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px',
-                                        overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', margin: 0
-                                    }}>
-                                        {JSON.stringify(selectedAuditLog.details, null, 2)}
-                                    </pre>
-                                )}
-
-                                {selectedAuditLog.details && (selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && (
-                                    <details style={{ marginTop: '16px' }}>
-                                        <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Показать сырые данные (JSON)</summary>
+                                    {!(selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && details && (
                                         <pre style={{
                                             background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px',
-                                            overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '8px', margin: 0
+                                            overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', margin: 0
                                         }}>
-                                            {JSON.stringify(selectedAuditLog.details, null, 2)}
+                                            {JSON.stringify(details, null, 2)}
                                         </pre>
-                                    </details>
-                                )}
+                                    )}
+
+                                    {details && (selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && (
+                                        <details style={{ marginTop: '16px' }}>
+                                            <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Показать сырые данные (JSON)</summary>
+                                            <pre style={{
+                                                background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px',
+                                                overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '8px', margin: 0
+                                            }}>
+                                                {JSON.stringify(details, null, 2)}
+                                            </pre>
+                                        </details>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                <button className="primary" onClick={() => setSelectedAuditLog(null)} style={{ padding: '8px 24px' }}>Закрыть</button>
                             </div>
                         </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                            <button className="primary" onClick={() => setSelectedAuditLog(null)} style={{ padding: '8px 24px' }}>Закрыть</button>
-                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* Модал создания проекта с валидацией формата кода */}
             {isProjectModalOpen && (
