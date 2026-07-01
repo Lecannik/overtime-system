@@ -21,6 +21,27 @@ import ConfirmModal from '../modals/ConfirmModal';
 import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS, formatDateTime } from '../../constants/locale';
 import { AxiosError } from 'axios';
 
+interface AuditDetails {
+    updated_by?: string;
+    role?: string;
+    old_start?: string;
+    new_start?: string;
+    old_end?: string;
+    new_end?: string;
+    old_hours?: number;
+    new_hours?: number;
+    approved?: boolean;
+    approved_hours?: number;
+    requested_hours?: number;
+    comment?: string;
+    cancelled_by?: string;
+    previous_status?: string;
+    description?: string;
+    reason?: string;
+    original_start?: string;
+    auto_end?: string;
+}
+
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'projects' | 'audit'>('users');
@@ -835,7 +856,7 @@ const UsersPage: React.FC = () => {
 
             {/* Модал детального просмотра лога аудита */}
             {selectedAuditLog && (() => {
-                const details = selectedAuditLog.details as any;
+                const details = selectedAuditLog.details as unknown as AuditDetails;
                 return (
                     <div style={{
                         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
@@ -868,7 +889,7 @@ const UsersPage: React.FC = () => {
 
                                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
                                     <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700 }}>Подробные данные</h4>
-                                    
+
                                     {selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' && details && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
