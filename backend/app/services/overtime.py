@@ -1,7 +1,11 @@
+# pyrefly: ignore [missing-import]
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, UserRole
+from app.models.organization import Department
 from app.schemas.overtime import OvertimeCreate, OvertimeReview, OvertimeUpdate
 from app.repositories import overtime as overtime_repo
 from app.models.audit import AuditLog
@@ -197,9 +201,6 @@ async def review_overtime(
             overtime.manager_comment = review.comment
         elif acting_role == UserRole.head:
             # Проверяем, что это начальник отдела сотрудника, создавшего заявку
-            from app.models.organization import Department
-            from sqlalchemy import select
-
             is_their_head = False
             if overtime.user.department_id:
                 dept_res = await session.execute(
