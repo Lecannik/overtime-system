@@ -221,6 +221,7 @@ const ReviewPage: React.FC = () => {
 
             setOvertimes(ovtRes.items || []);
             setTotalPages(ovtRes.pages || 1);
+            setSelectedIds([]);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
