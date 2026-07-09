@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Clock, CheckCircle, AlertCircle, TrendingUp,
+  Plus, Clock, AlertCircle, TrendingUp,
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
   Settings, ChevronUp, ChevronDown, RotateCcw
 } from 'lucide-react';
