@@ -3,7 +3,7 @@
 Инкапсулирует SQL-логику и правила выборки данных из базы.
 """
 
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from datetime import datetime, date, timedelta, timezone
@@ -105,7 +105,7 @@ async def get_overtimes(
                 func.lower(User.full_name).like(search_lower),
                 func.lower(Project.name).like(search_lower),
                 func.lower(Overtime.description).like(search_lower),
-                func.cast(Overtime.id, str).like(search_lower),
+                cast(Overtime.id, String).like(search_lower),
             )
         )
 
