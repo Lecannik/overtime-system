@@ -226,6 +226,34 @@ export const getOvertimes = (params?: Record<string, unknown>) =>
 export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) => 
     api.post(`/overtimes/${id}/review`, { approved, comment, as_role, approved_hours }).then(r => r.data);
 
+/** Модель записи-дня для календарной сводки. */
+export interface CalendarDayEntry {
+    id: number;
+    initials: string;
+    name: string;
+    hours: number;
+    status: string;
+}
+
+/** Сводная информация по одному дню для heatmap-календаря. */
+export interface CalendarDayData {
+    total: number;
+    pending: number;
+    approved: number;
+    hours: number;
+    entries: CalendarDayEntry[];
+}
+
+/** Словарь 'YYYY-MM-DD' → CalendarDayData */
+export type CalendarSummary = Record<string, CalendarDayData>;
+
+/**
+ * Загружает сводку заявок по дням выбранного месяца для отображения в heatmap-календаре.
+ * @param month - строка формата 'YYYY-MM' (например '2026-07')
+ */
+export const getCalendarSummary = (month: string): Promise<CalendarSummary> =>
+    api.get<CalendarSummary>('/overtimes/calendar-summary', { params: { month } }).then(r => r.data);
+
 // --- ANALYTICS ---
 export const getAnalyticsSummary = (params?: AnalyticsParams) => 
     api.get<AnalyticsSummary>('/analytics/summary', { params }).then(r => r.data);

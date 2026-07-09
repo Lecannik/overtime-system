@@ -353,3 +353,114 @@ async def get_last_user_overtime(session: AsyncSession, user_id: int) -> Overtim
     result = await session.execute(query)
     return result.scalars().first()
 
+
+async def get_calendar_summary(
+    session: AsyncSession,
+    current_user: User,
+    month: str,
+) -> dict:
+    """
+    Возвращает сводку заявок на переработку, сгруппированных по дням,
+    для отображения в календарном виде (heatmap).
+
+    Формат month: 'YYYY-MM'. Доступность данных ограничена правами пользователя.
+    Дни в ответе форматируются как 'YYYY-MM-DD' (ISO 8601), отображение на
+    фронтенде конвертирует их в формат ДД/ММ/ГГГГ.
+
+    Args:
+        session: Асинхронная сессия базы данных.
+        current_user: Текущий авторизованный пользователь.
+        month: Строка формата 'YYYY-MM', определяющая отображаемый месяц.
+
+    Returns:
+        Словарь вида {'YYYY-MM-DD': {'total': N, 'pending': N, 'approved': N,
+        'hours': F, 'entries': [...]}}
+    """
+    from datetime import date as date_type
+    import calendar as cal_module
+
+    # Парсим месяц
+    try:
+        year, month_num = int(month[:4]), int(month[5:7])
+    except (ValueError, IndexError):
+        return {}
+
+    # Первый и последний день месяца
+    first_day = date_type(year, month_num, 1)
+    last_day = date_type(year, month_num, cal_module.monthrange(year, month_num)[1])
+
+    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
+
+    # Базовый запрос с учётом прав доступа
+    base_query = (
+        select(Overtime)
+        .join(Project, Overtime.project_id == Project.id)
+        .join(User, Overtime.user_id == User.id)
+        .where(
+            Overtime.start_time >= start_dt,
+            Overtime.start_time <= end_dt,
+            Overtime.status != OvertimeStatus.IN_PROGRESS,
+        )
+        .options(selectinload(Overtime.user))
+    )
+
+    # Ограничение видимости по ролям (аналогично get_overtimes с view="review")
+    role_filters = []
+    if current_user.role == UserRole.admin:
+        pass  # Видит всё
+    elif current_user.role == UserRole.employee:
+        role_filters.append(Overtime.user_id == current_user.id)
+    elif current_user.role == UserRole.head:
+        my_depts = select(Department.id).where(Department.head_id == current_user.id)
+        role_filters.append(User.department_id.in_(my_depts))
+    elif current_user.role == UserRole.manager:
+        role_filters.append(Project.manager_id == current_user.id)
+
+    if role_filters:
+        base_query = base_query.where(*role_filters)
+
+    result = await session.execute(base_query)
+    overtimes = result.scalars().all()
+
+    # Группируем по дням (ключ: 'YYYY-MM-DD')
+    summary: dict = defaultdict(lambda: {
+        "total": 0,
+        "pending": 0,
+        "approved": 0,
+        "hours": 0.0,
+        "entries": []
+    })
+
+    pending_statuses = {OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED}
+    approved_statuses = {OvertimeStatus.APPROVED}
+
+    for ot in overtimes:
+        # Конвертируем UTC в локальную дату (ключ по дате начала)
+        start_local = ot.start_time
+        if start_local.tzinfo is not None:
+            start_local = start_local
+        day_key = start_local.strftime("%Y-%m-%d")
+
+        day_data = summary[day_key]
+        day_data["total"] += 1
+        day_data["hours"] = round(day_data["hours"] + (ot.approved_hours or ot.hours or 0), 2)
+
+        if ot.status in pending_statuses:
+            day_data["pending"] += 1
+        elif ot.status in approved_statuses:
+            day_data["approved"] += 1
+
+        user_name = ot.user.full_name if ot.user else "—"
+        initials = "".join(p[0].upper() for p in user_name.split()[:2]) if user_name != "—" else "?"
+
+        day_data["entries"].append({
+            "id": ot.id,
+            "initials": initials,
+            "name": user_name,
+            "hours": ot.approved_hours or ot.hours or 0,
+            "status": str(ot.status.value),
+        })
+
+    return dict(summary)
+

@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    CheckCircle2, Search, Filter, Calendar, ShieldCheck, ChevronDown, CheckCircle, Info, MapPin, Clock, XCircle, ChevronLeft, ChevronRight
+    CheckCircle2, Search, Filter, ShieldCheck, ChevronDown, 
+    ChevronLeft, ChevronRight, LayoutGrid, Calendar, AlignLeft
 } from 'lucide-react';
 import { api, getOvertimes, reviewOvertime, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
@@ -15,6 +16,12 @@ import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
 import { AxiosError } from 'axios';
 
+// Компоненты представлений
+import ReviewTableView from './review/ReviewTableView';
+import ReviewCalendarView from './review/ReviewCalendarView';
+import ReviewTimelineView from './review/ReviewTimelineView';
+import ReviewInlineForm from './review/ReviewInlineForm';
+import BulkActions from './review/BulkActions';
 
 const formatToYmd = (d: Date) => {
     const year = d.getFullYear();
@@ -36,13 +43,6 @@ const parseToDate = (str: string) => {
     return isNaN(d.getTime()) ? null : d;
 };
 
-/**
- * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
- *
- * @param {string} datestr - Входная строка даты.
- * @param {string} format - Формат даты.
- * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
- */
 const safeParseDate = (datestr: string, _format: string): Date => {
     if (!datestr) return new Date(NaN);
     try {
@@ -78,9 +78,7 @@ const ReviewPage: React.FC = () => {
     const [overtimes, setOvertimes] = useState<Overtime[]>([]);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<User | null>(null);
-    const [comment, setComment] = useState('');
     const [reviewingId, setReviewingId] = useState<number | null>(null);
-    const [asRole, setAsRole] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         return params.get('search') || '';
@@ -94,7 +92,14 @@ const ReviewPage: React.FC = () => {
     const [endDate, setEndDate] = useState('');
     const [selectedOvertime, setSelectedOvertime] = useState<Overtime | null>(null);
     const [updateTrigger, setUpdateTrigger] = useState(0);
-    const [approvedHours, setApprovedHours] = useState<string>('');
+
+    // Массовые действия
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+    // Виды отображения ('table' | 'calendar' | 'timeline')
+    const [viewMode, setViewMode] = useState<'table' | 'calendar' | 'timeline'>(() => {
+        return (localStorage.getItem('review_view_mode') as 'table' | 'calendar' | 'timeline') || 'table';
+    });
 
     const startFpRef = useRef<any>(null);
     const endFpRef = useRef<any>(null);
@@ -103,6 +108,13 @@ const ReviewPage: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [pageSize] = useState(12);
+
+    // Сохранение выбора вида в localStorage
+    const handleViewModeChange = (mode: 'table' | 'calendar' | 'timeline') => {
+        setViewMode(mode);
+        localStorage.setItem('review_view_mode', mode);
+        setCurrentPage(1);
+    };
 
     // Debounce поиска — 350мс
     useEffect(() => {
@@ -193,9 +205,13 @@ const ReviewPage: React.FC = () => {
             const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
 
+            // Если выбран вид "calendar", загружаем больше элементов за раз,
+            // так как в календаре показываются данные за целый месяц.
+            const currentSize = viewMode === 'calendar' ? 100 : pageSize;
+
             const ovtRes = await getOvertimes({
                 page: currentPage,
-                page_size: pageSize,
+                page_size: currentSize,
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
@@ -210,15 +226,15 @@ const ReviewPage: React.FC = () => {
         } finally {
             if (showLoader) setLoading(false);
         }
-    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, navigate]);
+    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, viewMode, navigate]);
 
-    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска или триггера обновления (с лоадером)
+    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска, вида или триггера обновления (с лоадером)
     useEffect(() => {
         const init = async () => {
             await fetchOvertimes(true);
         };
         init();
-    }, [currentPage, statusFilter, debouncedSearch, updateTrigger, fetchOvertimes]);
+    }, [currentPage, statusFilter, debouncedSearch, viewMode, updateTrigger, fetchOvertimes]);
 
     // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
     useEffect(() => {
@@ -270,29 +286,134 @@ const ReviewPage: React.FC = () => {
         }
     }, [endDate]);
 
-    const handleReview = async (overtimeId: number, approved: boolean) => {
+    // Обработка одиночного согласования
+    const handleReview = async (
+        overtimeId: number,
+        approved: boolean,
+        commentText?: string,
+        roleText?: string,
+        approvedHoursVal?: number
+    ) => {
         try {
             await reviewOvertime(
                 overtimeId,
                 approved,
-                comment || undefined,
-                asRole || undefined,
-                approved ? parseFloat(approvedHours) : undefined
+                commentText || undefined,
+                roleText || undefined,
+                approvedHoursVal
             );
             fetchOvertimes(true);
             setReviewingId(null);
-            setComment('');
-            setAsRole('');
-            setApprovedHours('');
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
             alert(axiosError.response?.data?.detail || 'Ошибка при согласовании');
         }
     };
 
+    // Обработка массового согласования
+    const handleBulkReview = async (approved: boolean, bulkComment: string, bulkRole: string) => {
+        setLoading(true);
+        try {
+            await Promise.all(
+                selectedIds.map(id =>
+                    reviewOvertime(
+                        id,
+                        approved,
+                        bulkComment || undefined,
+                        bulkRole || undefined,
+                        undefined // Одобряем по исходным часам
+                    )
+                )
+            );
+            setSelectedIds([]);
+            fetchOvertimes(true);
+        } catch (err: unknown) {
+            console.error('Bulk review error:', err);
+            const axiosError = err as AxiosError<{ detail?: string }>;
+            alert(axiosError.response?.data?.detail || 'Некоторые заявки не удалось согласовать');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleToggleSelect = (id: number) => {
+        if (selectedIds.includes(id)) {
+            setSelectedIds(selectedIds.filter(x => x !== id));
+        } else {
+            setSelectedIds([...selectedIds, id]);
+        }
+    };
+
+    const handleClearSelection = () => {
+        setSelectedIds([]);
+    };
+
+    const handleCalendarDateRangeChange = (start: string, end: string) => {
+        setStartDate(start);
+        setEndDate(end);
+    };
+
     const safeOvertimes = Array.isArray(overtimes) ? overtimes : [];
-    // Поиск выполняется на сервере — клиентская фильтрация не нужна
-    const filteredOvertimes = safeOvertimes;
+
+    // Рендер инлайн формы согласования для карточки
+    const renderInlineForm = (ot: Overtime) => (
+        <ReviewInlineForm
+            overtime={ot}
+            currentUser={user}
+            onCancel={() => setReviewingId(null)}
+            onSubmit={(approved, comment, role, hours) =>
+                handleReview(ot.id, approved, comment, role, hours)
+            }
+        />
+    );
+
+    // Рендер контента в зависимости от выбранного вида
+    const renderViewContent = () => {
+        if (viewMode === 'calendar') {
+            return (
+                <ReviewCalendarView
+                    overtimes={safeOvertimes}
+                    currentUser={user}
+                    selectedIds={selectedIds}
+                    onToggleSelect={handleToggleSelect}
+                    onOpenDetail={setSelectedOvertime}
+                    reviewingId={reviewingId}
+                    onToggleReview={setReviewingId}
+                    inlineFormRenderer={renderInlineForm}
+                    onDateRangeChange={handleCalendarDateRangeChange}
+                />
+            );
+        }
+
+        if (viewMode === 'timeline') {
+            return (
+                <ReviewTimelineView
+                    overtimes={safeOvertimes}
+                    currentUser={user}
+                    selectedIds={selectedIds}
+                    onToggleSelect={handleToggleSelect}
+                    onOpenDetail={setSelectedOvertime}
+                    reviewingId={reviewingId}
+                    onToggleReview={setReviewingId}
+                    inlineFormRenderer={renderInlineForm}
+                />
+            );
+        }
+
+        // По умолчанию - табличный вид
+        return (
+            <ReviewTableView
+                overtimes={safeOvertimes}
+                currentUser={user}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onOpenDetail={setSelectedOvertime}
+                reviewingId={reviewingId}
+                onToggleReview={setReviewingId}
+                inlineFormRenderer={renderInlineForm}
+            />
+        );
+    };
 
     if (loading && !overtimes.length) return <LoadingOverlay />;
 
@@ -301,7 +422,8 @@ const ReviewPage: React.FC = () => {
             {loading && <LoadingOverlay />}
             {user && <Header user={user} />}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            {/* Шапка страницы */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Согласование заявок</h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Поток входящих запросов на подтверждение работы.</p>
@@ -311,6 +433,7 @@ const ReviewPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Фильтры и переключатель видов */}
             <div className="glass-card" style={{ padding: '16px', display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -321,6 +444,7 @@ const ReviewPage: React.FC = () => {
                         style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
                     />
                 </div>
+                
                 <div style={{ position: 'relative', minWidth: '180px' }}>
                     <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <select
@@ -333,189 +457,113 @@ const ReviewPage: React.FC = () => {
                     </select>
                     <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                 </div>
-                {/* Фильтр по датам */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <input
-                        ref={startInputCallbackRef}
-                        type="text"
-                        placeholder="дд/мм/гггг"
-                        style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
-                        title="Начало периода"
-                    />
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                    <input
-                        ref={endInputCallbackRef}
-                        type="text"
-                        placeholder="дд/мм/гггг"
-                        style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
-                        title="Конец периода"
-                    />
-                    {(startDate || endDate) && (
-                        <button
-                            onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
-                            className="action-button-modern"
-                            title="Сбросить даты"
-                            style={{ height: '44px', width: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                            ×
-                        </button>
-                    )}
+
+                {/* Поля календаря (скрываем в режиме Календаря, так как там встроенный выбор) */}
+                {viewMode !== 'calendar' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <input
+                            ref={startInputCallbackRef}
+                            type="text"
+                            placeholder="дд/мм/гггг"
+                            style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
+                            title="Начало периода"
+                        />
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        <input
+                            ref={endInputCallbackRef}
+                            type="text"
+                            placeholder="дд/мм/гггг"
+                            style={{ height: '44px', width: '110px', padding: '0 12px', borderRadius: '10px', fontSize: '0.9rem', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', textAlign: 'center' }}
+                            title="Конец периода"
+                        />
+                        {(startDate || endDate) && (
+                            <button
+                                onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
+                                className="action-button-modern"
+                                title="Сбросить даты"
+                                style={{ height: '44px', width: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* Переключатель видов */}
+                <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                    <button
+                        onClick={() => handleViewModeChange('table')}
+                        style={{
+                            border: 'none',
+                            background: viewMode === 'table' ? 'var(--primary-gradient)' : 'transparent',
+                            color: viewMode === 'table' ? 'white' : 'var(--text-secondary)',
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s'
+                        }}
+                        title="Таблица"
+                    >
+                        <LayoutGrid size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleViewModeChange('calendar')}
+                        style={{
+                            border: 'none',
+                            background: viewMode === 'calendar' ? 'var(--primary-gradient)' : 'transparent',
+                            color: viewMode === 'calendar' ? 'white' : 'var(--text-secondary)',
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s'
+                        }}
+                        title="Календарь"
+                    >
+                        <Calendar size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleViewModeChange('timeline')}
+                        style={{
+                            border: 'none',
+                            background: viewMode === 'timeline' ? 'var(--primary-gradient)' : 'transparent',
+                            color: viewMode === 'timeline' ? 'white' : 'var(--text-secondary)',
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s'
+                        }}
+                        title="Таймлайн"
+                    >
+                        <AlignLeft size={16} />
+                    </button>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '16px' }}>
-                {filteredOvertimes.map((ot: Overtime) => (
-                    <div key={ot.id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-                        <div style={{ padding: '24px', borderBottom: '1px solid var(--border)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <div className="icon-shape" style={{ width: '44px', height: '44px', background: 'var(--accent-gradient)' }}>
-                                        {ot.user?.full_name?.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ot.user?.full_name}</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{ot.project?.name || 'Внутренний'}</div>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <span className="badge badge-info" style={{ fontSize: '0.6rem' }}>ID {ot.id}</span>
-                                    <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`} style={{ fontSize: '0.6rem' }}>
-                                        {STATUS_LABELS[ot.status] || ot.status}
-                                    </span>
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                                        {ot.start_lat && ot.start_lng && (
-                                            <a
-                                                href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="action-button-modern"
-                                                title="Точка начала (карта)"
-                                                style={{ color: 'var(--success)' }}
-                                            >
-                                                <MapPin size={16} />
-                                            </a>
-                                        )}
-                                        {ot.end_lat && ot.end_lng && (
-                                            <a
-                                                href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="action-button-modern"
-                                                title="Точка финиша (карта)"
-                                                style={{ color: 'var(--error)' }}
-                                            >
-                                                <MapPin size={16} />
-                                            </a>
-                                        )}
-                                        {!ot.start_lat && ot.location_name && (
-                                            <a
-                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="action-button-modern"
-                                                title={ot.location_name}
-                                                style={{ color: 'var(--accent)' }}
-                                            >
-                                                <MapPin size={16} />
-                                            </a>
-                                        )}
-                                        <button
-                                            onClick={() => setSelectedOvertime(ot)}
-                                            className="action-button-modern"
-                                            style={{ width: '28px', height: '28px', minWidth: '28px' }}
-                                            title="Подробнее"
-                                        >
-                                            <Info size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <h4
-                                className="line-clamp-3"
-                                style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px', cursor: 'pointer' }}
-                                onClick={() => setSelectedOvertime(ot)}
-                            >
-                                {ot.description}
-                            </h4>
-                            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    <Calendar size={14} /> {new Date(ot.start_time).toLocaleDateString()}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    <Clock size={14} /> {ot.hours}ч
-                                </div>
-                            </div>
-                        </div>
+            {/* Массовые действия */}
+            <BulkActions
+                selectedIds={selectedIds}
+                currentUser={user}
+                onClear={handleClearSelection}
+                onSubmit={handleBulkReview}
+            />
 
-                        <div style={{ padding: '20px 24px', background: 'var(--bg-primary)' }}>
-                            {reviewingId === ot.id ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {user?.role === 'admin' && (
-                                        <select value={asRole} onChange={e => setAsRole(e.target.value)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>
-                                            <option value="">Как Админ</option>
-                                            <option value="manager">Как Менеджер</option>
-                                            <option value="head">Как Нач. отдела</option>
-                                        </select>
-                                    )}
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            pattern="[0-9]*"
-                                            value={approvedHours}
-                                            onChange={e => {
-                                                const val = e.target.value.replace(/\D/g, '');
-                                                setApprovedHours(val);
-                                            }}
-                                            placeholder="Часов..."
-                                            style={{ height: '40px', background: 'var(--bg-secondary)', width: '100px' }}
-                                        />
-                                        <input
-                                            placeholder="Комментарий..."
-                                            value={comment}
-                                            onChange={e => setComment(e.target.value)}
-                                            style={{ height: '40px', borderRadius: '8px', fontSize: '0.85rem', flex: 1 }}
-                                        />
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button onClick={() => handleReview(ot.id, true)} className="primary" style={{ flex: 1, height: '40px', background: 'var(--success-gradient)' }}>Одобрить</button>
-                                        <button onClick={() => handleReview(ot.id, false)} className="primary" style={{ flex: 1, height: '40px', background: 'var(--danger-gradient)' }}>Отклонить</button>
-                                    </div>
-                                    <button onClick={() => setReviewingId(null)} style={{ background: 'none', border: '1px solid var(--error)', color: 'var(--error)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', padding: '8px', borderRadius: '8px', marginTop: '4px' }}>ОТМЕНА</button>
-                                </div>
-                            ) : (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '16px' }}>
-                                        <div style={{ textAlign: 'center' }}>
-                                            <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Менеджер</p>
-                                            <div style={{ color: ot.manager_approved === true ? 'var(--success)' : ot.manager_approved === false ? 'var(--danger)' : 'var(--text-muted)', opacity: ot.manager_approved === null ? 0.3 : 1 }}>
-                                                {ot.manager_approved === true ? <CheckCircle size={20} /> : ot.manager_approved === false ? <XCircle size={20} /> : <Clock size={20} />}
-                                            </div>
-                                        </div>
-                                        <div style={{ textAlign: 'center' }}>
-                                            <p style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Глава отдела</p>
-                                            <div style={{ color: ot.head_approved === true ? 'var(--success)' : ot.head_approved === false ? 'var(--danger)' : 'var(--text-muted)', opacity: ot.head_approved === null ? 0.3 : 1 }}>
-                                                {ot.head_approved === true ? <CheckCircle size={20} /> : ot.head_approved === false ? <XCircle size={20} /> : <Clock size={20} />}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {(user?.role === 'admin' || (ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED')) && (
-                                        <button
-                                            onClick={() => { setReviewingId(ot.id); setApprovedHours(Math.round(ot.hours || 0).toString()); }}
-                                            className="primary"
-                                            style={{ width: 'auto', padding: '0 20px', height: '40px' }}
-                                        >
-                                            Рассмотреть
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            {/* Основное содержимое */}
+            {renderViewContent()}
 
-            {totalPages > 1 && (
+            {/* Пагинация (только для табличного вида, чтобы не путать пользователя в календаре/таймлайне) */}
+            {viewMode === 'table' && totalPages > 1 && (
                 <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)' }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                         Страница <b>{currentPage}</b> из <b>{totalPages}</b>
@@ -541,7 +589,7 @@ const ReviewPage: React.FC = () => {
                 </div>
             )}
 
-            {filteredOvertimes.length === 0 && (
+            {safeOvertimes.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '100px' }}>
                     <CheckCircle2 size={60} style={{ color: 'var(--success)', opacity: 0.2 }} />
                     <p style={{ color: 'var(--text-muted)', marginTop: '20px' }}>Нет активных заявок для согласования.</p>
