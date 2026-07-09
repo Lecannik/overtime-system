@@ -495,6 +495,7 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if user.role == UserRole.head:
                 from app.models.organization import Department
+                # pyrefly: ignore [missing-import]
                 from sqlalchemy import select
                 dept_res = await session.execute(
                     select(Department.id).where(Department.head_id == user.id)

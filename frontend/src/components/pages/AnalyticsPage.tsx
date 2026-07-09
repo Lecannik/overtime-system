@@ -107,6 +107,11 @@ const AnalyticsPage: React.FC = () => {
         } else if (period === 'month') {
             const start = new Date(now.getFullYear(), now.getMonth(), 1);
             params.start_date = start.toISOString();
+        } else if (period === 'prev_month') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+            params.start_date = start.toISOString();
+            params.end_date = end.toISOString();
         } else if (period === 'custom') {
             if (customDates.start) params.start_date = new Date(customDates.start).toISOString();
             if (customDates.end) params.end_date = new Date(customDates.end).toISOString();
@@ -366,6 +371,7 @@ const AnalyticsPage: React.FC = () => {
                         <option value="all">За всё время</option>
                         <option value="week">Последние 7 дней</option>
                         <option value="month">Этот месяц</option>
+                        <option value="prev_month">Прошлый месяц</option>
                         <option value="custom">Выбрать период...</option>
                     </select>
                 </div>

@@ -220,6 +220,7 @@ export const getMyStats = () => api.get<UserStats>('/overtimes/stats/me').then(r
 export const createOvertime = (data: Partial<Overtime>) => api.post<Overtime>('/overtimes/', data).then(r => r.data);
 export const updateOvertime = (id: number, data: Partial<Overtime>) => api.patch<Overtime>(`/overtimes/${id}`, data).then(r => r.data);
 export const cancelOvertime = (id: number) => api.post(`/overtimes/${id}/cancel`).then(r => r.data);
+export const restoreOvertime = (id: number) => api.post(`/overtimes/${id}/restore`).then(r => r.data);
 export const getOvertimes = (params?: Record<string, unknown>) => 
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
 export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) => 

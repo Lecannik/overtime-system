@@ -28,10 +28,12 @@ async def get_overtimes(
     end_date: date | None = None,
     page: int = 1,
     page_size: int = 15,
-    view: str | None = None
+    view: str | None = None,
+    search: str | None = None
 ):
     """
-    Получает список заявок с учетом прав доступа текущего пользователя и пагинации.
+    Получает список заявок с учетом прав доступа текущего пользователя,
+    пагинации и поискового запроса.
     """
     # Базовый запрос
     base_query = select(Overtime).join(Project, Overtime.project_id == Project.id)
@@ -94,6 +96,18 @@ async def get_overtimes(
     if end_date:
         end_datetime = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
         filters.append(Overtime.start_time <= end_datetime)
+
+    # Фильтр по поисковому запросу (ФИО, проект, описание, ID)
+    if search:
+        search_lower = f"%{search.strip().lower()}%"
+        filters.append(
+            or_(
+                func.lower(User.full_name).like(search_lower),
+                func.lower(Project.name).like(search_lower),
+                func.lower(Overtime.description).like(search_lower),
+                func.cast(Overtime.id, str).like(search_lower),
+            )
+        )
 
     # Применяем фильтры
     if filters:

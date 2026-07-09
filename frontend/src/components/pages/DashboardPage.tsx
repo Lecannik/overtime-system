@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, Clock, CheckCircle, AlertCircle, TrendingUp,
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
-  Settings, ChevronUp, ChevronDown
+  Settings, ChevronUp, ChevronDown, RotateCcw
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, exportMyAnalytics, getAccessToken } from '../../services/api';
+import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
 import CreateOvertimeModal from './CreateOvertimeModal';
 import {
@@ -93,7 +93,17 @@ const DashboardPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editOvertime, setEditOvertime] = useState<Overtime | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isColConfigOpen, setIsColConfigOpen] = useState(false);
+
+  // Debounce поиска — 350мс
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Сортировка: ключ поля и направление
   type SortKey = 'date' | 'user' | 'project' | 'hours' | 'status' | null;
@@ -288,6 +298,7 @@ const DashboardPage: React.FC = () => {
         status: filterStatus || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
+        search: debouncedSearch || undefined,
         view: 'dashboard'
       });
       setOvertimes(ovRes.items || []);
@@ -297,7 +308,7 @@ const DashboardPage: React.FC = () => {
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, [currentPage, pageSize, filterStatus, startDate, endDate, navigate]);
+  }, [currentPage, pageSize, filterStatus, startDate, endDate, debouncedSearch, navigate]);
 
   // 1. Загружаем общие данные при монтировании
   useEffect(() => {
@@ -307,13 +318,13 @@ const DashboardPage: React.FC = () => {
     init();
   }, [fetchUserAndStats]);
 
-  // 2. Загрузка таблицы при смене страницы или статуса (с лоадером)
+  // 2. Загрузка таблицы при смене страницы, статуса или поиска (с лоадером)
   useEffect(() => {
     const init = async () => {
         await fetchTableData(true);
     };
     init();
-  }, [currentPage, filterStatus, fetchTableData]);
+  }, [currentPage, filterStatus, debouncedSearch, fetchTableData]);
 
   // 3. Загрузка таблицы при смене дат (без лоадера)
   useEffect(() => {
@@ -382,6 +393,20 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleRestore = async (id: number) => {
+    if (window.confirm('Восстановить заявку? Она вернётся в статус «Ожидает согласования».')) {
+      try {
+        await restoreOvertime(id);
+        fetchTableData(false);
+        fetchUserAndStats();
+      } catch (err: unknown) {
+        const axiosError = err as AxiosError<{ detail?: string }>;
+        console.error(axiosError);
+        alert(axiosError.response?.data?.detail || 'Ошибка при восстановлении заявки');
+      }
+    }
+  };
+
   const handleExport = async () => {
     try {
       setLoading(true);
@@ -406,10 +431,7 @@ const DashboardPage: React.FC = () => {
     }
   };
 
-  const filteredOvertimes = (Array.isArray(overtimes) ? overtimes : []).filter(ot =>
-    (ot.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (ot.project?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredOvertimes = Array.isArray(overtimes) ? overtimes : [];
 
   /** Отсортированный массив, применяется поверх фильтра */
   const sortedOvertimes = useMemo(() => {
@@ -578,19 +600,13 @@ const DashboardPage: React.FC = () => {
         <div className="glass-card" style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', color: 'white', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px' }}>
           <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.8, marginBottom: '16px' }}>Текущий месяц</h4>
           <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px' }}>{stats?.current_month_hours || 0}ч</div>
-          <p style={{ fontSize: '0.85rem', opacity: 0.9 }}>Всего одобренных часов за текущий месяц.</p>
+          <p style={{ fontSize: '0.85rem', opacity: 0.9 }}>Одобренных часов за текущий месяц.</p>
         </div>
 
         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Clock size={20} />
-            </div>
-            <h4 style={{ fontWeight: 700, margin: 0 }}>Информация</h4>
-          </div>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-            Не забывайте прикреплять геолокацию к заявкам для более быстрого согласования менеджером.
-          </p>
+          <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '16px' }}>Прошлый месяц</h4>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px', color: 'var(--text-primary)' }}>{stats?.last_month_hours || 0}ч</div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Одобренных часов за прошлый месяц.</p>
         </div>
       </div>
 
@@ -811,6 +827,18 @@ const DashboardPage: React.FC = () => {
                           return (
                             <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '180px', minWidth: '180px' }}>
                               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                {/* Кнопка восстановления для отменённых заявок */}
+                                {ot.status === 'CANCELLED' && (
+                                  <button
+                                    onClick={() => handleRestore(ot.id)}
+                                    className="action-button-modern"
+                                    title="Восстановить заявку"
+                                    style={{ color: 'var(--primary)' }}
+                                  >
+                                    <RotateCcw size={16} />
+                                  </button>
+                                )}
+                                {/* Редактирование и отмена для активных заявок */}
                                 {(ot.status === 'PENDING' || ot.status === 'IN_PROGRESS' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
                                   ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
                                     <>

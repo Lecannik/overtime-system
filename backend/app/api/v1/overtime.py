@@ -1,5 +1,7 @@
 from datetime import date
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -12,7 +14,9 @@ from app.models.overtime import Overtime, OvertimeStatus
 from app.services import overtime as overtime_service
 from app.repositories import overtime as overtime_repo
 from app.repositories import audit as audit_repo
+# pyrefly: ignore [missing-import]
 from sqlalchemy import select, delete as sql_delete
+from typing import Optional
 
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
@@ -27,11 +31,12 @@ async def list_overtimes(
     start_date: date | None = None,
     end_date: date | None = None,
     view: str | None = None,
+    search: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту и периоду дат.
+    Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту, периоду дат и поисковому запросу.
     """
     return await overtime_repo.get_overtimes(
         session, 
@@ -42,7 +47,8 @@ async def list_overtimes(
         end_date=end_date,
         page=page,
         page_size=page_size,
-        view=view
+        view=view,
+        search=search
     )
 
 
@@ -129,6 +135,22 @@ async def cancel_overtime_request(
     - Администратор может отменить любую.
     """
     return await overtime_service.cancel_overtime(session, overtime_id, current_user)
+
+
+@router.post("/{overtime_id}/restore", response_model=OvertimeResponse)
+async def restore_overtime_request(
+    overtime_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Восстановить отменённую заявку.
+
+    - Переводит заявку из CANCELLED в PENDING.
+    - Сбрасывает все результаты согласования.
+    - Доступно владельцу или администратору.
+    """
+    return await overtime_service.restore_overtime(session, overtime_id, current_user)
 
 
 @router.patch("/{overtime_id}", response_model=OvertimeResponse)

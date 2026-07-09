@@ -285,6 +285,14 @@ textarea {
   transition: border-color 0.2s;
 }
 
+/* Убираем нативную стрелку браузера — используются кастомные иконки */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+
 input:focus {
   border-color: var(--primary);
 }

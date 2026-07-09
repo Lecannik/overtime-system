@@ -242,6 +242,7 @@ export interface UserStats {
     daily_stats: Record<string, unknown>[];
     by_project: Record<string, unknown>[];
     current_month_hours: number;
+    last_month_hours: number;
 }
 
 export interface ProjectAnalytics {

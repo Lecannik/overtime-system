@@ -1,5 +1,6 @@
 # pyrefly: ignore [missing-import]
 from sqlalchemy import select
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
 # pyrefly: ignore [missing-import]
 from fastapi import HTTPException
@@ -326,6 +327,71 @@ async def cancel_overtime(
         }
     )
 
+
+    await session.commit()
+    await session.refresh(overtime)
+    cache_clear()
+    return overtime
+
+
+async def restore_overtime(
+    session: AsyncSession,
+    overtime_id: int,
+    current_user: User
+):
+    """
+    Восстанавливает отменённую заявку в статус PENDING.
+
+    Бизнес-логика:
+    - Доступно только владельцу заявки или администратору.
+    - Работает только для заявок в статусе CANCELLED.
+    - Сбрасывает все результаты согласования (manager_approved, head_approved) в None.
+    - Очищает approved_hours.
+    - Возвращает статус в PENDING для повторного прохождения согласования.
+    - Логирует действие в AuditLog.
+
+    Args:
+        session: Сессия БД.
+        overtime_id: ID восстанавливаемой заявки.
+        current_user: Инициатор операции.
+    """
+    overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
+    if not overtime:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    # Проверка прав: только владелец или админ
+    if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Вы можете восстанавливать только свои заявки")
+
+    # Восстанавливать можно только отменённые
+    if overtime.status != OvertimeStatus.CANCELLED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Нельзя восстановить заявку со статусом '{overtime.status.russian_label}'. Доступно только для отменённых заявок."
+        )
+
+    # Сбрасываем все результаты согласования — заявка должна пройти проверку заново
+    overtime.status = OvertimeStatus.PENDING
+    overtime.manager_approved = None
+    overtime.head_approved = None
+    overtime.manager_comment = None
+    overtime.head_comment = None
+    overtime.approved_hours = None
+
+    # Логируем действие
+    await audit_repo.create_audit_log(
+        session=session,
+        user_id=current_user.id,
+        action="RESTORE_OVERTIME",
+        target_type="overtime",
+        target_id=overtime.id,
+        details={
+            "restored_by": current_user.email,
+            "is_own": overtime.user_id == current_user.id,
+            "description": overtime.description,
+            "new_status": OvertimeStatus.PENDING,
+        }
+    )
 
     await session.commit()
     await session.refresh(overtime)

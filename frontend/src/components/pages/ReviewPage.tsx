@@ -85,6 +85,10 @@ const ReviewPage: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         return params.get('search') || '';
     });
+    const [debouncedSearch, setDebouncedSearch] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('search') || '';
+    });
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -99,6 +103,15 @@ const ReviewPage: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [pageSize] = useState(12);
+
+    // Debounce поиска — 350мс
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+            setCurrentPage(1);
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const startInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
         if (node) {
@@ -186,6 +199,7 @@ const ReviewPage: React.FC = () => {
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
+                search: debouncedSearch || undefined,
                 view: 'review'
             });
 
@@ -196,15 +210,15 @@ const ReviewPage: React.FC = () => {
         } finally {
             if (showLoader) setLoading(false);
         }
-    }, [currentPage, pageSize, statusFilter, startDate, endDate, navigate]);
+    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, navigate]);
 
-    // 3. Загрузка овертаймов при изменении пагинации, статуса или триггера обновления (с лоадером)
+    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска или триггера обновления (с лоадером)
     useEffect(() => {
         const init = async () => {
             await fetchOvertimes(true);
         };
         init();
-    }, [currentPage, statusFilter, updateTrigger, fetchOvertimes]);
+    }, [currentPage, statusFilter, debouncedSearch, updateTrigger, fetchOvertimes]);
 
     // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
     useEffect(() => {
@@ -277,13 +291,8 @@ const ReviewPage: React.FC = () => {
     };
 
     const safeOvertimes = Array.isArray(overtimes) ? overtimes : [];
-    const filteredOvertimes = safeOvertimes.filter((ot: Overtime) => {
-        const empName = (ot.user?.full_name || '').toLowerCase();
-        const projName = (ot.project?.name || '').toLowerCase();
-        const desc = (ot.description || '').toLowerCase();
-        const query = searchQuery.toLowerCase();
-        return empName.includes(query) || projName.includes(query) || desc.includes(query) || ot.id.toString() === query;
-    });
+    // Поиск выполняется на сервере — клиентская фильтрация не нужна
+    const filteredOvertimes = safeOvertimes;
 
     if (loading && !overtimes.length) return <LoadingOverlay />;
 
