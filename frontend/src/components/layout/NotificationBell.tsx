@@ -32,38 +32,63 @@ const NotificationBell: React.FC = () => {
 
         let ws: WebSocket | null = null;
         let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
 
         const connectWebSocket = () => {
             const token = getAccessToken();
             if (!token) return;
 
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.warn('WebSocket maximum reconnect attempts reached. Notification polling is active.');
+                return;
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
             
-            ws = new WebSocket(wsUrl);
+            try {
+                ws = new WebSocket(wsUrl);
 
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log('WebSocket event received:', data);
-                    if (data.type === 'NEW_NOTIFICATION' || data.type === 'OVERTIME_UPDATED' || data.type === 'OVERTIME_CREATED') {
-                        fetchNotifications();
-                        window.dispatchEvent(new CustomEvent('overtime_update', { detail: data }));
+                ws.onopen = () => {
+                    console.log('WebSocket connected successfully');
+                    reconnectAttempts = 0; // Сбрасываем попытки при успешном подключении
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('WebSocket event received:', data);
+                        if (data.type === 'NEW_NOTIFICATION' || data.type === 'OVERTIME_UPDATED' || data.type === 'OVERTIME_CREATED') {
+                            fetchNotifications();
+                            window.dispatchEvent(new CustomEvent('overtime_update', { detail: data }));
+                        }
+                    } catch (e) {
+                        console.error('WebSocket message error:', e);
                     }
-                } catch (e) {
-                    console.error('WebSocket message error:', e);
+                };
+
+                ws.onclose = () => {
+                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), 30000);
+                        console.log(`WebSocket closed. Reconnecting in ${delay / 1000}s (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+                        reconnectAttempts++;
+                        reconnectTimeout = setTimeout(connectWebSocket, delay);
+                    }
+                };
+
+                ws.onerror = (err) => {
+                    console.error('WebSocket error:', err);
+                    ws?.close();
+                };
+            } catch (err) {
+                console.error('Failed to create WebSocket:', err);
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), 30000);
+                    reconnectAttempts++;
+                    reconnectTimeout = setTimeout(connectWebSocket, delay);
                 }
-            };
-
-            ws.onclose = () => {
-                console.log('WebSocket closed. Reconnecting...');
-                reconnectTimeout = setTimeout(connectWebSocket, 5000);
-            };
-
-            ws.onerror = (err) => {
-                console.error('WebSocket error:', err);
-                ws?.close();
-            };
+            }
         };
 
         connectWebSocket();

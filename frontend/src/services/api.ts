@@ -251,8 +251,8 @@ export type CalendarSummary = Record<string, CalendarDayData>;
  * Загружает сводку заявок по дням выбранного месяца для отображения в heatmap-календаре.
  * @param month - строка формата 'YYYY-MM' (например '2026-07')
  */
-export const getCalendarSummary = (month: string): Promise<CalendarSummary> =>
-    api.get<CalendarSummary>('/overtimes/calendar-summary', { params: { month } }).then(r => r.data);
+export const getCalendarSummary = (month?: string, year?: number): Promise<CalendarSummary> =>
+    api.get<CalendarSummary>('/overtimes/calendar-summary', { params: { month, year } }).then(r => r.data);
 
 // --- ANALYTICS ---
 export const getAnalyticsSummary = (params?: AnalyticsParams) => 

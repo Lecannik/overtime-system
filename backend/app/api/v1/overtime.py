@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 # pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.core.database import get_session
 from app.api.deps import get_current_user
@@ -65,7 +65,8 @@ async def get_my_stats(
 
 @router.get("/calendar-summary", response_model=Dict[str, Any])
 async def get_calendar_summary(
-    month: str,
+    month: Optional[str] = None,
+    year: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -74,6 +75,7 @@ async def get_calendar_summary(
 
     Параметры:
         - month: строка формата 'YYYY-MM' (например '2026-07').
+        - year: год (например 2026) для годовой/квартальной выборки.
 
     Возвращает словарь с ключами 'YYYY-MM-DD' и объектами:
     {'total', 'pending', 'approved', 'hours', 'entries'}.
@@ -84,7 +86,7 @@ async def get_calendar_summary(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещён"
         )
-    return await overtime_repo.get_calendar_summary(session, current_user, month)
+    return await overtime_repo.get_calendar_summary(session, current_user, month=month, year=year)
 
 
 @router.post("/", response_model=OvertimeResponse)

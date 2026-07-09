@@ -357,7 +357,8 @@ async def get_last_user_overtime(session: AsyncSession, user_id: int) -> Overtim
 async def get_calendar_summary(
     session: AsyncSession,
     current_user: User,
-    month: str,
+    month: str = None,
+    year: int = None,
 ) -> dict:
     """
     Возвращает сводку заявок на переработку, сгруппированных по дням,
@@ -371,6 +372,7 @@ async def get_calendar_summary(
         session: Асинхронная сессия базы данных.
         current_user: Текущий авторизованный пользователь.
         month: Строка формата 'YYYY-MM', определяющая отображаемый месяц.
+        year: Год для годовой сводки.
 
     Returns:
         Словарь вида {'YYYY-MM-DD': {'total': N, 'pending': N, 'approved': N,
@@ -379,18 +381,20 @@ async def get_calendar_summary(
     from datetime import date as date_type
     import calendar as cal_module
 
-    # Парсим месяц
-    try:
-        year, month_num = int(month[:4]), int(month[5:7])
-    except (ValueError, IndexError):
+    if year:
+        start_dt = datetime(year, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end_dt = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+    elif month:
+        try:
+            year_val, month_num = int(month[:4]), int(month[5:7])
+        except (ValueError, IndexError):
+            return {}
+        first_day = date_type(year_val, month_num, 1)
+        last_day = date_type(year_val, month_num, cal_module.monthrange(year_val, month_num)[1])
+        start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+        end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
+    else:
         return {}
-
-    # Первый и последний день месяца
-    first_day = date_type(year, month_num, 1)
-    last_day = date_type(year, month_num, cal_module.monthrange(year, month_num)[1])
-
-    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
-    end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
 
     # Базовый запрос с учётом прав доступа
     base_query = (

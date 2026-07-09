@@ -65,43 +65,14 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         const fetchSummary = async () => {
             setLoadingSummary(true);
             try {
-                // Если режим "Год", загрузим сводку для текущего года (12 запросов)
-                // Но лучше просто загрузить сводку для текущего месяца. Если режим Год или Квартал, 
-                // мы загрузим сводку для текущего месяца, а при переключении дат она обновится.
-                // Для простоты делаем запрос для текущего месяца:
-                const ym = formatToYm(currentDate);
-                const data = await getCalendarSummary(ym);
-                
-                // Если режим квартал или год, подгрузим также соседние месяцы
-                if (mode === 'quarter') {
-                    const startMonth = Math.floor(currentDate.getMonth() / 3) * 3;
-                    let combined = { ...data };
-                    for (let i = 0; i < 3; i++) {
-                        const m = startMonth + i;
-                        if (m !== currentDate.getMonth()) {
-                            const tempDate = new Date(currentDate.getFullYear(), m, 1);
-                            const tempYm = formatToYm(tempDate);
-                            const tempData = await getCalendarSummary(tempYm);
-                            combined = { ...combined, ...tempData };
-                        }
-                    }
-                    setSummary(combined);
-                } else if (mode === 'year') {
-                    let combined = { ...data };
-                    // Чтобы не спамить 12 запросов одновременно, загрузим их параллельно
-                    const promises = Array.from({ length: 12 }, (_, i) => {
-                        if (i !== currentDate.getMonth()) {
-                            const tempDate = new Date(currentDate.getFullYear(), i, 1);
-                            return getCalendarSummary(formatToYm(tempDate));
-                        }
-                        return Promise.resolve({});
-                    });
-                    const results = await Promise.all(promises);
-                    results.forEach(res => {
-                        combined = { ...combined, ...res };
-                    });
-                    setSummary(combined);
+                if (mode === 'quarter' || mode === 'year') {
+                    // Загружаем одним запросом за весь год
+                    const data = await getCalendarSummary(undefined, currentDate.getFullYear());
+                    setSummary(data);
                 } else {
+                    // Для дня, недели, месяца грузим только за один месяц
+                    const ym = formatToYm(currentDate);
+                    const data = await getCalendarSummary(ym);
                     setSummary(data);
                 }
             } catch (err) {
