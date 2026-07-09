@@ -382,6 +382,7 @@ const ReviewPage: React.FC = () => {
                     onToggleReview={setReviewingId}
                     inlineFormRenderer={renderInlineForm}
                     onDateRangeChange={handleCalendarDateRangeChange}
+                    onClearSelection={handleClearSelection}
                 />
             );
         }

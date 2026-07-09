@@ -19,6 +19,7 @@ interface ReviewCalendarViewProps {
     inlineFormRenderer: (ot: Overtime) => React.ReactNode;
     // Callback для уведомления родительского контейнера об изменении периода дат
     onDateRangeChange: (start: string, end: string) => void;
+    onClearSelection?: () => void;
 }
 
 const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
@@ -31,6 +32,7 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
     onToggleReview,
     inlineFormRenderer,
     onDateRangeChange,
+    onClearSelection,
 }) => {
     const [mode, setMode] = useState<CalendarMode>(() => {
         return (localStorage.getItem('review_calendar_mode') as CalendarMode) || 'month';
@@ -132,13 +134,19 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         } else {
             setSelectedDateStr('');
         }
-    }, [currentDate, mode]);
+        if (onClearSelection) {
+            onClearSelection();
+        }
+    }, [currentDate, mode, onClearSelection]);
 
     const handleDayClick = (dateStr: string) => {
         if (selectedDateStr === dateStr) {
             setSelectedDateStr(''); // Повторный клик — сброс
         } else {
             setSelectedDateStr(dateStr);
+        }
+        if (onClearSelection) {
+            onClearSelection();
         }
     };
 
