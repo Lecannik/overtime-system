@@ -497,10 +497,10 @@ const DashboardPage: React.FC = () => {
       {/* Stats Overview */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '40px' }}>
         {[
-          { label: 'Часов одобрено', value: `${stats?.total_approved_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'Всего подтверждено' },
+          { label: 'Часов одобрено в этом месяце', value: `${stats?.current_month_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'В текущем месяце' },
+          { label: 'Часов одобрено в прошлом месяце', value: `${stats?.last_month_hours || 0}ч`, icon: Clock, color: 'var(--info)', sub: 'В прошлом месяце' },
           { label: 'Всего заявок', value: stats?.total_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'За всё время' },
           { label: 'Активных заявок', value: stats?.active_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
-          { label: 'Проектов', value: stats?.projects_count || '0', icon: CheckCircle, color: 'var(--info)', sub: 'Участие в проектах' },
         ].map((stat, i) => (
           <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -529,21 +529,21 @@ const DashboardPage: React.FC = () => {
                 />
                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={(value) => `${value}ч`} />
                  <RechartsTooltip
-                   contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
-                   itemStyle={{ color: 'var(--primary)' }}
-                   labelFormatter={(label) => {
-                       if (!label) return '';
-                       const parts = label.split('-');
-                       if (parts.length === 3) {
-                           return `Дата: ${parts[2]}.${parts[1]}.${parts[0]}`;
-                       }
-                       return `Дата: ${label}`;
-                   }}
-                   formatter={(value: any, name: any) => {
-                       if (name === 'hours') return [`${value} ч.`, 'Время переработки'];
-                       return [value, name];
-                   }}
-                 />
+                    contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
+                    itemStyle={{ color: 'var(--primary)' }}
+                    labelFormatter={(label) => {
+                        if (!label) return '';
+                        const parts = label.split('-');
+                        if (parts.length === 3) {
+                            return `Дата: ${parts[2]}.${parts[1]}.${parts[0]}`;
+                        }
+                        return `Дата: ${label}`;
+                    }}
+                    formatter={(value: any, name: any) => {
+                        if (name === 'hours') return [`${value} ч.`, 'Время переработки'];
+                        return [value, name];
+                    }}
+                  />
                 <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -592,21 +592,6 @@ const DashboardPage: React.FC = () => {
               ))}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Widgets Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <div className="glass-card" style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', color: 'white', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px' }}>
-          <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.8, marginBottom: '16px' }}>Текущий месяц</h4>
-          <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px' }}>{stats?.current_month_hours || 0}ч</div>
-          <p style={{ fontSize: '0.85rem', opacity: 0.9 }}>Одобренных часов за текущий месяц.</p>
-        </div>
-
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px' }}>
-          <h4 style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '16px' }}>Прошлый месяц</h4>
-          <div style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '8px', color: 'var(--text-primary)' }}>{stats?.last_month_hours || 0}ч</div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Одобренных часов за прошлый месяц.</p>
         </div>
       </div>
 
