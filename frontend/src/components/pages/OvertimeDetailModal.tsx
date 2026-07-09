@@ -1,15 +1,58 @@
-import React from 'react';
-import { X, Calendar, Clock, MapPin, Tag, FileText, User as UserIcon, ShieldCheck } from 'lucide-react';
+/* eslint-disable */
+import React, { useState } from 'react';
+import { X, Calendar, Clock, MapPin, Tag, FileText, User as UserIcon, ShieldCheck, AlertCircle } from 'lucide-react';
 import { STATUS_LABELS, formatDateTime } from '../../constants/locale';
-import type { Overtime } from '../../types';
+import type { Overtime, User } from '../../types';
 
 interface OvertimeDetailModalProps {
     overtime: Overtime;
     onClose: () => void;
     onStatusUpdate?: () => void;
+    currentUser?: User | null;
+    onReview?: (
+        id: number,
+        approved: boolean,
+        commentText?: string,
+        roleText?: string,
+        approvedHoursVal?: number
+    ) => Promise<void>;
 }
 
-const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onClose }) => {
+const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
+    overtime,
+    onClose,
+    currentUser,
+    onReview
+}) => {
+    const [asRole, setAsRole] = useState<string>('');
+    const [approvedHours, setApprovedHours] = useState<string>(Math.round(overtime.hours || 0).toString());
+    const [comment, setComment] = useState<string>('');
+    const [submitting, setSubmitting] = useState<boolean>(false);
+
+    const canReview =
+        currentUser &&
+        currentUser.role !== 'employee' &&
+        overtime.status !== 'APPROVED' &&
+        overtime.status !== 'REJECTED' &&
+        overtime.status !== 'CANCELLED';
+
+    const handleAction = async (approved: boolean) => {
+        if (!onReview) return;
+        const hoursVal = parseFloat(approvedHours);
+        if (isNaN(hoursVal) || hoursVal < 0) {
+            alert('Пожалуйста, введите корректное количество часов.');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            await onReview(overtime.id, approved, comment, asRole, hoursVal);
+        } catch (err) {
+            console.error('Modal review error:', err);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
             <div className="modal-content glass-card animate-scale-in"
@@ -46,7 +89,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <ShieldCheck size={20} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)' }} />
                             <span style={{ fontWeight: 800, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                {STATUS_LABELS[overtime.status]}
+                                {STATUS_LABELS[overtime.status] || overtime.status}
                             </span>
                         </div>
                         {overtime.approved_hours !== null && (
@@ -189,9 +232,115 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({ overtime, onC
                     )}
                 </div>
 
-                <div style={{ padding: '24px 32px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                    <button onClick={onClose} className="primary" style={{ width: 'auto', padding: '0 32px' }}>Закрыть</button>
-                </div>
+                {/* Действия согласования для руководителя */}
+                {canReview ? (
+                    <div
+                        style={{
+                            padding: '24px 32px',
+                            background: 'var(--bg-secondary)',
+                            borderTop: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '16px',
+                        }}
+                    >
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <AlertCircle size={14} /> Согласование переработки
+                        </h4>
+                        
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {currentUser?.role === 'admin' && (
+                                <select
+                                    value={asRole}
+                                    onChange={e => setAsRole(e.target.value)}
+                                    style={{
+                                        height: '40px',
+                                        padding: '0 12px',
+                                        fontSize: '0.85rem',
+                                        borderRadius: '10px',
+                                        border: '1px solid var(--border)',
+                                        background: 'var(--bg-primary)',
+                                        color: 'var(--text-primary)',
+                                        width: '150px',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    <option value="">Как Админ</option>
+                                    <option value="manager">Как Менеджер</option>
+                                    <option value="head">Как Нач. отдела</option>
+                                </select>
+                            )}
+
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={approvedHours}
+                                onChange={e => setApprovedHours(e.target.value.replace(/\D/g, ''))}
+                                placeholder="Часов..."
+                                style={{
+                                    height: '40px',
+                                    background: 'var(--bg-primary)',
+                                    width: '100px',
+                                    borderRadius: '10px',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)',
+                                    textAlign: 'center',
+                                    fontSize: '0.9rem',
+                                }}
+                                title="Утвержденное количество часов"
+                            />
+
+                            <input
+                                placeholder="Комментарий к согласованию..."
+                                value={comment}
+                                onChange={e => setComment(e.target.value)}
+                                style={{
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
+                                    background: 'var(--bg-primary)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)',
+                                    padding: '0 14px',
+                                    flex: 1,
+                                    minWidth: '200px',
+                                }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                            <button
+                                onClick={onClose}
+                                className="action-button-modern"
+                                style={{ height: '40px', padding: '0 20px', borderRadius: '10px', fontSize: '0.9rem' }}
+                                disabled={submitting}
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                onClick={() => handleAction(false)}
+                                className="primary"
+                                style={{ height: '40px', padding: '0 24px', background: 'var(--danger-gradient)', fontSize: '0.9rem', borderRadius: '10px' }}
+                                disabled={submitting}
+                            >
+                                Отклонить
+                            </button>
+                            <button
+                                onClick={() => handleAction(true)}
+                                className="primary"
+                                style={{ height: '40px', padding: '0 24px', background: 'var(--success-gradient)', fontSize: '0.9rem', borderRadius: '10px' }}
+                                disabled={submitting}
+                            >
+                                Одобрить
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ padding: '24px 32px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button onClick={onClose} className="primary" style={{ width: 'auto', padding: '0 32px', borderRadius: '10px' }}>Закрыть</button>
+                    </div>
+                )}
             </div>
         </div>
     );

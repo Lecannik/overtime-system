@@ -175,12 +175,15 @@ const ReviewTimelineView: React.FC<ReviewTimelineViewProps> = ({
 
                         {/* Карточки дня */}
                         {!isCollapsed && (
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
-                                gap: '16px',
-                                paddingLeft: '8px'
-                            }}>
+                            <div
+                                className="timeline-day-grid"
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+                                    gap: '16px',
+                                    paddingLeft: '8px'
+                                }}
+                            >
                                 {items.map(ot => (
                                     <ReviewCard
                                         key={ot.id}

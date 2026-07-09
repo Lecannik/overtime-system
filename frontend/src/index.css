@@ -22,6 +22,7 @@ a {
   --error: #ef4444;
   --danger: #ef4444;
   --danger-gradient: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  --accent-gradient: linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%);
   --warning: #f59e0b;
   --info: #3b82f6;
   --accent: #2dd4bf;
@@ -155,6 +156,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  color: white;
   transition: all 0.2s;
 }
 
@@ -501,4 +504,42 @@ input:focus {
 /* Для input, которые flatpickr делает как altInput */
 input.datetime-input-custom {
   cursor: pointer;
+}
+
+/* Адаптивность для страницы согласования */
+@media (max-width: 768px) {
+  /* Переключатель видов сверху на мобильных растягивается во всю ширину */
+  .review-view-toggle {
+    width: 100% !important;
+    justify-content: space-between;
+  }
+  .review-view-toggle button {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px !important;
+    font-size: 0.75rem !important;
+    gap: 4px !important;
+  }
+  
+  /* Макет календаря на мобильных выстраивается в один столбец */
+  .calendar-view-layout {
+    flex-direction: column !important;
+  }
+  
+  .calendar-sidebar-column {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Карточки Bulk Actions на мобильных выстраиваются вертикально */
+  .bulk-actions-overlay {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  /* Отделы в мобильной версии таймлайна сжимают карточки во всю ширину */
+  .timeline-day-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

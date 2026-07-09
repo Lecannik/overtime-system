@@ -154,6 +154,15 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         onDateRangeChange(start, end);
     }, [currentDate, mode]);
 
+    // Синхронизация выбранного дня при изменении режима или даты
+    useEffect(() => {
+        if (mode === 'day') {
+            setSelectedDateStr(formatDateToYmd(currentDate));
+        } else {
+            setSelectedDateStr('');
+        }
+    }, [currentDate, mode]);
+
     const handleDayClick = (dateStr: string) => {
         if (selectedDateStr === dateStr) {
             setSelectedDateStr(''); // Повторный клик — сброс

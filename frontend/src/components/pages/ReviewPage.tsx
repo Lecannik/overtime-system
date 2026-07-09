@@ -423,7 +423,7 @@ const ReviewPage: React.FC = () => {
             {user && <Header user={user} />}
 
             {/* Шапка страницы */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Согласование заявок</h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Поток входящих запросов на подтверждение работы.</p>
@@ -431,6 +431,79 @@ const ReviewPage: React.FC = () => {
                 <div className="badge badge-info" style={{ padding: '8px 16px', borderRadius: '12px' }}>
                     <ShieldCheck size={16} /> <span style={{ marginLeft: '8px' }}>Режим {user?.role === 'admin' ? 'Админа' : 'Проверки'}</span>
                 </div>
+            </div>
+
+            {/* Переключатель режимов представления */}
+            <div className="review-view-toggle" style={{
+                display: 'flex',
+                background: 'var(--bg-secondary)',
+                padding: '6px',
+                borderRadius: '14px',
+                border: '1px solid var(--border)',
+                marginBottom: '24px',
+                width: 'fit-content',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+            }}>
+                <button
+                    onClick={() => handleViewModeChange('table')}
+                    style={{
+                        border: 'none',
+                        background: viewMode === 'table' ? 'var(--primary-gradient)' : 'transparent',
+                        color: viewMode === 'table' ? 'white' : 'var(--text-secondary)',
+                        padding: '10px 20px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        transition: 'all 0.2s ease-in-out'
+                    }}
+                >
+                    <LayoutGrid size={16} />
+                    Таблица заявок
+                </button>
+                <button
+                    onClick={() => handleViewModeChange('calendar')}
+                    style={{
+                        border: 'none',
+                        background: viewMode === 'calendar' ? 'var(--primary-gradient)' : 'transparent',
+                        color: viewMode === 'calendar' ? 'white' : 'var(--text-secondary)',
+                        padding: '10px 20px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        transition: 'all 0.2s ease-in-out'
+                    }}
+                >
+                    <Calendar size={16} />
+                    Календарный вид
+                </button>
+                <button
+                    onClick={() => handleViewModeChange('timeline')}
+                    style={{
+                        border: 'none',
+                        background: viewMode === 'timeline' ? 'var(--primary-gradient)' : 'transparent',
+                        color: viewMode === 'timeline' ? 'white' : 'var(--text-secondary)',
+                        padding: '10px 20px',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        transition: 'all 0.2s ease-in-out'
+                    }}
+                >
+                    <AlignLeft size={16} />
+                    Временная лента
+                </button>
             </div>
 
             {/* Фильтры и переключатель видов */}
@@ -488,67 +561,6 @@ const ReviewPage: React.FC = () => {
                         )}
                     </div>
                 )}
-
-                {/* Переключатель видов */}
-                <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                    <button
-                        onClick={() => handleViewModeChange('table')}
-                        style={{
-                            border: 'none',
-                            background: viewMode === 'table' ? 'var(--primary-gradient)' : 'transparent',
-                            color: viewMode === 'table' ? 'white' : 'var(--text-secondary)',
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s'
-                        }}
-                        title="Таблица"
-                    >
-                        <LayoutGrid size={16} />
-                    </button>
-                    <button
-                        onClick={() => handleViewModeChange('calendar')}
-                        style={{
-                            border: 'none',
-                            background: viewMode === 'calendar' ? 'var(--primary-gradient)' : 'transparent',
-                            color: viewMode === 'calendar' ? 'white' : 'var(--text-secondary)',
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s'
-                        }}
-                        title="Календарь"
-                    >
-                        <Calendar size={16} />
-                    </button>
-                    <button
-                        onClick={() => handleViewModeChange('timeline')}
-                        style={{
-                            border: 'none',
-                            background: viewMode === 'timeline' ? 'var(--primary-gradient)' : 'transparent',
-                            color: viewMode === 'timeline' ? 'white' : 'var(--text-secondary)',
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s'
-                        }}
-                        title="Таймлайн"
-                    >
-                        <AlignLeft size={16} />
-                    </button>
-                </div>
             </div>
 
             {/* Массовые действия */}
@@ -600,6 +612,11 @@ const ReviewPage: React.FC = () => {
                 <OvertimeDetailModal
                     overtime={selectedOvertime}
                     onClose={() => setSelectedOvertime(null)}
+                    currentUser={user}
+                    onReview={async (id, approved, commentText, roleText, approvedHoursVal) => {
+                        await handleReview(id, approved, commentText, roleText, approvedHoursVal);
+                        setSelectedOvertime(null);
+                    }}
                     onStatusUpdate={() => {
                         setUpdateTrigger(prev => prev + 1);
                         setSelectedOvertime(null);
