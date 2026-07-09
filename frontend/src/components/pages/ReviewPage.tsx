@@ -415,7 +415,7 @@ const ReviewPage: React.FC = () => {
         );
     };
 
-    if (loading && !overtimes.length) return <LoadingOverlay />;
+    if (!user) return <LoadingOverlay />;
 
     return (
         <div className="page-container animate-fade-in">
