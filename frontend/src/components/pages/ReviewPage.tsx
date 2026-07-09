@@ -322,8 +322,10 @@ const ReviewPage: React.FC = () => {
         }
     };
 
-    // Обработка массового согласования
-    const handleBulkReview = async (approved: boolean, bulkComment: string, bulkRole: string) => {
+    // Обработка массового согласования.
+    // approvedHours приходит только когда выбрана ровно одна заявка (см. BulkActions) —
+    // для нескольких заявок часы согласования всегда берутся из исходной заявки.
+    const handleBulkReview = async (approved: boolean, bulkComment: string, bulkRole: string, approvedHours?: number) => {
         setLoading(true);
         try {
             await Promise.all(
@@ -333,7 +335,7 @@ const ReviewPage: React.FC = () => {
                         approved,
                         bulkComment || undefined,
                         bulkRole || undefined,
-                        undefined // Одобряем по исходным часам
+                        approvedHours
                     )
                 )
             );
@@ -579,6 +581,7 @@ const ReviewPage: React.FC = () => {
             {/* Массовые действия */}
             <BulkActions
                 selectedIds={selectedIds}
+                overtimes={safeOvertimes}
                 currentUser={user}
                 onClear={handleClearSelection}
                 onSubmit={handleBulkReview}

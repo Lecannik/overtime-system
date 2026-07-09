@@ -1,25 +1,50 @@
 /* eslint-disable */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, X, RotateCcw } from 'lucide-react';
-import type { User } from '../../../types';
+import type { Overtime, User } from '../../../types';
 
 interface BulkActionsProps {
     selectedIds: number[];
+    overtimes: Overtime[];
     currentUser: User | null;
     onClear: () => void;
-    onSubmit: (approved: boolean, comment: string, role: string) => void;
+    onSubmit: (approved: boolean, comment: string, role: string, approvedHours?: number) => void;
 }
 
 const BulkActions: React.FC<BulkActionsProps> = ({
     selectedIds,
+    overtimes,
     currentUser,
     onClear,
     onSubmit,
 }) => {
     const [asRole, setAsRole] = useState<string>('');
     const [comment, setComment] = useState<string>('');
+    const [approvedHours, setApprovedHours] = useState<string>('');
+
+    // Если выбрана ровно одна заявка, разрешаем скорректировать её часы перед согласованием
+    const singleOvertime = selectedIds.length === 1
+        ? overtimes.find(ot => ot.id === selectedIds[0])
+        : undefined;
+
+    useEffect(() => {
+        setApprovedHours(singleOvertime ? Math.round(singleOvertime.hours || 0).toString() : '');
+    }, [singleOvertime?.id]);
 
     if (selectedIds.length === 0) return null;
+
+    const handleSubmit = (approved: boolean) => {
+        if (singleOvertime) {
+            const hoursVal = parseFloat(approvedHours);
+            if (isNaN(hoursVal) || hoursVal < 0) {
+                alert('Пожалуйста, введите корректное количество часов.');
+                return;
+            }
+            onSubmit(approved, comment, asRole, hoursVal);
+        } else {
+            onSubmit(approved, comment, asRole);
+        }
+    };
 
     return (
         <div
@@ -116,6 +141,29 @@ const BulkActions: React.FC<BulkActionsProps> = ({
                     </select>
                 )}
 
+                {singleOvertime && (
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={approvedHours}
+                        onChange={e => setApprovedHours(e.target.value.replace(/\D/g, ''))}
+                        placeholder="Часов..."
+                        title="Утвержденное количество часов"
+                        style={{
+                            height: '36px',
+                            width: '80px',
+                            borderRadius: '8px',
+                            fontSize: '0.82rem',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border)',
+                            color: 'var(--text-primary)',
+                            padding: '0 10px',
+                            textAlign: 'center',
+                        }}
+                    />
+                )}
+
                 <input
                     placeholder="Массовый комментарий (необязательно)..."
                     value={comment}
@@ -135,7 +183,7 @@ const BulkActions: React.FC<BulkActionsProps> = ({
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button
-                        onClick={() => onSubmit(true, comment, asRole)}
+                        onClick={() => handleSubmit(true)}
                         className="primary"
                         style={{
                             height: '36px',
@@ -151,7 +199,7 @@ const BulkActions: React.FC<BulkActionsProps> = ({
                         <Check size={14} /> Одобрить
                     </button>
                     <button
-                        onClick={() => onSubmit(false, comment, asRole)}
+                        onClick={() => handleSubmit(false)}
                         className="primary"
                         style={{
                             height: '36px',
