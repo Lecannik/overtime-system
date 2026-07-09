@@ -4,9 +4,6 @@ import { CheckCircle, XCircle, Clock, Info, MapPin, Calendar } from 'lucide-reac
 import { STATUS_LABELS, formatDateTime } from '../../../constants/locale';
 import type { Overtime, User } from '../../../types';
 
-/**
- * Пропсы компонента карточки заявки на переработку.
- */
 interface ReviewCardProps {
     overtime: Overtime;
     currentUser: User | null;
@@ -16,12 +13,9 @@ interface ReviewCardProps {
     onToggleReview: (id: number | null) => void;
     onToggleSelect: (id: number) => void;
     inlineForm?: React.ReactNode;
+    isCompact?: boolean;
 }
 
-/**
- * Единая карточка заявки на переработку.
- * Переиспользуется в табличном, календарном и таймлайн-видах страницы согласования.
- */
 const ReviewCard: React.FC<ReviewCardProps> = ({
     overtime: ot,
     currentUser,
@@ -31,6 +25,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
     onToggleReview,
     onToggleSelect,
     inlineForm,
+    isCompact = false,
 }) => {
     const canReview =
         currentUser?.role === 'admin' ||
@@ -40,20 +35,89 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
         ot.status === 'APPROVED' ? 'badge-success' :
         ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'badge-danger' : 'badge-warning';
 
+    // Компактный вид (для сайдбара календаря)
+    if (isCompact) {
+        return (
+            <div
+                className="glass-card review-card-compact"
+                style={{
+                    padding: '12px',
+                    border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                    borderRadius: '12px',
+                    background: 'var(--bg-secondary)',
+                    transition: 'all 0.2s',
+                    cursor: 'pointer',
+                }}
+                onClick={() => onOpenDetail(ot)}
+            >
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', minWidth: 0, flex: 1 }}>
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                                e.stopPropagation();
+                                onToggleSelect(ot.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: '14px', height: '14px', flexShrink: 0, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                        />
+                        <div className="icon-shape" style={{ width: '28px', height: '28px', flexShrink: 0, background: 'var(--accent-gradient)', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {ot.user?.full_name?.charAt(0) ?? '?'}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {ot.user?.full_name ?? '—'}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {ot.project?.name ?? 'Внутренний'}
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+                        <span className={`badge ${statusBadgeClass}`} style={{ fontSize: '0.55rem', padding: '2px 6px' }}>
+                            {STATUS_LABELS[ot.status] ?? ot.status}
+                        </span>
+                    </div>
+                </div>
+
+                <p className="line-clamp-1" style={{ fontSize: '0.78rem', color: 'var(--text-primary)', marginBottom: '8px', fontWeight: 500 }}>
+                    {ot.description}
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={10} />
+                        {formatDateTime(ot.start_time)}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
+                        <Clock size={10} />
+                        {ot.approved_hours != null ? (
+                            <span style={{ color: 'var(--success)' }}>{ot.approved_hours}ч</span>
+                        ) : (
+                            <span>{ot.hours}ч</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Обычный вид (для Сетки и Ленты)
     return (
         <div
-            className="glass-card"
+            className="glass-card review-card-main"
             style={{
                 padding: 0,
                 overflow: 'hidden',
                 border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
                 transition: 'border-color 0.2s, box-shadow 0.2s',
-                boxShadow: isSelected ? '0 0 0 3px rgba(59,130,246,0.12)' : undefined,
+                boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.12)' : undefined,
             }}
         >
-            <div style={{ padding: '20px 20px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: 0 }}>
+            <div style={{ padding: '16px 20px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '180px' }}>
                         <input
                             type="checkbox"
                             checked={isSelected}
@@ -63,11 +127,11 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
                         <div className="icon-shape" style={{ width: '38px', height: '38px', flexShrink: 0, background: 'var(--accent-gradient)', fontSize: '0.82rem', fontWeight: 700 }}>
                             {ot.user?.full_name?.charAt(0) ?? '?'}
                         </div>
-                        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontWeight: 700, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {ot.user?.full_name ?? '—'}
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {ot.project?.name ?? 'Внутренний'}
                             </div>
                         </div>
@@ -97,7 +161,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
                     {ot.description}
                 </p>
 
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                         <Calendar size={12} />{formatDateTime(ot.start_time)}
                     </div>
@@ -114,7 +178,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
                 {isReviewing ? (
                     inlineForm
                 ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <div style={{ display: 'flex', gap: '14px' }}>
                             <div style={{ textAlign: 'center' }}>
                                 <p style={{ fontSize: '0.57rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Менеджер</p>
@@ -130,7 +194,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
                             </div>
                         </div>
                         {canReview && (
-                            <button onClick={() => onToggleReview(ot.id)} className="primary" style={{ padding: '0 14px', height: '34px', fontSize: '0.8rem' }}>
+                            <button onClick={() => onToggleReview(ot.id)} className="primary" style={{ padding: '0 14px', height: '34px', fontSize: '0.8rem', width: 'auto' }}>
                                 Рассмотреть
                             </button>
                         )}

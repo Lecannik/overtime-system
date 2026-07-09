@@ -97,9 +97,9 @@ const ReviewTimelineView: React.FC<ReviewTimelineViewProps> = ({
     };
 
     return (
-        <div style={{ position: 'relative', paddingLeft: '24px' }}>
+        <div className="timeline-container" style={{ position: 'relative', paddingLeft: '24px' }}>
             {/* Вертикальная ось таймлайна */}
-            <div style={{
+            <div className="timeline-line" style={{
                 position: 'absolute',
                 left: '7px',
                 top: '16px',
@@ -120,7 +120,7 @@ const ReviewTimelineView: React.FC<ReviewTimelineViewProps> = ({
                 return (
                     <div key={dayKey} style={{ marginBottom: '24px', position: 'relative', zIndex: 1 }}>
                         {/* Точка на оси */}
-                        <div style={{
+                        <div className="timeline-dot" style={{
                             position: 'absolute',
                             left: '-24px',
                             top: '12px',

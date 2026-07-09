@@ -280,6 +280,7 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
                                     onToggleReview={onToggleReview}
                                     onToggleSelect={onToggleSelect}
                                     inlineForm={inlineFormRenderer(ot)}
+                                    isCompact={true}
                                 />
                             ))}
 

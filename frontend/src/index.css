@@ -536,10 +536,44 @@ input.datetime-input-custom {
   .bulk-actions-overlay {
     flex-direction: column !important;
     align-items: stretch !important;
+    padding: 12px 16px !important;
+  }
+  .bulk-actions-overlay > div {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+  .bulk-actions-overlay select,
+  .bulk-actions-overlay input {
+    max-width: 100% !important;
+    width: 100% !important;
   }
   
-  /* Отделы в мобильной версии таймлайна сжимают карточки во всю ширину */
+  /* Сжимаем карточки во всю ширину */
   .timeline-day-grid {
     grid-template-columns: 1fr !important;
+    padding-left: 0 !important;
+  }
+
+  /* Скрываем ось и точки таймлайна на мобильных, чтобы не наползали на текст */
+  .timeline-container {
+    padding-left: 0 !important;
+  }
+  .timeline-line {
+    display: none !important;
+  }
+  .timeline-dot {
+    display: none !important;
+  }
+
+  /* Адаптивные стили для полей дат (фильтр дат) */
+  .glass-card div[style*="display: flex"][style*="align-items: center"][style*="flex-wrap: wrap"] {
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+  .glass-card div[style*="display: flex"][style*="align-items: center"][style*="flex-wrap: wrap"] input {
+    flex: 1 !important;
+    width: auto !important;
+    min-width: 80px !important;
   }
 }
