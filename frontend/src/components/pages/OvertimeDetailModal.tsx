@@ -338,7 +338,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     </div>
                 ) : (
                     <div style={{ padding: '24px 32px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                        <button onClick={onClose} className="primary" style={{ width: 'auto', padding: '0 32px', borderRadius: '10px' }}>Закрыть</button>
+                        <button onClick={onClose} className="primary" style={{ width: 'auto', height: '40px', padding: '0 32px', borderRadius: '10px' }}>Закрыть</button>
                     </div>
                 )}
             </div>

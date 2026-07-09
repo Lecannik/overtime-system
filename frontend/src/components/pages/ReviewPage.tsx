@@ -356,9 +356,9 @@ const ReviewPage: React.FC = () => {
         }
     };
 
-    const handleClearSelection = () => {
+    const handleClearSelection = useCallback(() => {
         setSelectedIds([]);
-    };
+    }, []);
 
     const handleCalendarDateRangeChange = (start: string, end: string) => {
         setStartDate(start);
