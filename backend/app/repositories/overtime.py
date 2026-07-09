@@ -91,10 +91,14 @@ async def get_overtimes(
     if project_id:
         filters.append(Overtime.project_id == project_id)
     if start_date:
-        start_datetime = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        from app.core.config import settings
+        tz_local = settings.tz_info
+        start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
         filters.append(Overtime.start_time >= start_datetime)
     if end_date:
-        end_datetime = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+        from app.core.config import settings
+        tz_local = settings.tz_info
+        end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
         filters.append(Overtime.start_time <= end_datetime)
 
     # Фильтр по поисковому запросу (ФИО, проект, описание, ID)
@@ -380,10 +384,12 @@ async def get_calendar_summary(
     """
     from datetime import date as date_type
     import calendar as cal_module
+    from app.core.config import settings
+    tz_local = settings.tz_info
 
     if year:
-        start_dt = datetime(year, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        end_dt = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        start_dt = datetime(year, 1, 1, 0, 0, 0).replace(tzinfo=tz_local).astimezone(timezone.utc)
+        end_dt = datetime(year, 12, 31, 23, 59, 59).replace(tzinfo=tz_local).astimezone(timezone.utc)
     elif month:
         try:
             year_val, month_num = int(month[:4]), int(month[5:7])
@@ -391,8 +397,8 @@ async def get_calendar_summary(
             return {}
         first_day = date_type(year_val, month_num, 1)
         last_day = date_type(year_val, month_num, cal_module.monthrange(year_val, month_num)[1])
-        start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
-        end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
+        start_dt = datetime.combine(first_day, datetime.min.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
+        end_dt = datetime.combine(last_day, datetime.max.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
     else:
         return {}
 
@@ -441,9 +447,7 @@ async def get_calendar_summary(
 
     for ot in overtimes:
         # Конвертируем UTC в локальную дату (ключ по дате начала)
-        start_local = ot.start_time
-        if start_local.tzinfo is not None:
-            start_local = start_local
+        start_local = ot.start_time.astimezone(tz_local)
         day_key = start_local.strftime("%Y-%m-%d")
 
         day_data = summary[day_key]
