@@ -3,8 +3,11 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
 
 logging.basicConfig(

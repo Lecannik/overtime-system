@@ -1,12 +1,15 @@
 import os
 import logging
+# pyrefly: ignore [missing-import]
 import torch
 
 # Отключаем оптимизации oneDNN/MKLDNN для предотвращения ошибки "could not create a primitive" на CPU
 torch.backends.mkldnn.enabled = False
 os.environ["DNNL_PRIMITIVE_CACHE_CAPACITY"] = "0"
 
+# pyrefly: ignore [missing-import]
 import whisper
+# pyrefly: ignore [missing-import]
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 logger = logging.getLogger(__name__)

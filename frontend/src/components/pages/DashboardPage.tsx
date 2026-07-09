@@ -622,13 +622,13 @@ const DashboardPage: React.FC = () => {
                 style={{ height: '36px', padding: '0 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)' }}
               >
                 <option value="">Все статусы</option>
-                <option value="pending">На согласовании</option>
-                <option value="head_approved">Утверждено рук.</option>
-                <option value="manager_approved">Утверждено мен.</option>
-                <option value="approved">Одобрено</option>
-                <option value="rejected">Отклонено</option>
-                <option value="cancelled">Отменено</option>
-                <option value="in_progress">В процессе</option>
+                <option value="PENDING">На согласовании</option>
+                <option value="HEAD_APPROVED">Утверждено рук.</option>
+                <option value="MANAGER_APPROVED">Утверждено мен.</option>
+                <option value="APPROVED">Одобрено</option>
+                <option value="REJECTED">Отклонено</option>
+                <option value="CANCELLED">Отменено</option>
+                <option value="IN_PROGRESS">В процессе</option>
               </select>
 
               {/* Диапазон дат */}
