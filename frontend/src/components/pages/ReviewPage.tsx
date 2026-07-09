@@ -197,7 +197,10 @@ const ReviewPage: React.FC = () => {
     }, [navigate]);
 
     // 2. Функция загрузки списка овертаймов
-    const fetchOvertimes = useCallback(async (showLoader = true) => {
+    // resetSelection=true — пользователь сам сменил фильтры/страницу/даты/вид, выбор нужно сбросить.
+    // resetSelection=false — фоновое обновление (например, событие overtime_update от другого
+    // пользователя через WebSocket): выбор сохраняем, только убираем id, которых больше нет в списке.
+    const fetchOvertimes = useCallback(async (showLoader = true, resetSelection = true) => {
         try {
             if (showLoader) {
                 setLoading(true);
@@ -219,9 +222,15 @@ const ReviewPage: React.FC = () => {
                 view: 'review'
             });
 
-            setOvertimes(ovtRes.items || []);
+            const items = ovtRes.items || [];
+            setOvertimes(items);
             setTotalPages(ovtRes.pages || 1);
-            setSelectedIds([]);
+            if (resetSelection) {
+                setSelectedIds([]);
+            } else {
+                const visibleIds = new Set(items.map((o: Overtime) => o.id));
+                setSelectedIds(prev => prev.filter(id => visibleIds.has(id)));
+            }
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
@@ -232,7 +241,7 @@ const ReviewPage: React.FC = () => {
     // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска, вида или триггера обновления (с лоадером)
     useEffect(() => {
         const init = async () => {
-            await fetchOvertimes(true);
+            await fetchOvertimes(true, true);
         };
         init();
     }, [currentPage, statusFilter, debouncedSearch, viewMode, updateTrigger, fetchOvertimes]);
@@ -240,15 +249,17 @@ const ReviewPage: React.FC = () => {
     // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
     useEffect(() => {
         const update = async () => {
-            await fetchOvertimes(false);
+            await fetchOvertimes(false, true);
         };
         update();
     }, [startDate, endDate, fetchOvertimes]);
 
-    // 5. Подписка на обновление данных овертаймов
+    // 5. Подписка на обновление данных овертаймов (например, кто-то ещё создал/согласовал заявку).
+    // Это фоновое обновление, не связанное с действиями текущего пользователя,
+    // поэтому выбор чекбоксов не сбрасываем.
     useEffect(() => {
         const handleUpdate = () => {
-            fetchOvertimes(false);
+            fetchOvertimes(false, false);
         };
         window.addEventListener('overtime_update', handleUpdate);
         return () => {

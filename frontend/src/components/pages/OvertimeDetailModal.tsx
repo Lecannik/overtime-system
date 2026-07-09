@@ -313,7 +313,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             <button
                                 onClick={onClose}
                                 className="action-button-modern"
-                                style={{ height: '40px', padding: '0 20px', borderRadius: '10px', fontSize: '0.9rem' }}
+                                style={{ width: 'auto', height: '40px', padding: '0 20px', borderRadius: '10px', fontSize: '0.9rem' }}
                                 disabled={submitting}
                             >
                                 Отмена
