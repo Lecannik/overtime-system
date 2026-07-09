@@ -48,11 +48,15 @@ const BulkActions: React.FC<BulkActionsProps> = ({
                     style={{
                         background: 'var(--primary-gradient)',
                         color: 'white',
-                        padding: '6px 12px',
+                        padding: '0 12px',
+                        height: '32px',
                         borderRadius: '8px',
                         fontWeight: 700,
                         fontSize: '0.85rem',
                         boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                     }}
                 >
                     Выбрано: {selectedIds.length}
@@ -61,6 +65,7 @@ const BulkActions: React.FC<BulkActionsProps> = ({
                     onClick={onClear}
                     className="action-button-modern"
                     style={{
+                        width: 'auto',
                         height: '32px',
                         padding: '0 12px',
                         gap: '6px',
