@@ -97,9 +97,14 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
-                            setStartTime(selectedDates[0].toISOString());
+                            setStartTime(toLocalISOString(selectedDates[0]));
                         } else {
                             setStartTime('');
+                        }
+                    },
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            setStartTime(toLocalISOString(selectedDates[0]));
                         }
                     }
                 });
@@ -131,9 +136,20 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
                                 endFpRef.current?.setDate(endDate, false);
                             }
-                            setEndTime(endDate.toISOString());
+                            setEndTime(toLocalISOString(endDate));
                         } else {
                             setEndTime('');
+                        }
+                    },
+                    onClose: (selectedDates) => {
+                        if (selectedDates[0]) {
+                            let endDate = selectedDates[0];
+                            const startVal = startFpRef.current?.selectedDates?.[0];
+                            if (startVal && endDate <= startVal) {
+                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                endFpRef.current?.setDate(endDate, false);
+                            }
+                            setEndTime(toLocalISOString(endDate));
                         }
                     }
                 });

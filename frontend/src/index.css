@@ -577,3 +577,45 @@ input.datetime-input-custom {
     min-width: 80px !important;
   }
 }
+
+/* Мобильная адаптация модальных окон (подача заявок и просмотр деталей) */
+@media (max-width: 600px) {
+  .modal-overlay {
+    padding: 0 !important;
+  }
+  .modal-content {
+    border-radius: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .modal-content > div {
+    border-radius: 0 !important;
+  }
+  
+  /* Увеличение Touch targets на телефонах */
+  button, select, input, textarea {
+    min-height: 44px;
+  }
+
+  /* Для flatpickr на телефонах, чтобы кнопки были крупнее */
+  .flatpickr-calendar {
+    font-size: 16px !important;
+  }
+
+  /* Сетка карточки и формы на мобильных */
+  .modal-content div[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  
+  /* Отступы внутри модалок на мобильных */
+  .modal-content div[style*="padding: 32px"],
+  .modal-content div[style*="padding: 24px 32px"] {
+    padding: 16px !important;
+  }
+}

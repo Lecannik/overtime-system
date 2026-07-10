@@ -78,6 +78,8 @@ const ReviewPage: React.FC = () => {
     const [overtimes, setOvertimes] = useState<Overtime[]>([]);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<User | null>(null);
+    const [selectedDeptId, setSelectedDeptId] = useState<string>('');
+    const [departments, setDepartments] = useState<any[]>([]);
     const [reviewingId, setReviewingId] = useState<number | null>(null);
     const [searchQuery, setSearchQuery] = useState(() => {
         const params = new URLSearchParams(window.location.search);
@@ -184,11 +186,17 @@ const ReviewPage: React.FC = () => {
                 const token = getAccessToken();
                 if (!token) { navigate('/login'); return; }
                 const userRes = await api.get('/auth/me');
-                if (userRes.data.role === 'employee') {
+                const curUser = userRes.data;
+                if (curUser.role === 'employee') {
                     navigate('/dashboard');
                     return;
                 }
-                setUser(userRes.data);
+                setUser(curUser);
+
+                if (curUser.role === 'admin') {
+                    const deptsRes = await api.get('/admin/departments').then(r => r.data);
+                    setDepartments(deptsRes || []);
+                }
             } catch (err) {
                 console.error('Fetch user error:', err);
             }
@@ -219,6 +227,7 @@ const ReviewPage: React.FC = () => {
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
                 search: debouncedSearch || undefined,
+                department_id: user?.role === 'admin' && selectedDeptId ? parseInt(selectedDeptId) : undefined,
                 view: 'review'
             });
 
@@ -236,23 +245,23 @@ const ReviewPage: React.FC = () => {
         } finally {
             if (showLoader) setLoading(false);
         }
-    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, viewMode, navigate]);
+    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, viewMode, navigate, user, selectedDeptId]);
 
-    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска, вида или триггера обновления (с лоадером)
+    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска, вида, отдела или триггера обновления (с лоадером)
     useEffect(() => {
         const init = async () => {
             await fetchOvertimes(true, true);
         };
         init();
-    }, [currentPage, statusFilter, debouncedSearch, viewMode, updateTrigger, fetchOvertimes]);
+    }, [currentPage, statusFilter, debouncedSearch, viewMode, updateTrigger, selectedDeptId, fetchOvertimes]);
 
-    // 4. Тихое обновление овертаймов при изменении дат (без лоадера)
+    // 4. Тихое обновление овертаймов при изменении дат или отдела (без лоадера)
     useEffect(() => {
         const update = async () => {
             await fetchOvertimes(false, true);
         };
         update();
-    }, [startDate, endDate, fetchOvertimes]);
+    }, [startDate, endDate, selectedDeptId, fetchOvertimes]);
 
     // 5. Подписка на обновление данных овертаймов (например, кто-то ещё создал/согласовал заявку).
     // Это фоновое обновление, не связанное с действиями текущего пользователя,
@@ -533,6 +542,24 @@ const ReviewPage: React.FC = () => {
                     />
                 </div>
                 
+                {/* Фильтр по отделам (только для админа) */}
+                {user?.role === 'admin' && (
+                    <div style={{ position: 'relative', minWidth: '180px' }}>
+                        <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <select
+                            value={selectedDeptId}
+                            onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
+                            style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
+                        >
+                            <option value="">Все отделы</option>
+                            {departments.map(d => (
+                                <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                    </div>
+                )}
+
                 <div style={{ position: 'relative', minWidth: '180px' }}>
                     <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <select

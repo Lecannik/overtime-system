@@ -464,12 +464,15 @@ async def update_overtime(
                 detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
             )
 
-    # Выявляем факт изменения времени
+    # Выявляем факт изменения полей
     time_changed = False
     if "start_time" in update_data and ensure_utc(update_data["start_time"]) != ensure_utc(old_start):
         time_changed = True
     if "end_time" in update_data and ensure_utc(update_data["end_time"]) != ensure_utc(old_end):
         time_changed = True
+
+    desc_changed = "description" in update_data and update_data["description"] != overtime.description
+    project_changed = "project_id" in update_data and update_data["project_id"] != overtime.project_id
 
     # Убираем таймзоны для итогового словаря
     if "start_time" in update_data: update_data["start_time"] = new_start
@@ -484,9 +487,13 @@ async def update_overtime(
         else:
             update_data["status"] = OvertimeStatus.PENDING
 
+    # Сохраняем значения для лога
+    old_desc = overtime.description
+    old_proj = overtime.project_id
+
     result = await overtime_repo.update_overtime(session, overtime, update_data)
 
-    # Запись аудит-лога при изменении времени
+    # Запись аудит-лога
     if time_changed:
         from app.repositories import audit as audit_repo
         await audit_repo.create_audit_log(
@@ -507,6 +514,25 @@ async def update_overtime(
                 "new_end": ensure_utc(result.end_time).isoformat() if result.end_time else None,
                 "old_hours": old_hours,
                 "new_hours": result.hours,
+            }
+        )
+
+    if current_user.role == UserRole.admin and (desc_changed or project_changed):
+        from app.repositories import audit as audit_repo
+        await audit_repo.create_audit_log(
+            session=session,
+            user_id=current_user.id,
+            action="ADMIN_UPDATE_OVERTIME",
+            target_type="overtime",
+            target_id=overtime.id,
+            details={
+                "updated_by": current_user.email,
+                "employee_id": overtime.user_id,
+                "overtime_status": str(overtime.status.value),
+                "changes": {
+                    "description": {"old": old_desc, "new": result.description} if desc_changed else None,
+                    "project_id": {"old": old_proj, "new": result.project_id} if project_changed else None,
+                }
             }
         )
 

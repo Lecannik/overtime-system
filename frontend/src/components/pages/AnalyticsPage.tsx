@@ -478,12 +478,14 @@ const AnalyticsPage: React.FC = () => {
                                     angle={compareBy === 'users' ? -45 : 0}
                                     textAnchor={compareBy === 'users' ? "end" : "middle"}
                                     height={compareBy === 'users' ? 80 : 30}
+                                    tickFormatter={compareBy === 'users' ? (val) => (val && val.length > 15 ? val.slice(0, 12) + '...' : val) : undefined}
                                 />
                                 <YAxis
                                     type={compareBy === 'users' ? 'number' : 'category'}
                                     dataKey={compareBy !== 'users' ? (compareBy === 'projects' ? "project_name" : "department_name") : "total_hours"}
                                     axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
                                     width={compareBy === 'users' ? 40 : 120}
+                                    tickFormatter={compareBy !== 'users' ? (val) => (val && val.length > 18 ? val.slice(0, 15) + '...' : val) : undefined}
                                 />
                                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-tertiary)', opacity: 0.4 }} />
                                 <Bar name="Часы" dataKey="total_hours" fill="var(--primary)" radius={compareBy !== 'users' ? [0, 6, 6, 0] : [6, 6, 0, 0]} barSize={compareBy === 'users' ? 30 : 16} />

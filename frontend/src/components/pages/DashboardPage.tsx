@@ -4,11 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, Clock, AlertCircle, TrendingUp,
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
-  Settings, ChevronUp, ChevronDown, RotateCcw
+  Settings, ChevronUp, ChevronDown, RotateCcw, Eye
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, getAccessToken } from '../../services/api';
+import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, exportAnalytics, getAnalyticsSummary, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
 import CreateOvertimeModal from './CreateOvertimeModal';
+import OvertimeDetailModal from './OvertimeDetailModal';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -18,7 +19,7 @@ import LoadingOverlay from '../atoms/LoadingOverlay';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
-import type { User, Overtime, UserStats } from '../../types';
+import type { User, Overtime, UserStats, Department, AnalyticsSummary } from '../../types';
 import { AxiosError } from 'axios';
 
 interface ColumnConfig {
@@ -95,6 +96,11 @@ const DashboardPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isColConfigOpen, setIsColConfigOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'my' | 'all'>('my');
+  const [companyStats, setCompanyStats] = useState<AnalyticsSummary | null>(null);
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedOvertimeDetail, setSelectedOvertimeDetail] = useState<Overtime | null>(null);
 
   // Debounce поиска — 350мс
   useEffect(() => {
@@ -279,8 +285,18 @@ const DashboardPage: React.FC = () => {
         api.get('/auth/me'),
         getMyStats()
       ]);
-      setUser(userRes.data);
+      const curUser = userRes.data;
+      setUser(curUser);
       setStats(statsRes);
+
+      if (curUser?.role === 'admin') {
+        const [deptsRes, compStatsRes] = await Promise.all([
+          api.get('/admin/departments').then(r => r.data),
+          getAnalyticsSummary()
+        ]);
+        setDepartments(deptsRes || []);
+        setCompanyStats(compStatsRes);
+      }
     } catch (err) {
       console.error('Failed to fetch user and stats:', err);
     }
@@ -292,15 +308,25 @@ const DashboardPage: React.FC = () => {
       const token = getAccessToken();
       if (!token) { navigate('/login'); return; }
 
-      const ovRes = await getMyOvertimes({ 
-        page: currentPage, 
+      const params: any = {
+        page: currentPage,
         page_size: pageSize,
         status: filterStatus || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
         search: debouncedSearch || undefined,
-        view: 'dashboard'
-      });
+      };
+
+      if (user?.role === 'admin' && activeTab === 'all') {
+        params.view = 'admin_dashboard';
+        if (selectedDeptId) {
+          params.department_id = parseInt(selectedDeptId);
+        }
+      } else {
+        params.view = 'dashboard';
+      }
+
+      const ovRes = await getMyOvertimes(params);
       setOvertimes(ovRes.items || []);
       setTotalPages(ovRes.pages || 1);
     } catch (err) {
@@ -308,7 +334,7 @@ const DashboardPage: React.FC = () => {
     } finally {
       if (showLoader) setLoading(false);
     }
-  }, [currentPage, pageSize, filterStatus, startDate, endDate, debouncedSearch, navigate]);
+  }, [currentPage, pageSize, filterStatus, startDate, endDate, debouncedSearch, navigate, user, activeTab, selectedDeptId]);
 
   // 1. Загружаем общие данные при монтировании
   useEffect(() => {
@@ -318,13 +344,13 @@ const DashboardPage: React.FC = () => {
     init();
   }, [fetchUserAndStats]);
 
-  // 2. Загрузка таблицы при смене страницы, статуса или поиска (с лоадером)
+  // 2. Загрузка таблицы при смене страницы, статуса, поиска, вкладки или отдела (с лоадером)
   useEffect(() => {
     const init = async () => {
         await fetchTableData(true);
     };
     init();
-  }, [currentPage, filterStatus, debouncedSearch, fetchTableData]);
+  }, [currentPage, filterStatus, debouncedSearch, activeTab, selectedDeptId, fetchTableData]);
 
   // 3. Загрузка таблицы при смене дат (без лоадера)
   useEffect(() => {
@@ -332,7 +358,7 @@ const DashboardPage: React.FC = () => {
         await fetchTableData(false);
     };
     update();
-  }, [startDate, endDate, fetchTableData]);
+  }, [startDate, endDate, activeTab, selectedDeptId, fetchTableData]);
 
 
 
@@ -431,6 +457,108 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleExportMonth = async (month: 'current' | 'previous') => {
+    try {
+      setLoading(true);
+      const now = new Date();
+      let startStr = '';
+      let endStr = '';
+
+      if (month === 'current') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        startStr = formatToYmd(start);
+        endStr = formatToYmd(end);
+      } else {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        startStr = formatToYmd(start);
+        endStr = formatToYmd(end);
+      }
+
+      const blob = await exportMyAnalytics({ start_date: startStr, end_date: endStr });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
+      link.setAttribute('download', `personal_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      console.error('Export month error:', err);
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      alert(axiosError.response?.data?.detail || 'Не удалось экспортировать отчет за выбранный месяц');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCompanyMonth = async (month: 'current' | 'previous') => {
+    try {
+      setLoading(true);
+      const now = new Date();
+      let startStr = '';
+      let endStr = '';
+
+      if (month === 'current') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        startStr = formatToYmd(start);
+        endStr = formatToYmd(end);
+      } else {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        startStr = formatToYmd(start);
+        endStr = formatToYmd(end);
+      }
+
+      const blob = await exportAnalytics({ start_date: startStr, end_date: endStr });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
+      link.setAttribute('download', `company_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      console.error('Export company month error:', err);
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      alert(axiosError.response?.data?.detail || 'Не удалось экспортировать отчет компании за выбранный месяц');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCompanyAll = async () => {
+    try {
+      setLoading(true);
+      const blob = await exportAnalytics();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      link.setAttribute('download', `company_report_${dateStr}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      console.error('Export company error:', err);
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте отчета компании');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredOvertimes = Array.isArray(overtimes) ? overtimes : [];
 
   /** Отсортированный массив, применяется поверх фильтра */
@@ -478,41 +606,119 @@ const DashboardPage: React.FC = () => {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
         <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>Дашборд сотрудника</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Ваша активность и статус переработок за последнее время.</p>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {activeTab === 'my' ? 'Дашборд сотрудника' : 'Сводный дашборд компании'}
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            {activeTab === 'my'
+              ? 'Ваша активность и статус переработок за последнее время.'
+              : 'Статистика и заявки всех сотрудников компании.'}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={handleExport} style={{
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={() => activeTab === 'my' ? handleExportMonth('previous') : handleExportCompanyMonth('previous')} style={{
             background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
             border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
           }} className="btn-secondary">
-            <FileDown size={18} /> ЭКСПОРТ (EXCEL)
+            <FileDown size={18} /> ЭКСПОРТ (ПРОШЛЫЙ МЕСЯЦ)
           </button>
-          <button onClick={() => setIsCreateModalOpen(true)} className="primary">
-            <Plus size={20} /> НОВАЯ ЗАЯВКА
+          <button onClick={() => activeTab === 'my' ? handleExportMonth('current') : handleExportCompanyMonth('current')} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
+          }} className="btn-secondary">
+            <FileDown size={18} /> ЭКСПОРТ (ТЕКУЩИЙ МЕСЯЦ)
           </button>
+          <button onClick={() => activeTab === 'my' ? handleExport() : handleExportCompanyAll()} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
+          }} className="btn-secondary">
+            <FileDown size={18} /> ЭКСПОРТ (ОБЩИЙ)
+          </button>
+          {activeTab === 'my' && (
+            <button onClick={() => setIsCreateModalOpen(true)} className="primary">
+              <Plus size={20} /> НОВАЯ ЗАЯВКА
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Переключатель вкладок (только для админа) */}
+      {user?.role === 'admin' && (
+        <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '12px', width: 'fit-content', border: '1px solid var(--border)', marginBottom: '32px' }}>
+          <button
+            onClick={() => { setActiveTab('my'); setCurrentPage(1); }}
+            style={{
+              padding: '8px 24px',
+              borderRadius: '8px',
+              border: 0,
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: activeTab === 'my' ? 'var(--primary-gradient)' : 'transparent',
+              color: activeTab === 'my' ? 'white' : 'var(--text-secondary)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Мои переработки
+          </button>
+          <button
+            onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+            style={{
+              padding: '8px 24px',
+              borderRadius: '8px',
+              border: 0,
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: activeTab === 'all' ? 'var(--primary-gradient)' : 'transparent',
+              color: activeTab === 'all' ? 'white' : 'var(--text-secondary)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Все сотрудники
+          </button>
+        </div>
+      )}
+
       {/* Stats Overview */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '40px' }}>
-        {[
-          { label: 'Часов одобрено в этом месяце', value: `${stats?.current_month_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'В текущем месяце' },
-          { label: 'Часов одобрено в прошлом месяце', value: `${stats?.last_month_hours || 0}ч`, icon: Clock, color: 'var(--info)', sub: 'В прошлом месяце' },
-          { label: 'Всего заявок', value: stats?.total_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'За всё время' },
-          { label: 'Активных заявок', value: stats?.active_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
-        ].map((stat, i) => (
-          <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
+        {activeTab === 'my' ? (
+          [
+            { label: 'Часов одобрено в этом месяце', value: `${stats?.current_month_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'В текущем месяце' },
+            { label: 'Часов одобрено в прошлом месяце', value: `${stats?.last_month_hours || 0}ч`, icon: Clock, color: 'var(--info)', sub: 'В прошлом месяце' },
+            { label: 'Всего заявок', value: stats?.total_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'За всё время' },
+            { label: 'Активных заявок', value: stats?.active_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
+          ].map((stat, i) => (
+            <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
+              </div>
+              <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
+                <stat.icon size={24} />
+              </div>
             </div>
-            <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
-              <stat.icon size={24} />
+          ))
+        ) : (
+          [
+            { label: 'Часов согласовано в компании', value: `${companyStats?.total_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'По всем проектам' },
+            { label: 'Всего заявок в компании', value: companyStats?.total_requests || 0, icon: TrendingUp, color: 'var(--info)', sub: 'Зарегистрировано' },
+            { label: 'Согласовано заявок', value: companyStats?.approved_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'Одобрено руководителями' },
+            { label: 'Ожидают согласования', value: companyStats?.pending_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
+          ].map((stat, i) => (
+            <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
+              </div>
+              <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
+                <stat.icon size={24} />
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Charts Section */}
@@ -598,8 +804,22 @@ const DashboardPage: React.FC = () => {
       {/* Table Card (Full Width) */}
       <div className="glass-card" style={{ padding: '0', display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
           <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <h3 style={{ fontWeight: 700 }}>Мои переработки</h3>
+            <h3 style={{ fontWeight: 700 }}>{activeTab === 'my' ? 'Мои переработки' : 'Все переработки'}</h3>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', flexGrow: 1, justifyContent: 'flex-end' }}>
+              {/* Фильтр по отделам */}
+              {user?.role === 'admin' && activeTab === 'all' && (
+                <select
+                  value={selectedDeptId}
+                  onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
+                  style={{ height: '36px', padding: '0 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)' }}
+                >
+                  <option value="">Все отделы</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                  ))}
+                </select>
+              )}
+
               {/* Фильтр по статусу */}
               <select
                 value={filterStatus}
@@ -812,6 +1032,15 @@ const DashboardPage: React.FC = () => {
                           return (
                             <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '180px', minWidth: '180px' }}>
                               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                {/* Просмотр деталей */}
+                                <button
+                                  onClick={() => setSelectedOvertimeDetail(ot)}
+                                  className="action-button-modern"
+                                  title="Просмотреть детали"
+                                  style={{ color: 'var(--primary)' }}
+                                >
+                                  <Eye size={16} />
+                                </button>
                                 {/* Кнопка восстановления для отменённых заявок */}
                                 {ot.status === 'CANCELLED' && (
                                   <button
@@ -929,6 +1158,21 @@ const DashboardPage: React.FC = () => {
           onCreated={() => {
             setIsCreateModalOpen(false);
             setEditOvertime(null);
+            const update = async () => {
+                await fetchTableData(false);
+                await fetchUserAndStats();
+            };
+            update();
+          }}
+        />
+      )}
+
+      {selectedOvertimeDetail && (
+        <OvertimeDetailModal
+          overtime={selectedOvertimeDetail}
+          currentUser={user}
+          onClose={() => setSelectedOvertimeDetail(null)}
+          onStatusUpdate={() => {
             const update = async () => {
                 await fetchTableData(false);
                 await fetchUserAndStats();

@@ -52,16 +52,16 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
             >
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', minWidth: 0, flex: 1 }}>
-                        <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                                e.stopPropagation();
-                                onToggleSelect(ot.id);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '14px', height: '14px', flexShrink: 0, cursor: 'pointer', accentColor: 'var(--primary)' }}
-                        />
+                        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                    onToggleSelect(ot.id);
+                                }}
+                                style={{ width: '14px', height: '14px', flexShrink: 0, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                            />
+                        </div>
                         <div className="icon-shape" style={{ width: '28px', height: '28px', flexShrink: 0, background: 'var(--accent-gradient)', fontSize: '0.75rem', fontWeight: 700 }}>
                             {ot.user?.full_name?.charAt(0) ?? '?'}
                         </div>
@@ -118,12 +118,14 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
             <div style={{ padding: '16px 20px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '180px' }}>
-                        <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => onToggleSelect(ot.id)}
-                            style={{ width: '15px', height: '15px', flexShrink: 0, cursor: 'pointer', accentColor: 'var(--primary)' }}
-                        />
+                        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => onToggleSelect(ot.id)}
+                                style={{ width: '15px', height: '15px', flexShrink: 0, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                            />
+                        </div>
                         <div className="icon-shape" style={{ width: '38px', height: '38px', flexShrink: 0, background: 'var(--accent-gradient)', fontSize: '0.82rem', fontWeight: 700 }}>
                             {ot.user?.full_name?.charAt(0) ?? '?'}
                         </div>

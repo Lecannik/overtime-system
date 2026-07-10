@@ -267,8 +267,8 @@ export const getReviewAnalytics = (params?: AnalyticsParams) =>
     api.get<ReviewAnalytics>('/analytics/reviews', { params }).then(r => r.data);
 export const exportAnalytics = (params?: AnalyticsParams) => 
     api.get('/analytics/export', { params, responseType: 'blob' }).then(r => r.data);
-export const exportMyAnalytics = () => 
-    api.get('/analytics/export-my', { responseType: 'blob' }).then(r => r.data);
+export const exportMyAnalytics = (params?: { start_date?: string; end_date?: string }) => 
+    api.get('/analytics/export-my', { params, responseType: 'blob' }).then(r => r.data);
 
 // --- AUDIT ---
 export const getAuditLogs = (limit = 100, offset = 0, search?: string) => 

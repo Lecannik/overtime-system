@@ -24,6 +24,7 @@ async def get_overtimes(
     current_user: User,
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
+    department_id: int | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     page: int = 1,
@@ -42,7 +43,10 @@ async def get_overtimes(
     # Ограничение видимости по ролям
     filters = []
     if current_user.role == UserRole.admin:
-        pass 
+        if view == "dashboard":
+            filters.append(Overtime.user_id == current_user.id)
+        else:
+            pass 
     elif current_user.role == UserRole.employee:
         filters.append(Overtime.user_id == current_user.id)
     elif current_user.role == UserRole.head:
@@ -90,6 +94,8 @@ async def get_overtimes(
         filters.append(Overtime.status == status)
     if project_id:
         filters.append(Overtime.project_id == project_id)
+    if department_id:
+        filters.append(User.department_id == department_id)
     if start_date:
         from app.core.config import settings
         tz_local = settings.tz_info
@@ -239,7 +245,7 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     thirty_days_ago = (now - timedelta(days=30)).date()
 
     for ot in approved_overtimes:
-        h = ot.hours
+        h = ot.approved_hours if ot.approved_hours is not None else ot.hours
         total_approved_hours += h
         project_map[ot.project.name] += h
         
