@@ -17,10 +17,17 @@ DURATION_EXPR = func.sum(
 def apply_date_filters(query, start_date: datetime | None, end_date: datetime | None):
     """
     Вспомогательная функция для применения временных рамок к любому запросу аналитики.
+
+    Если end_date приходит без указания времени (00:00:00), автоматически
+    устанавливается конец дня (23:59:59), чтобы включить все переработки,
+    начавшиеся в этот день.
     """
     if start_date:
         query = query.where(Overtime.start_time >= start_date)
     if end_date:
+        # Если время не указано (полночь), сдвигаем на конец дня
+        if end_date.hour == 0 and end_date.minute == 0 and end_date.second == 0:
+            end_date = end_date.replace(hour=23, minute=59, second=59)
         query = query.where(Overtime.start_time <= end_date)
     return query
 
