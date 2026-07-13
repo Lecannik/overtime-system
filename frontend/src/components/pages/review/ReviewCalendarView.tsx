@@ -88,44 +88,51 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
     }, [currentDate, mode]);
 
     // Синхронизация фильтра дат в родительском компоненте
+    // Если выбран конкретный день (selectedDateStr), сужаем диапазон до этого дня,
+    // чтобы бэкенд вернул детальный список заявок именно за него (в обход общего лимита пагинации за период).
     useEffect(() => {
         let start = '';
         let end = '';
 
-        if (mode === 'day') {
-            start = formatDateToYmd(currentDate);
-            end = formatDateToYmd(currentDate);
-        } else if (mode === 'week') {
-            const startOfWeek = new Date(currentDate);
-            const dayOfWeek = startOfWeek.getDay();
-            const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startOfWeek.setDate(currentDate.getDate() - distanceToMonday);
-            
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
+        if (selectedDateStr) {
+            start = selectedDateStr;
+            end = selectedDateStr;
+        } else {
+            if (mode === 'day') {
+                start = formatDateToYmd(currentDate);
+                end = formatDateToYmd(currentDate);
+            } else if (mode === 'week') {
+                const startOfWeek = new Date(currentDate);
+                const dayOfWeek = startOfWeek.getDay();
+                const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                startOfWeek.setDate(currentDate.getDate() - distanceToMonday);
+                
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
 
-            start = formatDateToYmd(startOfWeek);
-            end = formatDateToYmd(endOfWeek);
-        } else if (mode === 'month') {
-            const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-            const last = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-            start = formatDateToYmd(first);
-            end = formatDateToYmd(last);
-        } else if (mode === 'quarter') {
-            const startMonth = Math.floor(currentDate.getMonth() / 3) * 3;
-            const first = new Date(currentDate.getFullYear(), startMonth, 1);
-            const last = new Date(currentDate.getFullYear(), startMonth + 3, 0);
-            start = formatDateToYmd(first);
-            end = formatDateToYmd(last);
-        } else if (mode === 'year') {
-            const first = new Date(currentDate.getFullYear(), 0, 1);
-            const last = new Date(currentDate.getFullYear(), 12, 0);
-            start = formatDateToYmd(first);
-            end = formatDateToYmd(last);
+                start = formatDateToYmd(startOfWeek);
+                end = formatDateToYmd(endOfWeek);
+            } else if (mode === 'month') {
+                const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+                const last = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+                start = formatDateToYmd(first);
+                end = formatDateToYmd(last);
+            } else if (mode === 'quarter') {
+                const startMonth = Math.floor(currentDate.getMonth() / 3) * 3;
+                const first = new Date(currentDate.getFullYear(), startMonth, 1);
+                const last = new Date(currentDate.getFullYear(), startMonth + 3, 0);
+                start = formatDateToYmd(first);
+                end = formatDateToYmd(last);
+            } else if (mode === 'year') {
+                const first = new Date(currentDate.getFullYear(), 0, 1);
+                const last = new Date(currentDate.getFullYear(), 12, 0);
+                start = formatDateToYmd(first);
+                end = formatDateToYmd(last);
+            }
         }
 
         onDateRangeChange(start, end);
-    }, [currentDate, mode]);
+    }, [currentDate, mode, selectedDateStr]);
 
     // Синхронизация выбранного дня при изменении режима или даты
     useEffect(() => {
@@ -232,6 +239,50 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
                             selectedDateStr={selectedDateStr}
                             onDayClick={handleDayClick}
                         />
+
+                        {/* Легенда календаря */}
+                        <div style={{
+                            marginTop: '20px',
+                            paddingTop: '16px',
+                            borderTop: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                        }}>
+                            {/* Часы переработки (окраска ячеек) */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginRight: '4px' }}>
+                                    Объем переработок за день:
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.4)' }} />
+                                    <span>до 8 ч</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'rgba(245, 158, 11, 0.25)', border: '1px solid rgba(245, 158, 11, 0.5)' }} />
+                                    <span>8 – 20 ч</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'rgba(239, 68, 68, 0.3)', border: '1px solid rgba(239, 68, 68, 0.6)' }} />
+                                    <span>более 20 ч</span>
+                                </div>
+                            </div>
+                            
+                            {/* Статусы (маркеры) */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginRight: '4px' }}>
+                                    Статус заявок (точки):
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--warning)' }} />
+                                    <span>На согласовании</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)' }} />
+                                    <span>Согласовано</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

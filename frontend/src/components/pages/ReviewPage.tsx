@@ -116,6 +116,10 @@ const ReviewPage: React.FC = () => {
         setViewMode(mode);
         localStorage.setItem('review_view_mode', mode);
         setCurrentPage(1);
+        if (viewMode === 'calendar' && mode !== 'calendar') {
+            setStartDate('');
+            setEndDate('');
+        }
     };
 
     // Debounce поиска — 350мс

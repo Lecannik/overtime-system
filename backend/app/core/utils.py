@@ -48,7 +48,9 @@ def split_interval_by_days(start: datetime, end: datetime) -> list[tuple[datetim
     s_utc = ensure_utc(start)
     e_utc = ensure_utc(end)
 
+    # pyrefly: ignore [missing-attribute]
     s_local = s_utc.astimezone(tz_local)
+    # pyrefly: ignore [missing-attribute]
     e_local = e_utc.astimezone(tz_local)
 
     if e_local <= s_local:
