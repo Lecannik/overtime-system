@@ -211,6 +211,23 @@ async def generate_excel_response(
     end_date: datetime | None,
     is_personal: bool = False
 ):
+    from app.core.config import settings
+    from datetime import timezone
+    
+    # Приводим naive datetime (из query params) к UTC через часовой пояс организации,
+    # а timezone-aware datetime просто смещаем в UTC.
+    if start_date:
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=settings.tz_info).astimezone(timezone.utc)
+        else:
+            start_date = start_date.astimezone(timezone.utc)
+            
+    if end_date:
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=settings.tz_info).astimezone(timezone.utc)
+        else:
+            end_date = end_date.astimezone(timezone.utc)
+
     data = await analytics_repo.get_export_data(
         session, 
         **scope,

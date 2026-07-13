@@ -6,9 +6,18 @@ from datetime import datetime, timezone
 from app.models.user import User, UserRole
 from app.core.config import settings
 
-def format_date_with_weekday(dt: datetime) -> str:
-    """Форматирует дату в формат: день_недели. день.месяц.год (например: пн. 15.06.2026)"""
+def format_date_with_weekday(dt) -> str:
+    """
+    Форматирует дату в формат: день_недели. день.месяц.год (например: пн. 01.06.2026).
+
+    Если datetime timezone-aware (UTC), конвертирует в локальное время
+    организации перед форматированием, чтобы избежать сдвига дня.
+    Принимает datetime и date объекты.
+    """
     weekdays = ["пн.", "вт.", "ср.", "чт.", "пт.", "сб.", "вс."]
+    # Конвертируем в локальное время, если datetime содержит часовой пояс
+    if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
+        dt = dt.astimezone(settings.tz_info)
     wd = weekdays[dt.weekday()]
     return f"{wd} {dt.strftime('%d.%m.%Y')}"
 
@@ -42,9 +51,15 @@ async def generate_excel_file(
     if not data:
         return None
 
-    # Формируем строку периода для вывода на листах отчета
+    # Формируем строку периода для вывода на листах отчета.
+    # Даты start_date/end_date могут приходить как naive datetime (из FastAPI query params).
+    # Считаем naive datetime — UTC и конвертируем в локальное время для корректного отображения.
     period_str = ""
     if start_date or end_date:
+        if start_date and hasattr(start_date, 'tzinfo') and start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=timezone.utc)
+        if end_date and hasattr(end_date, 'tzinfo') and end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=timezone.utc)
         start_fmt = format_date_with_weekday(start_date) if start_date else None
         end_fmt = format_date_with_weekday(end_date) if end_date else None
         
@@ -147,18 +162,35 @@ async def generate_excel_file(
             cell.alignment = Alignment(horizontal='center')
 
         for row_idx in range(5, 5 + len(df)):
+            row_data = df.iloc[row_idx - 5]
+            proj_str = str(row_data.get('project') or '')
+            desc_str = str(row_data.get('description') or '')
+            proj_lines = max(1, len(proj_str) // 30 + 1)
+            desc_lines = max(1, len(desc_str) // 40 + 1)
+            worksheet.row_dimensions[row_idx].height = max(20, max(proj_lines, desc_lines) * 15)
+
             for col_idx in range(1, 11):
                 cell = worksheet.cell(row=row_idx, column=col_idx)
                 cell.border = border
                 if col_idx in [7, 8]:
-                    cell.alignment = Alignment(horizontal='center')
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                elif col_idx in [4, 9]:
+                    cell.alignment = Alignment(wrap_text=True, vertical='center')
+                else:
+                    cell.alignment = Alignment(vertical='center')
 
         # Ширина колонок
         for i, col_name in enumerate(df_export.columns):
             column_letter = get_column_letter(i + 1)
             column_data = df_export[col_name].astype(str)
             max_len = max(column_data.map(len).max(), len(str(col_name))) + 4
-            worksheet.column_dimensions[column_letter].width = min(max_len, 50)
+            
+            if col_name == "Проект":
+                worksheet.column_dimensions[column_letter].width = 35
+            elif col_name == "Описание":
+                worksheet.column_dimensions[column_letter].width = 45
+            else:
+                worksheet.column_dimensions[column_letter].width = min(max_len, 50)
 
         # Итого
         total_row = 5 + len(df)
@@ -320,18 +352,20 @@ async def generate_excel_file(
                     
                     # Выводим строки по проектам
                     for proj_idx, proj in enumerate(projects):
-                        ws.row_dimensions[row_idx].height = 20
+                        # Автовысота для длинных названий проектов (мин. 20)
+                        proj_lines = max(1, len(proj) // 30 + 1) if proj else 1
+                        ws.row_dimensions[row_idx].height = max(20, proj_lines * 15)
                         
                         if proj_idx == 0:
-                            ws.cell(row=row_idx, column=1, value=emp_idx).alignment = Alignment(horizontal='center')
-                            ws.cell(row=row_idx, column=2, value=emp_info["employee"])
-                            ws.cell(row=row_idx, column=3, value=emp_info["department"])
+                            ws.cell(row=row_idx, column=1, value=emp_idx).alignment = Alignment(horizontal='center', vertical='center')
+                            ws.cell(row=row_idx, column=2, value=emp_info["employee"]).alignment = Alignment(vertical='center')
+                            ws.cell(row=row_idx, column=3, value=emp_info["department"]).alignment = Alignment(vertical='center')
                         else:
                             ws.cell(row=row_idx, column=1, value="")
                             ws.cell(row=row_idx, column=2, value="")
                             ws.cell(row=row_idx, column=3, value="")
                             
-                        ws.cell(row=row_idx, column=4, value=proj)
+                        ws.cell(row=row_idx, column=4, value=proj).alignment = Alignment(wrap_text=True, vertical='center')
                         
                         proj_total = 0.0
                         for d_idx, d in enumerate(group_dates, 5):
@@ -405,7 +439,7 @@ async def generate_excel_file(
                 ws.column_dimensions["A"].width = 6
                 ws.column_dimensions["B"].width = 30
                 ws.column_dimensions["C"].width = 25
-                ws.column_dimensions["D"].width = 25
+                ws.column_dimensions["D"].width = 35
                 for col_idx in range(5, num_cols):
                     col_letter = get_column_letter(col_idx)
                     ws.column_dimensions[col_letter].width = 14
