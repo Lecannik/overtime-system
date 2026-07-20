@@ -200,11 +200,15 @@ async def get_all_stale_in_progress(session: AsyncSession, older_than_hours: int
     return list(result.scalars().all())
 
 async def update_overtime(session: AsyncSession, overtime_db: Overtime, update_data: dict) -> Overtime:
-    """Обновляет поля переработки на основе словаря данных."""
+    """Обновляет поля переработки на основе словаря данных.
+    
+    Примечание: выполняет flush() вместо commit(), чтобы вызывающий
+    сервисный слой мог дописать аудит-логи в ту же транзакцию.
+    """
     for key, value in update_data.items():
         setattr(overtime_db, key, value)
     
-    await session.commit()
+    await session.flush()
     await session.refresh(overtime_db)
     return overtime_db
 

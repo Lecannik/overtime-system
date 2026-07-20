@@ -536,6 +536,8 @@ async def update_overtime(
             }
         )
 
+    await session.commit()
+    await session.refresh(result)
     cache_clear()
     return result
 
@@ -602,6 +604,19 @@ async def auto_close_stale_sessions(session: AsyncSession) -> int:
             "Auto-closed stale session id=%d user_id=%d started=%s",
             active.id, active.user_id, original_start.isoformat()
         )
+        # Уведомляем пользователя через Telegram
+        if active.user and active.user.telegram_chat_id:
+            try:
+                from app.services.bot_service import _notify_auto_close
+                await _notify_auto_close(
+                    chat_id=active.user.telegram_chat_id,
+                    overtime_id=active.id,
+                    original_start=original_start,
+                    auto_end=auto_end,
+                    intervals_count=len(intervals),
+                )
+            except Exception:
+                logger.exception("Failed to notify user %d about auto-close", active.user_id)
         count += 1
 
     if count:

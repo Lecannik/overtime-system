@@ -2,6 +2,7 @@ import logging
 import html
 from datetime import datetime, timezone, timedelta
 import os
+import telegram.error
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 # pyrefly: ignore [missing-import]
 from telegram.ext import (
@@ -270,7 +271,10 @@ async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if not active:
-            await update.message.reply_text("Нет активной сессии.", reply_markup=start_markup())
+            await update.message.reply_text(
+                "⚠️ Нет активной сессии. Возможно, она была автоматически закрыта системой.",
+                reply_markup=start_markup()
+            )
             return ConversationHandler.END
         context.user_data['active_id'] = active.id
         context.user_data['end_time'] = datetime.now(timezone.utc)
@@ -337,6 +341,27 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_overtime_by_id(session, active_id)
+
+        if not active:
+            await update.message.reply_text(
+                "⚠️ Сессия не найдена. Возможно, она была автоматически закрыта системой.",
+                reply_markup=start_markup()
+            )
+            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+                context.user_data.pop(key, None)
+            return ConversationHandler.END
+
+        if active.status != OvertimeStatus.IN_PROGRESS:
+            await update.message.reply_text(
+                "⚠️ <b>Сессия была автоматически закрыта системой</b> из-за превышения лимита времени.\n\n"
+                "Ваш комментарий не был сохранён. Обратитесь к администратору для корректировки данных.",
+                parse_mode="HTML",
+                reply_markup=start_markup()
+            )
+            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+                context.user_data.pop(key, None)
+            return ConversationHandler.END
+
         if active:
             # Разделяем интервал по дням (00:00 локального времени)
             from app.core.utils import split_interval_by_days
@@ -528,12 +553,67 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.effective_message:
                 await update.effective_message.reply_document(
                     document=InputFile(output, filename=filename),
-                    caption=caption
+                    caption=caption,
+                    read_timeout=60,
+                    write_timeout=60,
+                )
+        except telegram.error.TimedOut:
+            logger.warning("Telegram sendDocument timed out — file may have been delivered")
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    "⚠️ Отчет был отправлен, но ответ от Telegram пришёл с задержкой. "
+                    "Проверьте, появился ли файл в чате выше."
                 )
         except Exception as e:
             logger.error(f"Error generating telegram report: {str(e)}", exc_info=True)
             if update.effective_message:
                 await update.effective_message.reply_text("❌ Произошла ошибка при генерации отчета.")
+
+
+async def _notify_auto_close(
+    chat_id: str,
+    overtime_id: int,
+    original_start: datetime,
+    auto_end: datetime,
+    intervals_count: int,
+):
+    """
+    Отправляет уведомление пользователю в Telegram при автоматическом
+    закрытии его зависшей IN_PROGRESS сессии фоновым планировщиком.
+
+    Args:
+        chat_id: Telegram chat ID пользователя.
+        overtime_id: ID закрытой записи переработки.
+        original_start: Исходное время начала сессии (UTC).
+        auto_end: Автоматическое время окончания (start + MAX_OVERTIME_HOURS, UTC).
+        intervals_count: Количество частей, на которые разбита заявка (по суткам).
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return
+
+    from telegram import Bot
+    bot = Bot(token=token)
+
+    tz_local = settings.tz_info
+    start_loc = original_start.astimezone(tz_local)
+    end_loc = auto_end.astimezone(tz_local)
+
+    parts_note = ""
+    if intervals_count > 1:
+        parts_note = f"\n📅 Заявка разделена на {intervals_count} части по суткам."
+
+    await bot.send_message(
+        chat_id=int(chat_id),
+        text=(
+            f"🚨 <b>Ваша сессия #{overtime_id} была автоматически закрыта</b>\n\n"
+            f"Начало: {start_loc.strftime('%d.%m.%Y %H:%M')}\n"
+            f"Автоматическое окончание: {end_loc.strftime('%d.%m.%Y %H:%M')}\n"
+            f"Причина: превышение лимита {settings.MAX_OVERTIME_HOURS}ч.{parts_note}\n\n"
+            "Обратитесь к администратору, если данные нужно скорректировать."
+        ),
+        parse_mode="HTML",
+    )
 
 
 def setup_bot(token: str):
