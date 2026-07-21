@@ -147,7 +147,12 @@ const DashboardPage: React.FC = () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as ColumnConfig[];
-        const merged = [...parsed];
+        // Синхронизируем label из defaultCols (на случай переименований между версиями)
+        const merged = parsed.map(savedCol => {
+          const def = defaultCols.find(d => d.id === savedCol.id);
+          return def ? { ...savedCol, label: def.label } : savedCol;
+        });
+        // Добавляем новые колонки, которых нет в сохранённом состоянии
         defaultCols.forEach(dCol => {
           if (!merged.some(c => c.id === dCol.id)) {
             const actionsIdx = merged.findIndex(c => c.id === 'actions');
@@ -1010,7 +1015,7 @@ const DashboardPage: React.FC = () => {
                         case 'approved_hours':
                           return (
                             <td key={col.id} className="table-cell">
-                              {ot.approved_hours != null
+                              {ot.status === 'APPROVED' && ot.approved_hours != null
                                 ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
                                 : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
