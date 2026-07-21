@@ -147,20 +147,20 @@ const DashboardPage: React.FC = () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as ColumnConfig[];
-        // Синхронизируем label из defaultCols (на случай переименований между версиями)
-        const merged = parsed.map(savedCol => {
-          const def = defaultCols.find(d => d.id === savedCol.id);
-          return def ? { ...savedCol, label: def.label } : savedCol;
-        });
-        // Добавляем новые колонки, которых нет в сохранённом состоянии
+        const merged = [...parsed];
         defaultCols.forEach(dCol => {
-          if (!merged.some(c => c.id === dCol.id)) {
+          const existingIdx = merged.findIndex(c => c.id === dCol.id);
+          if (existingIdx === -1) {
+            // Новая колонка — добавить перед «Действиями»
             const actionsIdx = merged.findIndex(c => c.id === 'actions');
             if (actionsIdx !== -1) {
               merged.splice(actionsIdx, 0, dCol);
             } else {
               merged.push(dCol);
             }
+          } else {
+            // Колонка уже есть — синхронизировать label (на случай переименования)
+            merged[existingIdx] = { ...merged[existingIdx], label: dCol.label };
           }
         });
         return merged;
@@ -1012,14 +1012,16 @@ const DashboardPage: React.FC = () => {
                           );
                         case 'hours':
                           return <td key={col.id} className="table-cell">{ot.hours}ч</td>;
-                        case 'approved_hours':
+                        case 'approved_hours': {
+                          const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
                           return (
                             <td key={col.id} className="table-cell">
-                              {ot.status === 'APPROVED' && ot.approved_hours != null
+                              {isApproved && ot.approved_hours != null
                                 ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
                                 : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
                           );
+                        }
                         case 'status':
                           return (
                             <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>
