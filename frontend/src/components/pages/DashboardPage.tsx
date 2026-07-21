@@ -135,7 +135,8 @@ const DashboardPage: React.FC = () => {
       { id: 'date', label: 'Дата', visible: true },
       { id: 'user', label: 'Автор', visible: true },
       { id: 'project', label: 'Проект', visible: true },
-      { id: 'hours', label: 'Часы', visible: true },
+      { id: 'hours', label: 'Часов запрошено', visible: true },
+      { id: 'approved_hours', label: 'Одобрено часов', visible: true },
       { id: 'status', label: 'Статус', visible: true },
       { id: 'description', label: 'Описание', visible: false },
       { id: 'start_time', label: 'Начало', visible: false },
@@ -1006,6 +1007,14 @@ const DashboardPage: React.FC = () => {
                           );
                         case 'hours':
                           return <td key={col.id} className="table-cell">{ot.hours}ч</td>;
+                        case 'approved_hours':
+                          return (
+                            <td key={col.id} className="table-cell">
+                              {ot.approved_hours != null
+                                ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
+                                : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                            </td>
+                          );
                         case 'status':
                           return (
                             <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>
