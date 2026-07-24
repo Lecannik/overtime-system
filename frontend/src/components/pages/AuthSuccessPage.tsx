@@ -1,23 +1,36 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setAccessToken } from '../../services/api';
+import { refreshAccessToken } from '../../services/api';
 
 const AuthSuccessPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
+    let isMounted = true;
 
-    if (token) {
-      // Сохраняем локальный JWT токен в памяти
-      setAccessToken(token);
-      // Перенаправляем на дашборд
-      navigate('/dashboard');
-    } else {
-      // Если токена нет — перенаправляем на страницу входа с ошибкой
-      navigate('/login');
-    }
+    const handleAuthSuccess = async () => {
+      try {
+        // Попытка безопасно восстановить сессию по HTTPOnly куке refresh_token,
+        // установленной сервером при редиректе с Authentik SSO
+        const token = await refreshAccessToken();
+        if (token && isMounted) {
+          navigate('/dashboard');
+        } else if (isMounted) {
+          navigate('/login');
+        }
+      } catch (err) {
+        console.error('Ошибка автоматического входа SSO:', err);
+        if (isMounted) {
+          navigate('/login');
+        }
+      }
+    };
+
+    handleAuthSuccess();
+
+    return () => {
+      isMounted = false;
+    };
   }, [navigate]);
 
   return (
@@ -52,3 +65,4 @@ const AuthSuccessPage: React.FC = () => {
 };
 
 export default AuthSuccessPage;
+

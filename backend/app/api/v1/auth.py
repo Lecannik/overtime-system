@@ -308,15 +308,16 @@ async def confirm_password_reset(
 
 # --- Authentik OIDC Integration ---
 
+import secrets
 from urllib.parse import urlencode
 import httpx
 from fastapi.responses import RedirectResponse
 from app.models.user import UserRole, UserCompany
 
 @router.get("/microsoft/login")
-async def microsoft_login_redirect():
+async def microsoft_login_redirect(response: Response):
     """
-    1. Перенаправление пользователя на авторизацию в Authentik
+    1. Генерация CSRF state токена и перенаправление пользователя на авторизацию в Authentik
     """
     if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_REDIRECT_URI]):
         raise HTTPException(
@@ -324,32 +325,56 @@ async def microsoft_login_redirect():
             detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
         )
         
+    state_token = secrets.token_urlsafe(32)
+
     params = urlencode({
         "client_id": settings.AUTHENTIK_CLIENT_ID,
         "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email profile",
         "prompt": "select_account",
+        "state": state_token,
     })
     
-    # Редиректим на эндпоинт авторизации Authentik
     auth_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/authorize/?{params}"
-    return RedirectResponse(auth_url)
+    redirect_resp = RedirectResponse(auth_url)
+    
+    # Сохраняем state в защищенную куку для проверки на этапе callback (CSRF Protection)
+    redirect_resp.set_cookie(
+        key="oauth_state",
+        value=state_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=900  # 15 минут
+    )
+    return redirect_resp
 
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(
+    request: Request,
     code: str,
+    state: str | None = None,
     session: AsyncSession = Depends(get_session)
 ):
     """
     2. Callback-обработчик OIDC от Authentik.
-    Принимает code, обменивает на JWT, авторизует или создает пользователя в локальной БД.
+    Принимает code и state, валидирует CSRF state, обменивает code на токен,
+    авторизует или создает пользователя в локальной БД, выдает HTTPOnly Cookie.
     """
     if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_CLIENT_SECRET, settings.AUTHENTIK_REDIRECT_URI]):
          raise HTTPException(
             status_code=500,
             detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
+        )
+
+    # Шаг 2.0: Валидация CSRF state токена
+    saved_state = request.cookies.get("oauth_state")
+    if not saved_state or not state or saved_state != state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недействительный или отсутствующий CSRF state токен авторизации."
         )
 
     # Шаг 2.1: Обмен authorization code на JWT токены Authentik
@@ -440,19 +465,19 @@ async def microsoft_callback(
         details={"email": user.email, "provider": "Authentik/Microsoft"}
     )
 
-    # Шаг 2.5: Генерация локального JWT-токена доступа и сессионной куки
+    # Шаг 2.5: Генерация сессионной куки (Refresh Token)
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
     
-    local_access_token = create_access_token(data={"sub": str(user.id)})
-    
-    # Перенаправляем пользователя на фронтенд-страницу успешного входа
-    # ВАЖНО: Базовый домен должен совпадать с настройками фронтенда
+    # Перенаправляем пользователя на фронтенд без sensitive данные в URL query
     frontend_url = settings.FRONTEND_BASE_URL
 
     redirect_response = RedirectResponse(
-        url=f"{frontend_url}/auth/success?token={local_access_token}"
+        url=f"{frontend_url}/auth/success"
     )
+    
+    # Очищаем одноразовую куку oauth_state
+    redirect_response.delete_cookie(key="oauth_state")
     
     # Установка сессионного токена в HTTPOnly Cookie на объекте RedirectResponse
     redirect_response.set_cookie(
@@ -460,10 +485,9 @@ async def microsoft_callback(
         value=refresh_token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        # samesite="lax" намеренно захардкожен для OIDC callback (cross-site flow),
-        # чтобы кука передавалась после редиректа с внешнего SSO-провайдера.
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
 
     return redirect_response
+
