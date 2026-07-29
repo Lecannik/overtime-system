@@ -22,7 +22,7 @@ async def notify_new_overtime(
         f"Новая заявка #{overtime.id}\n"
         f"От: {overtime.user.full_name}\n"
         f"Проект: {overtime.project.name}\n"
-        f"Часы: {overtime.hours}\n"
+        f"Запрошено часов: {overtime.hours}ч\n"
         f"Требуется решение"
     )
     
@@ -30,7 +30,7 @@ async def notify_new_overtime(
         f"🔔 <b>Новая заявка #{overtime.id}</b>\n"
         f"От: {overtime.user.full_name}\n"
         f"Проект: {overtime.project.name}\n"
-        f"Часы: {overtime.hours}\n"
+        f"⏱ <b>Запрошено часов</b>: {overtime.hours}ч\n"
         f"Требуется решение"
     )
 
@@ -95,11 +95,22 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
     else:
         time_str = f"{start_local.strftime('%d.%m %H:%M')} — ..."
 
+    # Формирование значений часов
+    approved_h = overtime.approved_hours
+    if approved_h is not None:
+        approved_h_str = f"{approved_h}ч"
+    elif overtime.status == OvertimeStatus.REJECTED:
+        approved_h_str = "0ч"
+    else:
+        approved_h_str = "-"
+
     msg_plain = (
         f"Обновление заявки #{overtime.id}\n"
         f"Статус: {status_text}\n"
         f"Проект: {overtime.project.name}\n"
-        f"Время: {time_str}"
+        f"Время: {time_str}\n"
+        f"Запрошено часов: {overtime.hours}ч\n"
+        f"Согласовано часов: {approved_h_str}"
         f"{comment_plain}"
     )
 
@@ -113,7 +124,9 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
         msg_html = (
             f"📢 <b>Обновление заявки #{overtime.id}</b>\n\n"
             f"📁 <b>Проект</b>: {overtime.project.name}\n"
-            f"⏰ <b>Время</b>: {time_str} (<b>{overtime.hours}ч</b>)\n"
+            f"⏰ <b>Время</b>: {time_str}\n"
+            f"⏱ <b>Запрошено</b>: <b>{overtime.hours}ч</b>\n"
+            f"✅ <b>Согласовано</b>: <b>{approved_h_str}</b>\n"
             f"📈 <b>Статус</b>: {status_text}\n"
             f"👤 <b>Проверил</b>: {reviewer.full_name}"
             f"{comment_block}"
