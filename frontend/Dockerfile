@@ -12,7 +12,7 @@ RUN npm run build
 FROM nginx:stable-alpine
 # Копируем статические файлы из этапа сборки
 COPY --from=build /app/dist /usr/share/nginx/html
-# Копируем минималистичный конфиг для фронтенда (чтобы работала навигация React Router)
-RUN echo 'server { listen 80; location / { root /usr/share/nginx/html; try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+# Копируем оптимизированный конфиг Nginx для SPA (no-cache для index.html, 404 для missing assets)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

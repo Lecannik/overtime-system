@@ -5,9 +5,12 @@ from sqlalchemy import pool
 
 from alembic import context
 
+import os
+from urllib.parse import quote_plus
+
 from app.core.database import Base
 from app.core.config import settings
-from app.models.user import User, RefreshToken
+from app.models.user import User, RefreshToken, UserOTP
 from app.models.organization import Department, Project
 from app.models.overtime import Overtime
 from app.models.audit import AuditLog
@@ -18,16 +21,23 @@ from app.models.notification import Notification
 # access to the values within the .ini file in use.
 config = context.config
 
-# 1. Формируем синхронную строку подключения (заменяем +asyncpg на обычный драйвер)
-# Alembic будет использовать драйвер psycopg2
-sync_url = (
-    f"postgresql://{settings.POSTGRES_USER}:"
-    f"{settings.POSTGRES_PASSWORD}@"
-    f"{settings.POSTGRES_HOST}:"
-    f"{settings.POSTGRES_PORT}/"
-    f"{settings.POSTGRES_DB}"
-)
-# 2. Подставляем эту строку в настройки Alembic на лету
+# 1. Формируем синхронную строку подключения (Alembic использует psycopg2).
+# Поддерживаем экранирование спецсимволов в пароле и fallback на DATABASE_URL.
+raw_db_url = os.getenv("DATABASE_URL")
+if raw_db_url:
+    sync_url = raw_db_url.replace("postgresql+asyncpg://", "postgresql://")
+else:
+    encoded_user = quote_plus(settings.POSTGRES_USER)
+    encoded_password = quote_plus(settings.POSTGRES_PASSWORD)
+    sync_url = (
+        f"postgresql://{encoded_user}:"
+        f"{encoded_password}@"
+        f"{settings.POSTGRES_HOST}:"
+        f"{settings.POSTGRES_PORT}/"
+        f"{settings.POSTGRES_DB}"
+    )
+
+# 2. Подставляем строку подключения в конфигурацию Alembic на лету
 config.set_main_option("sqlalchemy.url", sync_url)
 
 # Interpret the config file for Python logging.

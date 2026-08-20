@@ -105,12 +105,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Доставляем на сервер только необходимое: prod-compose и конфиг роутера.
+      # Доставляем на сервер только необходимое: prod-compose, конфиг роутера и 404.html.
       # Никакого git-репозитория и исходников на проде быть не должно.
       - name: Copy deploy files to server
         run: |
           scp -o StrictHostKeyChecking=no docker-compose.prod.yml nik@192.168.20.21:/opt/overtime/docker-compose.prod.yml
           scp -o StrictHostKeyChecking=no infra/gateway/nginx.conf nik@192.168.20.21:/opt/overtime/nginx.conf
+          scp -o StrictHostKeyChecking=no infra/gateway/404.html nik@192.168.20.21:/opt/overtime/404.html
 
       - name: Update application
         run: |
