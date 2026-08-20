@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Управление доступностью интерактивной документации Swagger UI / ReDoc (/docs, /redoc, /openapi.json).
+    # В целях информационной безопасности на продакшне документация по умолчанию отключена.
+    ENABLE_DOCS: bool = False
     SQL_ECHO: bool = False
 
     # CORS: список разрешённых источников через запятую. ОБЯЗАТЕЛЬНОЕ поле.

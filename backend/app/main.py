@@ -74,7 +74,13 @@ async def lifespan(app: FastAPI):
 
     cleanup_task.cancel()
 
-app = FastAPI(title="Overtime System", lifespan=lifespan)
+app = FastAPI(
+    title="Overtime System",
+    lifespan=lifespan,
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
+)
 
 # CORS — origins берутся из ALLOWED_ORIGINS в .env (через запятую)
 app.add_middleware(
