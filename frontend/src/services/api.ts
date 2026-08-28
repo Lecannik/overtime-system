@@ -271,8 +271,33 @@ export const exportMyAnalytics = (params?: { start_date?: string; end_date?: str
     api.get('/analytics/export-my', { params, responseType: 'blob' }).then(r => r.data);
 
 // --- AUDIT ---
-export const getAuditLogs = (limit = 100, offset = 0, search?: string) => 
-    api.get<PaginatedResponse<AuditLog>>('/audit/', { params: { limit, offset, search } }).then(r => r.data);
+export interface AuditLogParams {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    start_date?: string;
+    end_date?: string;
+    category?: string;
+}
+
+export const getAuditLogs = (params?: AuditLogParams | number, offset = 0, search?: string) => {
+    // Поддержка как объекта параметров, так и старого формата аргументов (limit, offset, search)
+    let finalParams: Record<string, unknown> = {};
+    if (typeof params === 'object' && params !== null) {
+        finalParams = { ...params };
+    } else {
+        finalParams = {
+            limit: params || 100,
+            offset: offset || 0,
+            search: search || undefined
+        };
+    }
+    return api.get<PaginatedResponse<AuditLog>>('/audit/', { params: finalParams }).then(r => r.data);
+};
+
+export const exportAuditLogs = (params?: { search?: string; start_date?: string; end_date?: string; category?: string }) => 
+    api.get('/audit/export', { params, responseType: 'blob' }).then(r => r.data);
+
 
 // --- NOTIFICATIONS ---
 export const getNotifications = () => api.get<Notification[]>('/notifications/').then(r => r.data);

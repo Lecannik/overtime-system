@@ -1,46 +1,28 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Building2, Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Briefcase, Download, X as XIcon
+    Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Download, X as XIcon
 } from 'lucide-react';
 
 import api, {
-    getUsers, getDepartments, getAdminProjects, getAuditLogs, updateUser, resetUserPassword,
+    getUsers, getDepartments, getAdminProjects, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
     updateDepartment, updateProject, getOdooStatus, getOdooProjects, importOdooProjects,
     getAccessToken, getOdooIntegrationStatus, getOdooIntegrationProjects, importOdooIntegrationProjects
 } from '../../services/api';
 
-import type { OdooProjectPreview, User, Department, Project, AuditLog, OdooIntegrationProject } from '../../types';
+import type { OdooProjectPreview, User, Department, Project, OdooIntegrationProject } from '../../types';
 import Header from '../layout/Header';
 
 import Skeleton from '../common/Skeleton';
 import ImportMSUsersModal from '../modals/ImportMSUsersModal';
 import UserModal from '../modals/UserModal';
 import ConfirmModal from '../modals/ConfirmModal';
-import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS, formatDateTime } from '../../constants/locale';
+import { DepartmentsTab } from './admin/DepartmentsTab';
+import { ProjectsTab } from './admin/ProjectsTab';
+import { AuditTab } from './admin/AuditTab';
+import { ROLE_LABELS, COMPANY_LABELS, ROLE_COLORS } from '../../constants/locale';
 import { AxiosError } from 'axios';
-
-interface AuditDetails {
-    updated_by?: string;
-    role?: string;
-    old_start?: string;
-    new_start?: string;
-    old_end?: string;
-    new_end?: string;
-    old_hours?: number;
-    new_hours?: number;
-    approved?: boolean;
-    approved_hours?: number;
-    requested_hours?: number;
-    comment?: string;
-    cancelled_by?: string;
-    previous_status?: string;
-    description?: string;
-    reason?: string;
-    original_start?: string;
-    auto_end?: string;
-}
 
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -48,7 +30,6 @@ const UsersPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
-    const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchInput, setSearchInput] = useState('');
@@ -79,9 +60,6 @@ const UsersPage: React.FC = () => {
     const [projectFormError, setProjectFormError] = useState('');
     const [projectFormLoading, setProjectFormLoading] = useState(false);
 
-    // Выбранная запись журнала аудита для подробного просмотра
-    const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLog | null>(null);
-
     // Regex для валидации формата кода проекта YYYY-NNNNN
     const PROJECT_CODE_RE = /^\d{4}-\d{5}$/;
 
@@ -94,8 +72,6 @@ const UsersPage: React.FC = () => {
     const [editProjectName, setEditProjectName] = useState('');
     const [editProjectActive, setEditProjectActive] = useState(true);
 
-    // Локальные значения лимита для number input (чтобы не дергать API на каждый символ)
-    const [localLimits, setLocalLimits] = useState<Record<number, number>>({});
 
     // ==================== Состояние Odoo-модала ====================
     const [isOdooConfigured, setIsOdooConfigured] = useState(false);
@@ -152,18 +128,8 @@ const UsersPage: React.FC = () => {
                 });
                 setUsers(res.items);
                 setTotalPages(res.pages);
-            } else if (activeTab === 'audit') {
-                const res = await getAuditLogs(pageSize, (currentPage - 1) * pageSize, searchQuery);
-                if (res.items) {
-                    setAuditLogs(res.items);
-                    setTotalPages(Math.ceil(res.total / pageSize));
-                } else {
-                    // Fallback if backend returns simple list
-                    const logs = res as unknown as AuditLog[];
-                    setAuditLogs(logs);
-                    setTotalPages(1);
-                }
             } else if (activeTab === 'departments') {
+
                 const [deptRes, userRes] = await Promise.all([
                     getDepartments(),
                     getUsers({ page_size: 1000 })
@@ -563,47 +529,49 @@ const UsersPage: React.FC = () => {
                     ))}
                 </div>
 
-                <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
-                        <div style={{ position: 'relative', flex: 1 }}>
-                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
-                            <input
-                                placeholder="Поиск..."
-                                value={searchInput}
-                                onChange={(e) => setSearchInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
+                {activeTab === 'users' && (
+                    <>
+                        <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+
+
+                            <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
+                                <div style={{ position: 'relative', flex: 1 }}>
+                                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
+                                    <input
+                                        placeholder="Поиск пользователей (ФИО, Email)..."
+                                        value={searchInput}
+                                        onChange={(e) => setSearchInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                setSearchQuery(searchInput);
+                                                setCurrentPage(1);
+                                            }
+                                        }}
+                                        style={{ paddingLeft: '40px' }}
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => {
                                         setSearchQuery(searchInput);
                                         setCurrentPage(1);
-                                    }
-                                }}
-                                style={{ paddingLeft: '40px' }}
-                            />
-                        </div>
-                        <button
-                            onClick={() => {
-                                setSearchQuery(searchInput);
-                                setCurrentPage(1);
-                            }}
-                            className="primary"
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '10px 18px',
-                                borderRadius: '10px',
-                                fontWeight: 700,
-                                fontSize: '0.85rem',
-                                whiteSpace: 'nowrap',
-                                height: '42px'
-                            }}
-                        >
-                            <Search size={15} />
-                            Найти
-                        </button>
-                    </div>
-                    {activeTab === 'users' && (
-                        <>
+                                    }}
+                                    className="primary"
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '10px 18px',
+                                        borderRadius: '10px',
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem',
+                                        whiteSpace: 'nowrap',
+                                        height: '42px'
+                                    }}
+                                >
+                                    <Search size={15} />
+                                    Найти
+                                </button>
+                            </div>
                             <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setCurrentPage(1); }} style={{ width: 'auto', flex: '1 1 150px' }}>
                                 <option value="ALL">Все роли</option>
                                 {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -612,387 +580,211 @@ const UsersPage: React.FC = () => {
                                 <option value="ALL">Все отделы</option>
                                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                             </select>
-                        </>
-                    )}
-                </div>
+                        </div>
 
-                <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-                    {activeTab === 'users' && (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="table-container" style={{ minWidth: '850px' }}>
-                                <thead>
-                                    <tr>
-                                        <th className="table-header" onClick={() => handleSort('full_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                            Пользователь {renderSortIcon('full_name')}
-                                        </th>
-                                        <th className="table-header" onClick={() => handleSort('role')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                            Роль / Компания {renderSortIcon('role')}
-                                        </th>
-                                        <th className="table-header" onClick={() => handleSort('department_id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                            Отдел {renderSortIcon('department_id')}
-                                        </th>
-                                        <th className="table-header" onClick={() => handleSort('is_active')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                            Статус {renderSortIcon('is_active')}
-                                        </th>
-                                        <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.map((u) => (
-                                        <tr key={u.id}>
-                                            <td className="table-cell">
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <div className="icon-shape" style={{ width: '36px', height: '36px', fontSize: '0.9rem', color: 'white', background: `linear-gradient(310deg, ${ROLE_COLORS[u.role] || '#2152ff'}, #21d4fd)` }}>
-                                                        {u.full_name?.charAt(0)}
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.full_name}</div>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="table-cell">
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <span className="badge badge-info" style={{ width: 'fit-content' }}>{ROLE_LABELS[u.role]}</span>
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company ?? ''] ?? u.company}</span>
-                                                </div>
-                                            </td>
-                                            <td className="table-cell">
-                                                {departments.find(d => d.id === u.department_id)?.name || '—'}
-                                            </td>
-                                            <td className="table-cell">
-                                                <div onClick={() => handleToggleStatus(u)} className={`badge ${u.is_active ? 'badge-success' : 'badge-danger'}`} style={{ cursor: 'pointer' }}>
-                                                    {u.is_active ? 'Активен' : 'Отключен'}
-                                                </div>
-                                            </td>
-                                            <td className="table-cell" style={{ textAlign: 'right' }}>
-                                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                                    <button onClick={() => handleEditUser(u)} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
-                                                    <button onClick={() => handleResetPasswordAction(u.id)} className="action-button-modern" title="Сбросить пароль"><Key size={16} /></button>
-                                                    <button onClick={() => handleDeleteAction(u.id, 'user')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
-                                                </div>
-                                            </td>
+                        <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+                            <div style={{ overflowX: 'auto' }}>
+                                <table className="table-container" style={{ minWidth: '850px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th className="table-header" onClick={() => handleSort('full_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                                Пользователь {renderSortIcon('full_name')}
+                                            </th>
+                                            <th className="table-header" onClick={() => handleSort('role')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                                Роль / Компания {renderSortIcon('role')}
+                                            </th>
+                                            <th className="table-header" onClick={() => handleSort('department_id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                                Отдел {renderSortIcon('department_id')}
+                                            </th>
+                                            <th className="table-header" onClick={() => handleSort('is_active')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                                Статус {renderSortIcon('is_active')}
+                                            </th>
+                                            <th className="table-header" style={{ textAlign: 'right' }}>Действия</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {users.map((u) => (
+                                            <tr key={u.id}>
+                                                <td className="table-cell">
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <div className="icon-shape" style={{ width: '36px', height: '36px', fontSize: '0.9rem', color: 'white', background: `linear-gradient(310deg, ${ROLE_COLORS[u.role] || '#2152ff'}, #21d4fd)` }}>
+                                                            {u.full_name?.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.full_name}</div>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="table-cell">
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <span className="badge badge-info" style={{ width: 'fit-content' }}>{ROLE_LABELS[u.role]}</span>
+                                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{COMPANY_LABELS[u.company ?? ''] ?? u.company}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="table-cell">
+                                                    {departments.find(d => d.id === u.department_id)?.name || '—'}
+                                                </td>
+                                                <td className="table-cell">
+                                                    <div onClick={() => handleToggleStatus(u)} className={`badge ${u.is_active ? 'badge-success' : 'badge-danger'}`} style={{ cursor: 'pointer' }}>
+                                                        {u.is_active ? 'Активен' : 'Отключен'}
+                                                    </div>
+                                                </td>
+                                                <td className="table-cell" style={{ textAlign: 'right' }}>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                        <button onClick={() => handleEditUser(u)} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
+                                                        <button onClick={() => handleResetPasswordAction(u.id)} className="action-button-modern" title="Сбросить пароль"><Key size={16} /></button>
+                                                        <button onClick={() => handleDeleteAction(u.id, 'user')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    )}
 
-                    {activeTab === 'departments' && (
-                        <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                            {departments.map(d => (
-                                <div key={d.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                            <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: 'var(--primary)', borderRadius: '12px', flexShrink: 0 }}><Building2 size={24} /></div>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '1.1rem', wordBreak: 'break-word' }}>{d.name}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {d.id}</div>
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                                            <button onClick={() => { setEditDeptId(d.id); setEditDeptName(d.name); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
-                                            <button onClick={() => handleDeleteAction(d.id, 'dept')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Начальник отдела</label>
-                                        <select
-                                            value={d.head_id || ''}
-                                            onChange={(e) => updateDepartment(d.id, { head_id: e.target.value ? Number(e.target.value) : null }).then(refreshData)}
-                                            style={{ padding: '8px 12px', fontSize: '0.85rem' }}
-                                        >
-                                            <option value="">Не назначен</option>
-                                            {(Array.isArray(users) ? users : []).filter(u => u.role === 'head' || u.role === 'admin').map(u => (
-                                                <option key={u.id} value={u.id}>{u.full_name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                        {totalPages > 1 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginTop: '32px', paddingBottom: '32px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Строк на странице:</span>
+                                    <select
+                                        value={pageSize}
+                                        onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                        style={{ padding: '4px 12px', width: 'auto', borderRadius: '100px', fontSize: '0.8rem', fontWeight: 600 }}
+                                    >
+                                        {[10, 20, 50, 100, 1000].map(v => (
+                                            <option key={v} value={v}>{v === 1000 ? 'Все' : v}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            ))}
-                        </div>
-                    )}
 
-                    {activeTab === 'projects' && (
-                        <div style={{ padding: '16px 24px 0', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                            {isOdooConfigured && (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="secondary" style={{ padding: '6px 16px' }}>Назад</button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 16px', fontWeight: 700, fontSize: '0.9rem' }}>{currentPage} / {totalPages}</div>
+                                    <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="secondary" style={{ padding: '6px 16px' }}>Далее</button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {activeTab === 'departments' && (
+                    <>
+                        <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
+                                <div style={{ position: 'relative', flex: 1 }}>
+                                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
+                                    <input
+                                        placeholder="Поиск отделов (название, руководитель, ID)..."
+                                        value={searchInput}
+                                        onChange={(e) => setSearchInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                setSearchQuery(searchInput);
+                                            }
+                                        }}
+                                        style={{ paddingLeft: '40px' }}
+                                    />
+                                </div>
                                 <button
-                                    onClick={handleOpenOdooModal}
-                                    className="secondary"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', color: 'var(--accent)', border: '1px solid var(--accent)', padding: '10px 20px', fontWeight: 700 }}
-                                >
-                                    <Download size={16} />
-                                    Импорт из Odoo CRM (XML-RPC)
-                                </button>
-                            )}
-                            {isOdooIntConfigured && (
-                                <button
-                                    onClick={handleOpenOdooIntModal}
+                                    onClick={() => setSearchQuery(searchInput)}
                                     className="primary"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '12px', padding: '10px 20px', fontWeight: 700 }}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '10px 18px',
+                                        borderRadius: '10px',
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem',
+                                        whiteSpace: 'nowrap',
+                                        height: '42px'
+                                    }}
                                 >
-                                    <Globe size={16} />
-                                    Импорт из Odoo (API)
+                                    <Search size={15} />
+                                    Найти
                                 </button>
-                            )}
+                            </div>
                         </div>
-                    )}
 
-                    {activeTab === 'projects' && (
-                        <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                            {projects.map(p => (
-                                <div key={p.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                            <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--bg-tertiary)', color: p.is_active ? 'var(--info)' : 'var(--text-muted)', borderRadius: '12px', flexShrink: 0 }}><Briefcase size={24} /></div>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '1.1rem', wordBreak: 'break-word', color: p.is_active ? 'var(--text-primary)' : 'var(--text-muted)' }}>{p.name}</div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'monospace', letterSpacing: '0.05em', userSelect: 'all', cursor: 'default' }} title="Номер проекта нельзя изменить после создания">{p.code || '—'}</span>
-                                                    <span
-                                                        onClick={() => updateProject(p.id, { is_active: !p.is_active }).then(refreshData)}
-                                                        className={`badge ${p.is_active ? 'badge-success' : 'badge-danger'}`}
-                                                        style={{ cursor: 'pointer', fontSize: '0.65rem', padding: '2px 8px', lineHeight: 'normal' }}
-                                                        title="Нажмите, чтобы изменить статус проекта"
-                                                    >
-                                                        {p.is_active ? 'Активен' : 'Архив'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                                            <button onClick={() => { setEditProjectId(p.id); setEditProjectName(p.name); setEditProjectActive(p.is_active ?? true); }} className="action-button-modern" title="Редактировать"><Edit2 size={16} /></button>
-                                            <button onClick={() => handleDeleteAction(p.id, 'project')} className="action-button-modern delete" title="Удалить"><Trash2 size={16} /></button>
-                                        </div>
-                                    </div>
+                        <DepartmentsTab
+                            departments={departments}
+                            users={users}
+                            searchQuery={searchQuery}
+                            onRefresh={refreshData}
+                            onEdit={(d) => { setEditDeptId(d.id); setEditDeptName(d.name); }}
+                            onDelete={(id) => handleDeleteAction(id, 'dept')}
+                            onAdd={handleAdd}
+                        />
+                    </>
+                )}
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
-                                        <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label style={{ fontSize: '0.7rem', textTransform: 'uppercase' }}>Менеджер проекта</label>
-                                            <select
-                                                value={p.manager_id || ''}
-                                                onChange={(e) => updateProject(p.id, { manager_id: e.target.value ? Number(e.target.value) : null }).then(refreshData)}
-                                                style={{ padding: '8px 12px', fontSize: '0.85rem' }}
-                                            >
-                                                <option value="">Не назначен</option>
-                                                {(Array.isArray(users) ? users : []).filter(u => u.role === 'manager' || u.role === 'admin').map(u => (
-                                                    <option key={u.id} value={u.id}>{u.full_name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label style={{ fontSize: '0.7rem', textTransform: 'uppercase' }}>Лимит (ч/нед)</label>
-                                            <input
-                                                type="number"
-                                                value={localLimits[p.id] ?? p.weekly_limit}
-                                                onChange={e => setLocalLimits(prev => ({ ...prev, [p.id]: Number(e.target.value) }))}
-                                                onBlur={async e => {
-                                                    const val = Number(e.target.value);
-                                                    if (val !== p.weekly_limit && val > 0) {
-                                                        await updateProject(p.id, { weekly_limit: val });
-                                                        refreshData();
-                                                    }
-                                                }}
-                                                style={{ padding: '8px 12px', fontSize: '0.85rem' }}
-                                            />
-                                        </div>
-                                    </div>
+                {activeTab === 'projects' && (
+                    <>
+                        <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
+                                <div style={{ position: 'relative', flex: 1 }}>
+                                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
+                                    <input
+                                        placeholder="Поиск проектов (номер проекта, название, менеджер)..."
+                                        value={searchInput}
+                                        onChange={(e) => setSearchInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                setSearchQuery(searchInput);
+                                            }
+                                        }}
+                                        style={{ paddingLeft: '40px' }}
+                                    />
                                 </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {activeTab === 'audit' && (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="table-container" style={{ minWidth: '700px' }}>
-                                <thead>
-                                    <tr>
-                                        <th className="table-header">Дата</th>
-                                        <th className="table-header">Кто</th>
-                                        <th className="table-header">Действие</th>
-                                        <th className="table-header">Объект</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {auditLogs.map((log) => (
-                                        <tr key={log.id}>
-                                            <td className="table-cell" style={{ fontSize: '0.8rem' }}>{formatDateTime(log.timestamp)}</td>
-                                            <td className="table-cell" style={{ fontWeight: 600 }}>{log.user?.full_name || 'System'}</td>
-                                            <td className="table-cell"><span className="badge badge-info">{log.action}</span></td>
-                                            <td className="table-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{log.target_type} ({log.target_id})</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-
-                {totalPages > 1 && (activeTab === 'users' || activeTab === 'audit') && (
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginTop: '32px', paddingBottom: '32px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Строк на странице:</span>
-                            <select
-                                value={pageSize}
-                                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                                style={{ padding: '4px 12px', width: 'auto', borderRadius: '100px', fontSize: '0.8rem', fontWeight: 600 }}
-                            >
-                                {[10, 20, 50, 100, 1000].map(v => (
-                                    <option key={v} value={v}>{v === 1000 ? 'Все' : v}</option>
-                                ))}
-                            </select>
+                                <button
+                                    onClick={() => setSearchQuery(searchInput)}
+                                    className="primary"
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '10px 18px',
+                                        borderRadius: '10px',
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem',
+                                        whiteSpace: 'nowrap',
+                                        height: '42px'
+                                    }}
+                                >
+                                    <Search size={15} />
+                                    Найти
+                                </button>
+                            </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="secondary" style={{ padding: '6px 16px' }}>Назад</button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 16px', fontWeight: 700, fontSize: '0.9rem' }}>{currentPage} / {totalPages}</div>
-                            <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="secondary" style={{ padding: '6px 16px' }}>Далее</button>
-                        </div>
-                    </div>
+                        <ProjectsTab
+                            projects={projects}
+                            users={users}
+                            searchQuery={searchQuery}
+                            isOdooConfigured={isOdooConfigured}
+                            isOdooIntConfigured={isOdooIntConfigured}
+                            onOpenOdooModal={handleOpenOdooModal}
+                            onOpenOdooIntModal={handleOpenOdooIntModal}
+                            onOpenAddProjectModal={handleAdd}
+                            onEdit={(p) => { setEditProjectId(p.id); setEditProjectName(p.name); setEditProjectActive(p.is_active ?? true); }}
+                            onDelete={(id) => handleDeleteAction(id, 'project')}
+                            onRefresh={refreshData}
+                        />
+                    </>
+                )}
+
+                {activeTab === 'audit' && (
+                    <AuditTab
+                        searchQuery={searchQuery}
+                        onSearchChange={(q) => {
+                            setSearchQuery(q);
+                            setSearchInput(q);
+                        }}
+                    />
                 )}
             </div>
-
-            {/* Модал детального просмотра лога аудита */}
-            {selectedAuditLog && (() => {
-                const details = selectedAuditLog.details as unknown as AuditDetails;
-                return (
-                    <div style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        zIndex: 1000, backdropFilter: 'blur(4px)'
-                    }}>
-                        <div className="glass-card" style={{ width: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Детали лога аудита</h3>
-                                <button onClick={() => setSelectedAuditLog(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                <div>
-                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Дата и время: </strong>
-                                    <span style={{ fontSize: '0.9rem' }}>{formatDateTime(selectedAuditLog.timestamp)}</span>
-                                </div>
-                                <div>
-                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Кто выполнил: </strong>
-                                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{selectedAuditLog.user?.full_name || 'Система'}</span>
-                                </div>
-                                <div>
-                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Действие: </strong>
-                                    <span className="badge badge-info">{selectedAuditLog.action}</span>
-                                </div>
-                                <div>
-                                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Объект: </strong>
-                                    <span style={{ fontSize: '0.9rem' }}>{selectedAuditLog.target_type} (ID: {selectedAuditLog.target_id})</span>
-                                </div>
-
-                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
-                                    <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700 }}>Подробные данные</h4>
-
-                                    {selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' && details && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                                Изменение параметров времени заявки пользователем <strong>{details.updated_by}</strong> ({details.role}).
-                                            </div>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                                <thead>
-                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Параметр</th>
-                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Было</th>
-                                                        <th style={{ textAlign: 'left', padding: '8px 0', color: 'var(--text-secondary)' }}>Стало</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Начало</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_start ? formatDateTime(details.old_start) : '-'}</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_start ? formatDateTime(details.new_start) : '-'}</td>
-                                                    </tr>
-                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Окончание</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_end ? formatDateTime(details.old_end) : '-'}</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_end ? formatDateTime(details.new_end) : '-'}</td>
-                                                    </tr>
-                                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <td style={{ padding: '8px 0', fontWeight: 600 }}>Часы (округленные)</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--danger)' }}>{details.old_hours} ч.</td>
-                                                        <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>{details.new_hours} ч.</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-
-                                    {selectedAuditLog.action.startsWith('REVIEW_') && details && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                            <div>
-                                                <strong>Согласовано: </strong>
-                                                <span style={{ fontWeight: 600, color: details.approved ? 'var(--success)' : 'var(--danger)' }}>
-                                                    {details.approved ? 'Да' : 'Нет'}
-                                                </span>
-                                            </div>
-                                            {details.approved_hours !== undefined && (
-                                                <div>
-                                                    <strong>Согласованные часы: </strong>
-                                                    <span>{details.approved_hours} ч. (запрошено было: {details.requested_hours} ч.)</span>
-                                                </div>
-                                            )}
-                                            {details.comment && (
-                                                <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid var(--primary)', marginTop: '8px' }}>
-                                                    <strong>Комментарий: </strong>
-                                                    <span style={{ fontStyle: 'italic' }}>{details.comment}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {selectedAuditLog.action === 'CANCEL_OVERTIME' && details && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                            <div><strong>Инициатор отмены: </strong><span>{details.cancelled_by}</span></div>
-                                            <div><strong>Предыдущий статус: </strong><span>{details.previous_status}</span></div>
-                                            {details.description && <div><strong>Описание переработки: </strong><span>{details.description}</span></div>}
-                                        </div>
-                                    )}
-
-                                    {selectedAuditLog.action === 'AUTO_CLOSE_STALE' && details && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                                            <div><strong>Причина автозакрытия: </strong><span>{details.reason}</span></div>
-                                            <div><strong>Время старта: </strong><span>{details.original_start ? formatDateTime(details.original_start) : '-'}</span></div>
-                                            <div><strong>Авто-завершение: </strong><span>{details.auto_end ? formatDateTime(details.auto_end) : '-'}</span></div>
-                                        </div>
-                                    )}
-
-                                    {!(selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && details && (
-                                        <pre style={{
-                                            background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px',
-                                            overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', margin: 0
-                                        }}>
-                                            {JSON.stringify(details, null, 2)}
-                                        </pre>
-                                    )}
-
-                                    {details && (selectedAuditLog.action === 'UPDATE_OVERTIME_TIME' || selectedAuditLog.action.startsWith('REVIEW_') || selectedAuditLog.action === 'CANCEL_OVERTIME' || selectedAuditLog.action === 'AUTO_CLOSE_STALE') && (
-                                        <details style={{ marginTop: '16px' }}>
-                                            <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Показать сырые данные (JSON)</summary>
-                                            <pre style={{
-                                                background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px',
-                                                overflowX: 'auto', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '8px', margin: 0
-                                            }}>
-                                                {JSON.stringify(details, null, 2)}
-                                            </pre>
-                                        </details>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                                <button className="primary" onClick={() => setSelectedAuditLog(null)} style={{ padding: '8px 24px' }}>Закрыть</button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
 
             {/* Модал создания проекта с валидацией формата кода */}
             {isProjectModalOpen && (
