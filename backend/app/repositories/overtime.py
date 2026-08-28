@@ -50,22 +50,28 @@ async def get_overtimes(
     elif current_user.role == UserRole.employee:
         filters.append(Overtime.user_id == current_user.id)
     elif current_user.role == UserRole.head:
+        my_depts = select(Department.id).where(Department.head_id == current_user.id)
         if view == "review":
-            # На странице согласования видит только свой отдел (где является начальником)
-            my_depts = select(Department.id).where(Department.head_id == current_user.id)
-            filters.append(User.department_id.in_(my_depts))
+            # На странице согласования видит заявки своего отдела ИЛИ заявки по проектам, где он является менеджером
+            filters.append(
+                or_(
+                    User.department_id.in_(my_depts),
+                    Project.manager_id == current_user.id
+                )
+            )
         elif view == "dashboard":
             # На главной странице видит только свои заявки
             filters.append(Overtime.user_id == current_user.id)
         else:
-            # Legacy fallback: свои + подчиненные
-            my_depts = select(Department.id).where(Department.head_id == current_user.id)
+            # Legacy fallback: свои + подчиненные + курируемые проекты
             filters.append(
                 or_(
                     Overtime.user_id == current_user.id,
-                    User.department_id.in_(my_depts)
+                    User.department_id.in_(my_depts),
+                    Project.manager_id == current_user.id
                 )
             )
+
     elif current_user.role == UserRole.manager:
         if view == "review":
             # На странице согласования видит только заявки по своим проектам
@@ -433,7 +439,13 @@ async def get_calendar_summary(
         role_filters.append(Overtime.user_id == current_user.id)
     elif current_user.role == UserRole.head:
         my_depts = select(Department.id).where(Department.head_id == current_user.id)
-        role_filters.append(User.department_id.in_(my_depts))
+        role_filters.append(
+            or_(
+                User.department_id.in_(my_depts),
+                Project.manager_id == current_user.id
+            )
+        )
+
     elif current_user.role == UserRole.manager:
         role_filters.append(Project.manager_id == current_user.id)
 

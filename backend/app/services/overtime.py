@@ -201,7 +201,7 @@ async def review_overtime(
             overtime.manager_approved = review.approved
             overtime.manager_comment = review.comment
         elif acting_role == UserRole.head:
-            # Проверяем, что это начальник отдела сотрудника, создавшего заявку
+            # Проверяем, является ли пользователь начальником отдела сотрудника
             is_their_head = False
             if overtime.user.department_id:
                 dept_res = await session.execute(
@@ -211,19 +211,40 @@ async def review_overtime(
                 if dept and dept.head_id == current_user.id:
                     is_their_head = True
 
+            # Проверяем, является ли пользователь менеджером этого проекта
+            is_project_manager = (
+                overtime.project.manager_id is not None
+                and overtime.project.manager_id == current_user.id
+            )
+
             if (
                 current_user.role != UserRole.admin
                 and not is_their_head
                 and overtime.user.department_id != current_user.department_id
+                and not is_project_manager
             ):
                 raise HTTPException(
                     status_code=403,
-                    detail="Вы не являетесь начальником отдела этого сотрудника"
+                    detail="Вы не являетесь ни начальником отдела этого сотрудника, ни менеджером проекта"
                 )
-            overtime.head_approved = review.approved
-            overtime.head_comment = review.comment
+
+            if is_their_head and is_project_manager:
+                # Начальник отдела сам же ведет этот проект: утверждаем обе роли
+                overtime.head_approved = review.approved
+                overtime.head_comment = review.comment
+                overtime.manager_approved = review.approved
+                overtime.manager_comment = review.comment
+            elif is_their_head or (overtime.user.department_id == current_user.department_id and current_user.role != UserRole.admin):
+                # Согласование со стороны начальника отдела
+                overtime.head_approved = review.approved
+                overtime.head_comment = review.comment
+            else:
+                # Согласование со стороны менеджера проекта (для сотрудника из другого отдела)
+                overtime.manager_approved = review.approved
+                overtime.manager_comment = review.comment
         else:
             raise HTTPException(status_code=403, detail="У вас нет прав для этого действия")
+
 
     # Сохраняем переданные часы (если они есть в решении)
     if review.approved_hours is not None:

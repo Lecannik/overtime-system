@@ -94,10 +94,13 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
         return map;
     }, [users]);
 
-    // Кандидаты в менеджеры проектов (manager / admin)
+    // Кандидаты в менеджеры проектов (manager / head / admin)
     const managerCandidates = useMemo(() => {
-        return (Array.isArray(users) ? users : []).filter(u => u.role === 'manager' || u.role === 'admin');
+        return (Array.isArray(users) ? users : []).filter(
+            u => u.role === 'manager' || u.role === 'head' || u.role === 'admin'
+        );
     }, [users]);
+
 
     // Фильтрация и сортировка проектов
     const processedProjects = useMemo(() => {
