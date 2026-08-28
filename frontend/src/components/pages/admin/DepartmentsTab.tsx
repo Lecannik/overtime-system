@@ -214,8 +214,10 @@ export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <select
                         value={headFilter}
-                        onChange={e => setHeadFilter(e.target.value as any)}
+                        onChange={e => setHeadFilter(e.target.value as 'ALL' | 'WITH_HEAD' | 'WITHOUT_HEAD')}
                         style={{
+
+
                             padding: '8px 16px',
                             fontSize: '0.85rem',
                             borderRadius: '10px',

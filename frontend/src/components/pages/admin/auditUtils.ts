@@ -222,7 +222,7 @@ export const getActionMeta = (action: string): ActionMeta => {
 };
 
 /** Формирование краткого понятного описания изменений в одну строку */
-export const formatActionSummary = (action: string, details?: Record<string, any> | null): string => {
+export const formatActionSummary = (action: string, details?: Record<string, unknown> | null): string => {
     if (!details || typeof details !== 'object') {
         return '—';
     }
@@ -231,7 +231,7 @@ export const formatActionSummary = (action: string, details?: Record<string, any
         const oldH = details.old_hours;
         const newH = details.new_hours;
         if (oldH !== undefined && newH !== undefined) {
-            return `Часы: ${oldH} ч. → ${newH} ч. (${details.updated_by || 'автор'})`;
+            return `Часы: ${String(oldH)} ч. → ${String(newH)} ч. (${String(details.updated_by || 'автор')})`;
         }
         return 'Изменение временных параметров заявки';
     }
@@ -242,53 +242,54 @@ export const formatActionSummary = (action: string, details?: Record<string, any
         const comment = details.comment;
         let res = approved ? `Одобрено` : `Отклонено`;
         if (appH !== undefined) {
-            res += ` (${appH} ч.)`;
+            res += ` (${String(appH)} ч.)`;
         }
         if (comment) {
-            res += ` • «${comment}»`;
+            res += ` • «${String(comment)}»`;
         }
         return res;
     }
 
     if (action === 'CANCEL_OVERTIME') {
-        return `Отменено (${details.cancelled_by || 'пользователем'})${details.description ? `: «${details.description}»` : ''}`;
+        return `Отменено (${String(details.cancelled_by || 'пользователем')})${details.description ? `: «${String(details.description)}»` : ''}`;
     }
 
     if (action === 'AUTO_CLOSE_STALE') {
-        return `Причина: ${details.reason || 'Истек лимит времени'}`;
+        return `Причина: ${String(details.reason || 'Истек лимит времени')}`;
     }
 
     if (action === 'CREATE_USER' || action === 'UPDATE_USER') {
         const parts = [];
-        if (details.full_name) parts.push(`ФИО: ${details.full_name}`);
-        if (details.role) parts.push(`Роль: ${details.role}`);
+        if (details.full_name) parts.push(`ФИО: ${String(details.full_name)}`);
+        if (details.role) parts.push(`Роль: ${String(details.role)}`);
         if (details.is_active !== undefined) parts.push(`Активен: ${details.is_active ? 'Да' : 'Нет'}`);
         return parts.join(', ') || 'Обновление данных пользователя';
     }
 
     if (action === 'CREATE_DEPT' || action === 'UPDATE_DEPT') {
-        if (details.name) return `Отдел: ${details.name}`;
-        if (details.head_id !== undefined) return `Руководитель ID: ${details.head_id || 'Снят'}`;
+        if (details.name) return `Отдел: ${String(details.name)}`;
+        if (details.head_id !== undefined) return `Руководитель ID: ${String(details.head_id || 'Снят')}`;
         return 'Изменение параметров отдела';
     }
 
     if (action === 'CREATE_PROJECT' || action === 'UPDATE_PROJECT') {
         const parts = [];
-        if (details.name) parts.push(`Проект: ${details.name}`);
-        if (details.code) parts.push(`Код: ${details.code}`);
-        if (details.weekly_limit) parts.push(`Лимит: ${details.weekly_limit} ч/нед`);
+        if (details.name) parts.push(`Проект: ${String(details.name)}`);
+        if (details.code) parts.push(`Код: ${String(details.code)}`);
+        if (details.weekly_limit) parts.push(`Лимит: ${String(details.weekly_limit)} ч/нед`);
         return parts.join(', ') || 'Изменение проекта';
     }
 
     if (action.includes('IMPORT_ODOO')) {
-        return `Импортировано: ${details.imported ?? 0}, Пропущено: ${details.skipped ?? 0}`;
+        return `Импортировано: ${String(details.imported ?? 0)}, Пропущено: ${String(details.skipped ?? 0)}`;
     }
 
     // Если обычный json
-    const entries = Object.entries(details).filter(([_, v]) => v !== null && v !== undefined && v !== '');
+    const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
     if (entries.length > 0) {
-        return entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).slice(0, 2).join(', ');
+        return entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).slice(0, 2).join(', ');
     }
 
     return '—';
 };
+

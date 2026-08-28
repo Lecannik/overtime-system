@@ -321,8 +321,10 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
             >
                 <select
                     value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value as any)}
+                    onChange={e => setStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'ARCHIVED')}
                     style={{
+
+
                         padding: '8px 16px',
                         fontSize: '0.85rem',
                         borderRadius: '10px',

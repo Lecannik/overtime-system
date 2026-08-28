@@ -55,14 +55,16 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
 
     // Локальный поисковый инпут
     const [searchInput, setSearchInput] = useState(searchQuery);
+    const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
+
+    // Синхронизация локального инпута с внешним searchQuery без эффекта
+    if (searchQuery !== prevSearchQuery) {
+        setPrevSearchQuery(searchQuery);
+        setSearchInput(searchQuery);
+    }
 
     // Выбранная запись для просмотра в модальном окне
     const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
-
-    // Синхронизация локального инпута с внешним searchQuery
-    useEffect(() => {
-        setSearchInput(searchQuery);
-    }, [searchQuery]);
 
     // Загрузка логов аудита
     const fetchLogs = useCallback(async () => {
@@ -93,8 +95,17 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
     }, [currentPage, pageSize, searchQuery, startDate, endDate, selectedCategory]);
 
     useEffect(() => {
-        fetchLogs();
+        let isMounted = true;
+        Promise.resolve().then(() => {
+            if (isMounted) {
+                fetchLogs();
+            }
+        });
+        return () => {
+            isMounted = false;
+        };
     }, [fetchLogs]);
+
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 

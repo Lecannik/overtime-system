@@ -282,18 +282,16 @@ export interface AuditLogParams {
 
 export const getAuditLogs = (params?: AuditLogParams | number, offset = 0, search?: string) => {
     // Поддержка как объекта параметров, так и старого формата аргументов (limit, offset, search)
-    let finalParams: Record<string, unknown> = {};
-    if (typeof params === 'object' && params !== null) {
-        finalParams = { ...params };
-    } else {
-        finalParams = {
+    const finalParams: Record<string, unknown> = typeof params === 'object' && params !== null
+        ? { ...params }
+        : {
             limit: params || 100,
             offset: offset || 0,
             search: search || undefined
         };
-    }
     return api.get<PaginatedResponse<AuditLog>>('/audit/', { params: finalParams }).then(r => r.data);
 };
+
 
 export const exportAuditLogs = (params?: { search?: string; start_date?: string; end_date?: string; category?: string }) => 
     api.get('/audit/export', { params, responseType: 'blob' }).then(r => r.data);
