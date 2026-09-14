@@ -182,6 +182,21 @@ async def review_overtime(
             detail="Нельзя согласовать заявку, которая еще находится в процессе выполнения."
         )
 
+    # Защита машины состояний: запрет повторного согласования терминальных статусов
+    if overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED, OvertimeStatus.CANCELLED):
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя изменить статус уже согласованной, отклоненной или отмененной заявки."
+        )
+
+    # Защита от конфликта интересов: Самосогласование (Self-Approval)
+    is_self_approval = (overtime.user_id == current_user.id)
+    if is_self_approval and current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Конфликт интересов: запрещено согласовывать собственную заявку."
+        )
+
     # 1. Режим Супер-админа: если админ не указал роль, одобряем за обоих сразу
 
     if current_user.role == UserRole.admin and not review.as_role:
@@ -285,10 +300,11 @@ async def review_overtime(
         overtime.approved_hours = overtime.hours
 
     # 4. Логируем действие
+    action_name = "SELF_REVIEW_ADMIN" if is_self_approval else f"REVIEW_{current_user.role.upper()}"
     await audit_repo.create_audit_log(
         session=session,
         user_id=current_user.id,
-        action=f"REVIEW_{current_user.role.upper()}",
+        action=action_name,
         target_type="overtime",
         target_id=overtime.id,
         details={
@@ -296,6 +312,7 @@ async def review_overtime(
             "comment": review.comment,
             "new_status": overtime.status,
             "as_role": review.as_role,
+            "is_self_approval": is_self_approval,
             "description": overtime.description,
             "requested_hours": overtime.hours,
             "raw_hours_exact": overtime.raw_hours,
@@ -307,7 +324,10 @@ async def review_overtime(
     await session.commit()
     await session.refresh(overtime)
 
-    # 6. Уведомляем сотрудника
+    # 6. Уведомляем сотрудника и при самосогласовании коллег-администраторов
+    if is_self_approval and current_user.role == UserRole.admin:
+        await notifications.notify_admin_self_approval(session, overtime, current_user)
+
     await notifications.notify_overtime_review(session, overtime, current_user)
 
     return overtime
@@ -332,6 +352,13 @@ async def cancel_overtime(
     # Нельзя отменить уже отменённую
     if overtime.status == OvertimeStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Заявка уже отменена")
+
+    # Нельзя отменить уже утвержденную заявку рядовому сотруднику
+    if current_user.role != UserRole.admin and overtime.status == OvertimeStatus.APPROVED:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя отменить уже утвержденную заявку. Для изменения статуса обратитесь к администратору."
+        )
 
     # Сохраняем предыдущий статус ДО изменения (для корректного аудит-лога)
     previous_status = overtime.status

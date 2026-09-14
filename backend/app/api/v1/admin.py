@@ -168,7 +168,14 @@ async def create_project(
     """
     require_admin(current_user)
     project = Project(**project_in.model_dump())
-    new_project = await org_repo.create_project(db, project)
+    try:
+        new_project = await org_repo.create_project(db, project)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Проект с кодом '{project_in.code}' уже существует."
+        )
     
     await audit_repo.create_audit_log(
         db, current_user.id, "CREATE_PROJECT", "project", new_project.id, {"name": new_project.name}

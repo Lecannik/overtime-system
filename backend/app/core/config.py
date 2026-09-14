@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     # Управление доступностью интерактивной документации Swagger UI / ReDoc (/docs, /redoc, /openapi.json).
-    # Доступ из внешней сети блокируется на уровне Nginx Gateway (доступ разрешен только для внутренней сети/VPN).
-    ENABLE_DOCS: bool = True
+    # По умолчанию отключено в целях безопасности (Secure by Default). Включается через .env при необходимости.
+    ENABLE_DOCS: bool = False
     SQL_ECHO: bool = False
 
     # CORS: список разрешённых источников через запятую. ОБЯЗАТЕЛЬНОЕ поле.

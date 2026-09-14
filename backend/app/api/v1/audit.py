@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -28,8 +28,8 @@ def _normalize_date(dt: datetime | None) -> datetime | None:
 
 @router.get("/", response_model=PaginatedAuditResponse)
 async def get_audit_logs(
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=1000, description="Количество записей (1-1000)"),
+    offset: int = Query(0, ge=0, description="Смещение (>= 0)"),
     search: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,

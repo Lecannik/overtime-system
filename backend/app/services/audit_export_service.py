@@ -198,6 +198,16 @@ def format_details_to_text(action: str, details: dict | None) -> str:
     return "; ".join(parts) if parts else "-"
 
 
+def sanitize_excel_formula(val):
+    """
+    Экранирует опасные управляющие символы Excel (=, +, -, @),
+    предотвращая уязвимость Formula Injection (CWE-1236).
+    """
+    if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+        return f"'{val}"
+    return val
+
+
 async def generate_audit_excel_file(
     items: list[dict],
     current_user: User,
@@ -318,7 +328,8 @@ async def generate_audit_excel_file(
         is_even = (idx % 2 == 0)
 
         for col_idx, val in enumerate(row_data, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            val_safe = sanitize_excel_formula(val)
+            cell = ws.cell(row=row_idx, column=col_idx, value=val_safe)
             cell.font = font_bold if col_idx == 1 else font_body
             cell.border = border_cell
             if is_even:

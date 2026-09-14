@@ -8,8 +8,8 @@ from app.repositories import audit as audit_repo
 from app.services.ms_graph import ms_graph
 from app.services.otp import create_otp, verify_otp
 from app.schemas.otp import OTPVerify, PasswordResetRequest, PasswordResetConfirm
-from app.schemas.user import UserCreate, UserResponse, Token, UserUpdatePreferences, UserChangePassword, LoginResponse
-from app.services.auth import register_user, authenticate_user
+from app.schemas.user import UserResponse, Token, UserUpdatePreferences, UserChangePassword, LoginResponse
+from app.services.auth import authenticate_user
 from app.core.security import create_access_token
 from app.api.deps import get_current_user
 from app.models.user import User, OTPType
@@ -24,14 +24,6 @@ from app.core.rate_limit import login_limiter
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-@router.post("/register", response_model=UserResponse)
-async def register(user_in: UserCreate, session: AsyncSession = Depends(get_session)):
-    """
-    Регистрация нового пользователя.
-    """
-    return await register_user(session, user_in)
 
 
 @router.post("/login", response_model=LoginResponse)

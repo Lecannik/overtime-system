@@ -1,6 +1,6 @@
 # pyrefly: ignore [missing-import]
 import re
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 
 
 # --- Departments ---
@@ -40,7 +40,7 @@ class ProjectCreate(BaseModel):
     name: str
     code: str
     manager_id: int | None = None
-    weekly_limit: int = 50
+    weekly_limit: int = Field(50, ge=0, description="Недельный лимит часов переработок (>= 0)")
     is_active: bool = True
 
     @field_validator("code")
@@ -65,7 +65,7 @@ class ProjectUpdate(BaseModel):
     """
     name: str | None = None
     manager_id: int | None = None
-    weekly_limit: int | None = None
+    weekly_limit: int | None = Field(None, ge=0, description="Недельный лимит часов переработок (>= 0)")
     is_active: bool | None = None
 
 

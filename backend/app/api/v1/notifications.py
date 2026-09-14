@@ -25,7 +25,12 @@ async def mark_read(
     current_user: User = Depends(get_current_user)
 ):
     """Пометить уведомление как прочитанное."""
-    await notif_repo.mark_as_read(session, notification_id, current_user.id)
+    updated = await notif_repo.mark_as_read(session, notification_id, current_user.id)
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Уведомление не найдено"
+        )
     return {"status": "ok"}
 
 @router.post("/read-all")

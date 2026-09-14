@@ -1,6 +1,6 @@
 from datetime import date
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 # pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional
@@ -10,6 +10,7 @@ from app.api.deps import get_current_user
 from app.core.rate_limit import overtime_create_limiter
 from app.models.user import User, UserRole
 from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
+from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
 from app.services import overtime as overtime_service
 from app.repositories import overtime as overtime_repo
@@ -24,8 +25,8 @@ router = APIRouter(prefix="/overtimes", tags=["overtimes"])
 
 @router.get("/", response_model=PaginatedOvertimeResponse)
 async def list_overtimes(
-    page: int = 1,
-    page_size: int = 15,
+    page: int = Query(1, ge=1, description="Номер страницы (>= 1)"),
+    page_size: int = Query(15, ge=1, le=100, description="Размер страницы (1-100)"),
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
     department_id: Optional[int] = None,
@@ -117,10 +118,33 @@ async def get_overtime(
 ):
     """
     Получить детальную информацию о конкретной заявке.
+    Доступ разрешен только:
+    - автору заявки;
+    - администратору;
+    - менеджеру проекта заявки;
+    - руководителю отдела автора заявки.
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
     if not overtime:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+    # Проверка прав доступа (BOLA / IDOR Protection)
+    if current_user.role != UserRole.admin and overtime.user_id != current_user.id:
+        is_manager = bool(overtime.project and overtime.project.manager_id == current_user.id)
+        is_head = False
+        if overtime.user and overtime.user.department_id:
+            dept_res = await session.execute(
+                select(Department).where(Department.id == overtime.user.department_id)
+            )
+            dept = dept_res.scalar_one_or_none()
+            if dept and dept.head_id == current_user.id:
+                is_head = True
+
+        if not (is_manager or is_head):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Доступ запрещен. Вы можете просматривать только свои заявки или заявки подотчетных сотрудников."
+            )
 
     return overtime
 

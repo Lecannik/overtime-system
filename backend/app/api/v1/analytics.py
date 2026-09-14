@@ -1,7 +1,7 @@
 """
 Модуль содержит эндпоинты для получения аналитики по переработкам.
 """
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -20,6 +20,18 @@ from app.services.excel_service import generate_excel_file
 from app.core.cache import cache_get, cache_set
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+def validate_date_range(start_date: datetime | None, end_date: datetime | None) -> None:
+    """
+    Проверяет корректность временного диапазона:
+    start_date не может быть позже end_date.
+    """
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Начальная дата (start_date) не может быть позже конечной даты (end_date)."
+        )
 
 
 def _ck(scope: dict, **params) -> dict:
@@ -65,6 +77,7 @@ async def get_reviews_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Аналитика по качеству согласования (запрошено vs одобрено)."""
+    validate_date_range(start_date, end_date)
     ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
     hit, data = cache_get("reviews", **ck)
     if hit:
@@ -91,6 +104,7 @@ async def get_summary(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Общая сводка по переработкам (всего часов, заявок и т.д.)."""
+    validate_date_range(start_date, end_date)
     ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
     hit, data = cache_get("summary", **ck)
     if hit:
@@ -110,6 +124,7 @@ async def get_companies_comparison(
     """Сравнительный отчет по компаниям (Доступно только Админам)."""
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администраторов.")
+    validate_date_range(start_date, end_date)
     ck = _ck({}, start_date=start_date, end_date=end_date)
     hit, data = cache_get("companies", **ck)
     if hit:
@@ -128,6 +143,7 @@ async def get_projects_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе проектов."""
+    validate_date_range(start_date, end_date)
     ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
     hit, data = cache_get("projects", **ck)
     if hit:
@@ -146,6 +162,7 @@ async def get_departments_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе отделов."""
+    validate_date_range(start_date, end_date)
     ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
     hit, data = cache_get("departments", **ck)
     if hit:
@@ -164,6 +181,7 @@ async def get_users_stats(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Статистика в разрезе пользователей (с возможностью фильтрации по проекту)."""
+    validate_date_range(start_date, end_date)
     ck = _ck(scope, project_id=project_id, company=company, start_date=start_date, end_date=end_date)
     hit, data = cache_get("users", **ck)
     if hit:
@@ -183,6 +201,7 @@ async def export_analytics(
     scope: dict = Depends(get_analytics_scope)
 ):
     """Экспорт данных для руководителей и админов."""
+    validate_date_range(start_date, end_date)
     return await generate_excel_response(
         session, current_user, scope, project_id, company, start_date, end_date
     )
@@ -196,6 +215,7 @@ async def export_my_analytics(
     current_user: User = Depends(get_current_user)
 ):
     """Персональный экспорт данных пользователя."""
+    validate_date_range(start_date, end_date)
     scope = {"user_id": current_user.id}
     return await generate_excel_response(
         session, current_user, scope, None, None, start_date, end_date, is_personal=True

@@ -29,14 +29,19 @@ async def get_user_notifications(
     result = await session.execute(query)
     return result.scalars().all()
 
-async def mark_as_read(session: AsyncSession, notification_id: int, user_id: int):
-    await session.execute(
+async def mark_as_read(session: AsyncSession, notification_id: int, user_id: int) -> bool:
+    """
+    Пометить уведомление как прочитанное.
+    Возвращает True, если уведомление найдено и принадлежит пользователю, иначе False.
+    """
+    result = await session.execute(
         update(Notification)
         .where(Notification.id == notification_id)
         .where(Notification.user_id == user_id)
         .values(is_read=True)
     )
     await session.commit()
+    return bool(result.rowcount and result.rowcount > 0)
 
 async def mark_all_as_read(session: AsyncSession, user_id: int):
     await session.execute(

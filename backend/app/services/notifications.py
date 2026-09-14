@@ -2,9 +2,10 @@ import logging
 from datetime import timezone
 from app.core.config import settings
 from app.models.overtime import Overtime, OvertimeStatus
-from app.models.user import User, NotificationLevel
+from app.models.user import User, UserRole, NotificationLevel
 from app.services.telegram import send_telegram_message
 from app.services.ms_graph import ms_graph
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories import notification as notif_repo
 from app.services.websocket import ws_manager
@@ -258,3 +259,41 @@ async def notify_limit_exceeded(
         await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Превышение лимита", "message": msg_plain})
         if manager.telegram_chat_id and manager.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
+
+
+async def notify_admin_self_approval(
+    session: AsyncSession,
+    overtime: Overtime,
+    admin_user: User
+) -> None:
+    """
+    Оповещает всех администраторов системы о самосогласовании заявки администратором.
+    Обеспечивает прозрачность операций и аудит конфликта интересов.
+    """
+    query = select(User).where(User.role == UserRole.admin, User.is_active == True)
+    res = await session.execute(query)
+    admins = res.scalars().all()
+
+    proj_name = overtime.project.name if overtime.project else "-"
+    hours_str = str(overtime.approved_hours or overtime.hours)
+    msg_plain = (
+        f"ℹ️ Администратор {admin_user.full_name or admin_user.email} согласовал собственную заявку #{overtime.id}\n"
+        f"Проект: {proj_name}\n"
+        f"Часов: {hours_str}ч\n"
+        f"Статус: {overtime.status.value}"
+    )
+    msg_html = (
+        f"ℹ️ <b>Самосогласование администратора</b>\n\n"
+        f"👤 <b>Администратор</b>: {admin_user.full_name or admin_user.email}\n"
+        f"📁 <b>Проект</b>: {proj_name}\n"
+        f"⏱ <b>Часов</b>: {hours_str}ч\n"
+        f"📊 <b>Статус</b>: {overtime.status.value}\n"
+        f"Заявка #{overtime.id} утверждена автором-администратором."
+    )
+
+    for admin in admins:
+        if admin.id != admin_user.id:
+            await notif_repo.create_notification(session, admin.id, "Самосогласование администратора", msg_plain)
+            await ws_manager.broadcast_to_user(admin.id, {"type": "NEW_NOTIFICATION", "title": "Самосогласование администратора", "message": msg_plain})
+            if admin.telegram_chat_id and admin.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
+                await send_telegram_message(session, admin.telegram_chat_id, msg_html)

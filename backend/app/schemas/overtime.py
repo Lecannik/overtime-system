@@ -36,7 +36,7 @@ class OvertimeUpdate(BaseModel):
     project_id: int | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
-    description: str | None = None
+    description: str | None = Field(None, min_length=1, max_length=2000)
     location_name: str | None = None
 
 
@@ -80,7 +80,7 @@ class OvertimeReview(BaseModel):
     approved: bool
     comment: str | None = None
     as_role: UserRole | None = None
-    approved_hours: float | None = None
+    approved_hours: float | None = Field(None, gt=0, description="Количество согласованных часов (строго > 0)")
 
 
 # Вспомогательные схемы для уменьшения объема данных в ответах

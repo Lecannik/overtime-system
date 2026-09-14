@@ -80,13 +80,13 @@ class LoginResponse(BaseModel):
 
 class UserUpdatePreferences(BaseModel):
     """
-    Схема обновления данных пользователя.
-    Используется для обновления профиля на фронтенд.
+    Схема обновления настроек профиля пользователем.
+    Используется для обновления профиля на фронтенде.
+    Смена отдела доступна исключительно администраторам через UserAdminUpdate.
     """
     full_name: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     notification_level: Optional[NotificationLevel] = None
-    department_id: Optional[int] = None
     is_2fa_enabled: Optional[bool] = None
 
 

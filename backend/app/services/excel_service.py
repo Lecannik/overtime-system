@@ -21,6 +21,17 @@ def format_date_with_weekday(dt) -> str:
     wd = weekdays[dt.weekday()]
     return f"{wd} {dt.strftime('%d.%m.%Y')}"
 
+
+def sanitize_excel_formula(val):
+    """
+    Экранирует опасные управляющие символы Excel (=, +, -, @),
+    предотвращая уязвимость Formula Injection (CWE-1236).
+    """
+    if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+        return f"'{val}"
+    return val
+
+
 def get_local_date(dt_val) -> datetime | None:
     """Извлекает локальную дату из datetime или ISO строки."""
     if pd.isna(dt_val) or not dt_val:
@@ -106,6 +117,11 @@ async def generate_excel_file(
         start_time=df['start_time'].apply(format_datetime_local).astype(str),
         end_time=df['end_time'].apply(format_datetime_local).astype(str)
     )
+
+    # Защита от Formula Injection (CWE-1236): экранирование текстовых колонок
+    for text_col in ["description", "employee", "author", "project"]:
+        if text_col in df.columns:
+            df.loc[:, text_col] = df[text_col].apply(lambda x: sanitize_excel_formula(x) if pd.notna(x) else x)
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
