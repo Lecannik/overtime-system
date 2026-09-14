@@ -80,7 +80,7 @@ class OvertimeReview(BaseModel):
     approved: bool
     comment: str | None = None
     as_role: UserRole | None = None
-    approved_hours: float | None = Field(None, gt=0, description="Количество согласованных часов (строго > 0)")
+    approved_hours: float | None = Field(default=None, gt=0, le=24.0, description="Количество согласованных часов (0 < hours <= 24.0)")
 
 
 # Вспомогательные схемы для уменьшения объема данных в ответах

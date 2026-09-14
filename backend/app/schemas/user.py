@@ -13,7 +13,6 @@ class UserCreate(BaseModel):
     full_name: str
     email: EmailStr
     password: str
-    role: UserRole = UserRole.employee
     company: UserCompany = UserCompany.Polymedia
     department_id: Optional[int] = None
 
@@ -30,6 +29,7 @@ class UserCreate(BaseModel):
 
 
 class UserCreateByAdmin(UserCreate):
+    role: UserRole = UserRole.employee
     is_active: bool = True
 
 

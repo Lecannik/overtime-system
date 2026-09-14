@@ -40,7 +40,7 @@ class ProjectCreate(BaseModel):
     name: str
     code: str
     manager_id: int | None = None
-    weekly_limit: int = Field(50, ge=0, description="Недельный лимит часов переработок (>= 0)")
+    weekly_limit: int = Field(default=50, ge=0, le=168, description="Недельный лимит часов переработок (0-168)")
     is_active: bool = True
 
     @field_validator("code")
@@ -65,7 +65,7 @@ class ProjectUpdate(BaseModel):
     """
     name: str | None = None
     manager_id: int | None = None
-    weekly_limit: int | None = Field(None, ge=0, description="Недельный лимит часов переработок (>= 0)")
+    weekly_limit: int | None = Field(default=None, ge=0, le=168, description="Недельный лимит часов переработок (0-168)")
     is_active: bool | None = None
 
 

@@ -186,7 +186,7 @@ async def review_overtime(
     if overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED, OvertimeStatus.CANCELLED):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя изменить статус уже согласованной, отклоненной или отмененной заявки."
+            detail="Заявка находится в финальном статусе и не может быть изменена."
         )
 
     # Защита от конфликта интересов: Самосогласование (Self-Approval)
@@ -422,6 +422,13 @@ async def restore_overtime(
         raise HTTPException(
             status_code=400,
             detail=f"Нельзя восстановить заявку со статусом '{overtime.status.russian_label}'. Доступно только для отменённых заявок."
+        )
+
+    # Запрет сброса виз, если заявка уже была ранее согласована руководством
+    if current_user.role != UserRole.admin and (overtime.head_approved is True or overtime.manager_approved is True):
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя восстановить заявку, которая была согласована руководством. Для восстановления обратитесь к администратору."
         )
 
     # Сбрасываем все результаты согласования — заявка должна пройти проверку заново
