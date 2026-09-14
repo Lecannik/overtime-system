@@ -40,18 +40,39 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     start_time = overtime_in.start_time
     end_time = overtime_in.end_time
     
-    # 0. Валидация обязательного заполнения времени окончания при ручном создании
+    # 0. Валидация существования и активности проекта (защита от краша 500 / AttributeError, Attack 1)
+    project = await org_repo.get_project_by_id(session, overtime_in.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Проект с ID {overtime_in.project_id} не найден."
+        )
+    if not project.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя создать заявку по неактивному проекту."
+        )
+
+    # 0.1 Валидация обязательного заполнения времени окончания при ручном создании
     if not end_time:
         raise HTTPException(
             status_code=400,
             detail="Время окончания переработки обязательно для заполнения при ручном вводе."
         )
         
-    # 0. Валидация порядка времени (защита от "отрицательных" часов)
+    # 0.2 Валидация порядка времени (защита от "отрицательных" часов)
     if end_time <= start_time:
         raise HTTPException(
             status_code=400,
             detail="Время окончания должно быть позже времени начала."
+        )
+
+    # 0.3 Валидация минимальной длительности (защита от Attack 6)
+    duration_sec = (end_time - start_time).total_seconds()
+    if duration_sec < 900:
+        raise HTTPException(
+            status_code=422,
+            detail="Минимальная длительность переработки составляет 15 минут."
         )
 
     # Приводим к UTC-aware для корректной работы с timestamptz колонками
@@ -241,7 +262,6 @@ async def review_overtime(
             if (
                 current_user.role != UserRole.admin
                 and not is_their_head
-                and overtime.user.department_id != current_user.department_id
                 and not is_project_manager
             ):
                 raise HTTPException(
@@ -255,7 +275,7 @@ async def review_overtime(
                 overtime.head_comment = review.comment
                 overtime.manager_approved = review.approved
                 overtime.manager_comment = review.comment
-            elif is_their_head or (overtime.user.department_id == current_user.department_id and current_user.role != UserRole.admin):
+            elif is_their_head or current_user.role == UserRole.admin:
                 # Согласование со стороны начальника отдела
                 overtime.head_approved = review.approved
                 overtime.head_comment = review.comment

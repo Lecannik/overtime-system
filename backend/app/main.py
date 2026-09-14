@@ -4,11 +4,13 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from app.api.deps import get_current_user
+from app.models.user import User
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -92,10 +94,29 @@ app.add_middleware(
 )
 
 
-# Раздача статики
+# Безопасная выдача файлов загрузок (требует аутентификации)
 uploads_dir = os.path.abspath("uploads")
-os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+os.makedirs(os.path.join(uploads_dir, "voice"), exist_ok=True)
+
+@app.get("/uploads/{file_path:path}")
+async def get_protected_upload(
+    file_path: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Безопасная выдача файлов из uploads только аутентифицированным пользователям.
+    Защищает конфиденциальные голосовые сообщения и документы сотрудников от неавторизованного доступа (Attack 5).
+    """
+    uploads_base = os.path.abspath("uploads")
+    resolved_path = os.path.abspath(os.path.join(uploads_base, file_path))
+    # Защита от Path Traversal
+    if not resolved_path.startswith(uploads_base):
+        raise HTTPException(status_code=400, detail="Недопустимый путь к файлу")
+
+    if not os.path.exists(resolved_path) or not os.path.isfile(resolved_path):
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    return FileResponse(resolved_path)
 
 # Роутеры
 app.include_router(health_router, prefix="/api/v1")

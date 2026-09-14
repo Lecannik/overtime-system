@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.overtime import OvertimeStatus
 from app.models.user import UserRole
 
@@ -25,7 +25,17 @@ class OvertimeCreate(OvertimeBase):
     Схема для СОЗДАНИЯ новой заявки.
     Сюда попадают данные прямиком из фронтенда.
     """
-    pass
+    @model_validator(mode="after")
+    def validate_duration(self) -> "OvertimeCreate":
+        """
+        Защита от микросекундных манипуляций округлением (Attack 6).
+        Минимальная длительность переработки составляет 15 минут (900 секунд).
+        """
+        if self.start_time and self.end_time:
+            duration_sec = (self.end_time - self.start_time).total_seconds()
+            if duration_sec < 900:
+                raise ValueError("Минимальная длительность переработки составляет 15 минут.")
+        return self
 
 
 class OvertimeUpdate(BaseModel):

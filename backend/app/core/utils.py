@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 def calculate_overtime_hours(start_time: datetime, end_time: datetime) -> float:
     """
     Рассчитывает количество часов между двумя отметками времени,
-    округляя в большую сторону до целого часа.
+    округляя в большую сторону до целого часа при выполнении минимального порога длительности (15 минут).
     """
     if not start_time or not end_time:
         return 0.0
@@ -12,7 +12,7 @@ def calculate_overtime_hours(start_time: datetime, end_time: datetime) -> float:
     s_time = ensure_utc(start_time)
     e_time = ensure_utc(end_time)
     delta = e_time - s_time
-    if delta.total_seconds() < 0:
+    if delta.total_seconds() < 900:
         return 0.0
     return float(math.ceil(delta.total_seconds() / 3600))
 

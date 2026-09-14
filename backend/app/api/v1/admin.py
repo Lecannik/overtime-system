@@ -371,11 +371,18 @@ async def admin_update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
-    updated_user = await user_repo.update_user(db, user, user_in.model_dump(exclude_unset=True))
-    await audit_repo.create_audit_log(
-        db, current_user.id, "UPDATE_USER", "user", user_id, user_in.model_dump(exclude_unset=True)
-    )
-    await db.commit()
+    try:
+        updated_user = await user_repo.update_user(db, user, user_in.model_dump(exclude_unset=True))
+        await audit_repo.create_audit_log(
+            db, current_user.id, "UPDATE_USER", "user", user_id, user_in.model_dump(exclude_unset=True)
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Пользователь с таким email уже существует или нарушена целостность данных."
+        )
     return updated_user
 
 
@@ -440,7 +447,14 @@ async def delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Вы не можете удалить свою собственную учетную запись")
         
-    await user_repo.delete_user(db, user)
+    try:
+        await user_repo.delete_user(db, user)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Невозможно удалить пользователя, так как с ним связаны заявки или другие записи."
+        )
 
 
 # ==================== SYSTEM SETTINGS ====================
