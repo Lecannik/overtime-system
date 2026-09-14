@@ -19,6 +19,7 @@ from app.services.refresh_token import (
     create_refresh_token,
     verify_and_rotate_refresh_token,
     revoke_refresh_token,
+    revoke_all_user_refresh_tokens,
 )
 from app.core.rate_limit import login_limiter
 
@@ -225,6 +226,9 @@ async def change_password(
         "must_change_password": False
     })
     
+    # Отзываем все активные Refresh-токены пользователя для аннулирования украденных сессий (CWE-613)
+    await revoke_all_user_refresh_tokens(db, current_user.id)
+    
     # Логируем смену пароля
     await audit_repo.create_audit_log(
         session=db,
@@ -287,6 +291,9 @@ async def confirm_password_reset(
         "hashed_password": hash_password(req.new_password),
         "must_change_password": False
     })
+    
+    # Отзываем все активные Refresh-токены пользователя для аннулирования украденных сессий (CWE-613)
+    await revoke_all_user_refresh_tokens(db, user.id)
     
     await audit_repo.create_audit_log(
         session=db,

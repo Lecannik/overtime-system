@@ -135,23 +135,30 @@ async def get_protected_upload(
         result = await session.execute(stmt)
         overtime = result.scalars().first()
 
-        if overtime:
-            is_author = overtime.user_id == current_user.id
-            is_manager = (
-                overtime.project is not None
-                and overtime.project.manager_id == current_user.id
+        if not overtime:
+            # Принцип Default Deny (CWE-276): если файл не привязан к объекту переработки в БД,
+            # обычным пользователям доступ строго запрещен (разрешен только администраторам).
+            raise HTTPException(
+                status_code=403,
+                detail="У вас нет прав для доступа к данному файлу."
             )
-            is_dept_head = False
-            if current_user.role == UserRole.head and current_user.department_id:
-                author = await session.get(User, overtime.user_id)
-                if author and author.department_id == current_user.department_id:
-                    is_dept_head = True
 
-            if not (is_author or is_manager or is_dept_head):
-                raise HTTPException(
-                    status_code=403,
-                    detail="У вас нет прав для доступа к данному файлу."
-                )
+        is_author = overtime.user_id == current_user.id
+        is_manager = (
+            overtime.project is not None
+            and overtime.project.manager_id == current_user.id
+        )
+        is_dept_head = False
+        if current_user.role == UserRole.head and current_user.department_id:
+            author = await session.get(User, overtime.user_id)
+            if author and author.department_id == current_user.department_id:
+                is_dept_head = True
+
+        if not (is_author or is_manager or is_dept_head):
+            raise HTTPException(
+                status_code=403,
+                detail="У вас нет прав для доступа к данному файлу."
+            )
 
     return FileResponse(resolved_path)
 

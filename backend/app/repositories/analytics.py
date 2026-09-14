@@ -9,9 +9,19 @@ from datetime import datetime, timedelta, timezone
 from app.core.utils import calculate_overtime_hours, strip_timezone
 
 # SQL-выражение для расчета длительности переработки.
+# Учитывает исключительно согласованные заявки (OvertimeStatus.APPROVED), исключая отклонённые и отменённые (CWE-840).
 # Использует CEIL для округления вверх до полного часа (согласно бизнес-правилам).
 DURATION_EXPR = func.sum(
-    func.ceil(func.extract('epoch', Overtime.end_time - Overtime.start_time) / 3600)
+    case(
+        (
+            Overtime.status == OvertimeStatus.APPROVED,
+            func.coalesce(
+                Overtime.approved_hours,
+                func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
+            )
+        ),
+        else_=0
+    )
 )
 
 def apply_date_filters(query, start_date: datetime | None, end_date: datetime | None):

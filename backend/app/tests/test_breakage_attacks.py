@@ -324,11 +324,14 @@ async def test_attack_4_server_crash_500_duplicate_email_in_admin_update_user(
 @pytest.mark.asyncio
 async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
     client: AsyncClient,
+    db_session: AsyncSession,
+    normal_user: User,
     normal_user_token_headers: dict,
+    test_project: Project,
 ):
     """
     Атака 5: Публичная утечка конфиденциальных голосовых записей сотрудников без авторизации.
-    Ожидается блокировка анонимного запроса (401 Unauthorized) и успешный доступ для авторизованного.
+    Ожидается блокировка анонимного запроса (401 Unauthorized) и успешный доступ для авторизованного владельца.
     """
     # 1. Подготавливаем тестовый файл конфиденциальной голосовой записи
     uploads_voice_dir = os.path.abspath("uploads/voice")
@@ -341,6 +344,19 @@ async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
         with open(test_file_path, "w", encoding="utf-8") as f:
             f.write(sensitive_content)
 
+        # Привязываем файл к заявке normal_user (согласно принципу Default Deny)
+        user_ot = Overtime(
+            user_id=normal_user.id,
+            project_id=test_project.id,
+            start_time=datetime(2026, 7, 10, 18, 0),
+            end_time=datetime(2026, 7, 10, 19, 0),
+            description="Тестовая переработка с конфиденциальной записью",
+            voice_url=f"uploads/voice/{test_leak_filename}",
+            status=OvertimeStatus.APPROVED,
+        )
+        db_session.add(user_ot)
+        await db_session.commit()
+
         # 2. Отправляем запрос без Authorization-заголовков (полностью анонимный запрос)
         unauth_resp = await client.get(f"/uploads/voice/{test_leak_filename}")
 
@@ -350,7 +366,7 @@ async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
             f"но получен {unauth_resp.status_code}: {unauth_resp.text}"
         )
 
-        # 3. Аутентифицированный пользователь получает доступ к файлу
+        # 3. Аутентифицированный владелец получает доступ к своему файлу
         auth_resp = await client.get(
             f"/uploads/voice/{test_leak_filename}",
             headers=normal_user_token_headers

@@ -336,19 +336,39 @@ async def check_overlapping_overtimes(
     # Используем scalars().first() вместо scalar_one_or_none() для предотвращения падения
     return result.scalars().first() is not None
 
-async def get_weekly_overtime_hours(session: AsyncSession, user_id: int, project_id: int) -> float:
+async def get_weekly_overtime_hours(
+    session: AsyncSession,
+    user_id: int,
+    project_id: int,
+    target_date: datetime | None = None
+) -> float:
     """
-    Подсчет часов за текущую календарную неделю (с понедельника).
-    Нужно для проверки лимитов проекта.
+    Подсчет часов за календарную неделю (с понедельника по воскресенье),
+    в которую попадает target_date (по умолчанию — текущий момент времени).
+    Исключает временной перекос (Time Skew), когда переработка подается за прошедшую неделю.
+
+    Args:
+        session (AsyncSession): Асинхронная сессия SQLAlchemy.
+        user_id (int): ID сотрудника.
+        project_id (int): ID проекта.
+        target_date (datetime, optional): Дата переработки для определения целевой недели.
+
+    Returns:
+        float: Сумма часов переработок за целевую календарную неделю.
     """
-    now = datetime.now(timezone.utc)
-    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    ref_date = target_date or datetime.now(timezone.utc)
+    if ref_date.tzinfo is None:
+        ref_date = ref_date.replace(tzinfo=timezone.utc)
+        
+    monday = (ref_date - timedelta(days=ref_date.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    sunday_end = monday + timedelta(days=7)
     
     query = select(Overtime).where(
         Overtime.user_id == user_id,
         Overtime.project_id == project_id,
         Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
-        Overtime.start_time >= monday
+        Overtime.start_time >= monday,
+        Overtime.start_time < sunday_end
     )
     result = await session.execute(query)
     overtimes = result.scalars().all()

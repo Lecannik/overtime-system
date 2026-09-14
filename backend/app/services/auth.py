@@ -26,10 +26,20 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
     if db_user:
         raise HTTPException(status_code=400, detail="Пользователь с таким Email уже существует")
 
-    # 2. Хешируем пароль
+    # 2. Валидация существования отдела при его указании (CWE-755)
+    if getattr(user_in, "department_id", None) is not None:
+        from app.repositories.organization import get_department_by_id
+        dept = await get_department_by_id(session, user_in.department_id)
+        if not dept:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Отдел с ID {user_in.department_id} не найден."
+            )
+
+    # 3. Хешируем пароль
     hashed_pwd = hash_password(user_in.password)
 
-    # 3. Создаем объект модели (переводим из Pydantic в SQLAlchemy)
+    # 4. Создаем объект модели (переводим из Pydantic в SQLAlchemy)
     new_user = User(
         email=user_in.email,
         full_name=user_in.full_name,
@@ -40,7 +50,7 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
         is_active=getattr(user_in, "is_active", True)
     )
 
-    # 4. Сохраняем (добавляем await)
+    # 5. Сохраняем (добавляем await)
     return await create_user(session, new_user)
 
 

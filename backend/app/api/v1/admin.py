@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 import secrets
 from app.services.auth import register_user
 from app.services.ms_graph import ms_graph
+from app.services.refresh_token import revoke_all_user_refresh_tokens
 
 from app.core.database import get_session
 from app.core.security import hash_password
@@ -135,11 +136,27 @@ async def update_department(
     if not dept:
         raise HTTPException(status_code=404, detail="Отдел не найден")
     
-    updated_dept = await org_repo.update_department(db, dept, dept_in.model_dump(exclude_unset=True))
-    await audit_repo.create_audit_log(
-        db, current_user.id, "UPDATE_DEPT", "department", dept_id, dept_in.model_dump(exclude_unset=True)
-    )
-    await db.commit()
+    update_data = dept_in.model_dump(exclude_unset=True)
+    if "head_id" in update_data and update_data["head_id"] is not None:
+        head_user = await user_repo.get_user_by_id(db, update_data["head_id"])
+        if not head_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Пользователь с ID {update_data['head_id']} для назначения руководителем отдела не найден."
+            )
+
+    try:
+        updated_dept = await org_repo.update_department(db, dept, update_data)
+        await audit_repo.create_audit_log(
+            db, current_user.id, "UPDATE_DEPT", "department", dept_id, update_data
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Отдел с таким названием уже существует или нарушена целостность данных."
+        )
     return updated_dept
 
 
@@ -312,15 +329,22 @@ async def create_user(
     admin_limiter.check_limit(request)
     require_admin(current_user)
     
-    new_user = await register_user(db, user_in)
-    
-    # Сразу ставим флаг смены пароля, так как пароль задал админ
-    await user_repo.update_user(db, new_user, {"must_change_password": True})
-    
-    await audit_repo.create_audit_log(
-        db, current_user.id, "CREATE_USER", "user", new_user.id, {"email": new_user.email, "role": new_user.role}
-    )
-    await db.commit()
+    try:
+        new_user = await register_user(db, user_in)
+        
+        # Сразу ставим флаг смены пароля, так как пароль задал админ
+        await user_repo.update_user(db, new_user, {"must_change_password": True})
+        
+        await audit_repo.create_audit_log(
+            db, current_user.id, "CREATE_USER", "user", new_user.id, {"email": new_user.email, "role": new_user.role}
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Пользователь с таким email уже существует или нарушена целостность данных."
+        )
     return new_user
 
 
@@ -384,11 +408,53 @@ async def admin_update_user(
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
+
+    update_data = user_in.model_dump(exclude_unset=True)
+
+    # 1. Защита от самоблокировки и самопонижения администратора (CWE-284)
+    if user.id == current_user.id:
+        if "is_active" in update_data and not update_data["is_active"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Вы не можете деактивировать свою собственную учетную запись администратора."
+            )
+        if "role" in update_data and update_data["role"] != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Вы не можете снять с себя роль администратора."
+            )
+
+    # 2. Защита от деактивации или понижения последнего активного администратора системы (CWE-284)
+    if user.role == UserRole.admin:
+        is_deactivating = "is_active" in update_data and not update_data["is_active"]
+        is_demoting = "role" in update_data and update_data["role"] != UserRole.admin
+        if is_deactivating or is_demoting:
+            from sqlalchemy import func
+            active_admins_stmt = select(func.count(User.id)).where(
+                User.role == UserRole.admin,
+                User.is_active == True,
+                User.id != user.id
+            )
+            active_admins_count = await db.scalar(active_admins_stmt)
+            if (active_admins_count or 0) < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Нельзя деактивировать или понизить последнего активного администратора системы."
+                )
+
+    # 3. Валидация существования отдела при его изменении
+    if "department_id" in update_data and update_data["department_id"] is not None:
+        dept = await org_repo.get_department_by_id(db, update_data["department_id"])
+        if not dept:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Отдел с ID {update_data['department_id']} не найден."
+            )
+
     try:
-        updated_user = await user_repo.update_user(db, user, user_in.model_dump(exclude_unset=True))
+        updated_user = await user_repo.update_user(db, user, update_data)
         await audit_repo.create_audit_log(
-            db, current_user.id, "UPDATE_USER", "user", user_id, user_in.model_dump(exclude_unset=True)
+            db, current_user.id, "UPDATE_USER", "user", user_id, update_data
         )
         await db.commit()
     except IntegrityError:
@@ -418,6 +484,8 @@ async def reset_user_password(
         "hashed_password": hash_password(new_password),
         "must_change_password": True
     })
+    # Отзываем все активные сессии пользователя для защиты учетной записи (CWE-613)
+    await revoke_all_user_refresh_tokens(db, user.id)
     # Отправляем новый пароль по почте через MS Graph
     try:
         success = await ms_graph.send_email(

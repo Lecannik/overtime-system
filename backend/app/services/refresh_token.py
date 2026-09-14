@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import update
 
 from app.core.config import settings
 from app.models.user import User, RefreshToken
@@ -194,3 +195,30 @@ async def revoke_refresh_token(session: AsyncSession, token: str) -> None:
     if db_token:
         db_token.revoked = True
         await session.commit()
+
+
+async def revoke_all_user_refresh_tokens(session: AsyncSession, user_id: int) -> int:
+    """
+    Отзывает ВСЕ активные Refresh-токены пользователя (CWE-613).
+    Вызывается при смене пароля, восстановлении через OTP или сбросе пароля администратором,
+    чтобы мгновенно аннулировать украденные сессии злоумышленников.
+
+    Args:
+        session (AsyncSession): Асинхронная сессия SQLAlchemy.
+        user_id (int): Идентификатор пользователя.
+
+    Returns:
+        int: Количество отозванных активных токенов.
+    """
+    stmt = (
+        update(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked == False
+        )
+        .values(revoked=True)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    logger.info("Отозваны все refresh-токены пользователя user_id=%s (кол-во: %s)", user_id, result.rowcount)
+    return result.rowcount

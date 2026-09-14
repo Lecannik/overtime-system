@@ -143,7 +143,7 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
         
         # 4. Проверка недельных лимитов для каждой части
         weekly_hours = await overtime_repo.get_weekly_overtime_hours(
-            session, user_id, ot_full.project_id
+            session, user_id, ot_full.project_id, target_date=ot_full.start_time
         )
         
         # Получаем менеджера проекта
@@ -298,7 +298,7 @@ async def review_overtime(
     elif overtime.head_approved is True:
         # Проверяем лимит для принятия решения о финальном одобрении
         weekly_hours = await overtime_repo.get_weekly_overtime_hours(
-            session, overtime.user_id, overtime.project_id
+            session, overtime.user_id, overtime.project_id, target_date=overtime.start_time
         )
         
         # Если лимит не превышен, одобрения Начальника (Head) достаточно
