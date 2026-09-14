@@ -215,6 +215,7 @@ async def generate_audit_excel_file(
     """
     wb = Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "Журнал аудита"
 
     # Стили

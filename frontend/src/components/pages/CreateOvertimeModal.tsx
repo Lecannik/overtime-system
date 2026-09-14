@@ -94,6 +94,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    maxDate: new Date(),
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
@@ -126,6 +127,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    maxDate: new Date(),
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
@@ -133,7 +135,14 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                             // Если время окончания раньше времени начала — ночная смена, +1 день
                             const startVal = startFpRef.current?.selectedDates?.[0];
                             if (startVal && endDate <= startVal) {
-                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                if (shifted > new Date()) {
+                                    setError('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
+                                    setEndTime('');
+                                    endFpRef.current?.clear();
+                                    return;
+                                }
+                                endDate = shifted;
                                 endFpRef.current?.setDate(endDate, false);
                             }
                             setEndTime(toLocalISOString(endDate));
@@ -146,7 +155,14 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                             let endDate = selectedDates[0];
                             const startVal = startFpRef.current?.selectedDates?.[0];
                             if (startVal && endDate <= startVal) {
-                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                if (shifted > new Date()) {
+                                    setError('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
+                                    setEndTime('');
+                                    endFpRef.current?.clear();
+                                    return;
+                                }
+                                endDate = shifted;
                                 endFpRef.current?.setDate(endDate, false);
                             }
                             setEndTime(toLocalISOString(endDate));
@@ -298,6 +314,30 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         if (!projectId) {
             setError('Пожалуйста, выберите проект. Если вы выполняли внутренние работы, выберите проект "Внутренний".');
             return;
+        }
+
+        if (!startTime) {
+            setError('Пожалуйста, укажите время начала переработки.');
+            return;
+        }
+
+        const now = new Date();
+        const startD = new Date(startTime);
+        if (startD > now) {
+            setError('Время начала переработки не может быть в будущем.');
+            return;
+        }
+
+        if (endTime) {
+            const endD = new Date(endTime);
+            if (endD > now) {
+                setError('Время окончания переработки не может быть в будущем.');
+                return;
+            }
+            if (endD <= startD) {
+                setError('Время окончания должно быть позже времени начала.');
+                return;
+            }
         }
 
         setLoading(true);

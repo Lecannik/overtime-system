@@ -14,10 +14,8 @@ logger = logging.getLogger(__name__)
 async def notify_new_overtime(
     session: AsyncSession,
     overtime: Overtime,
-    # pyrefly: ignore [bad-function-definition]
-    manager: User = None,
-    # pyrefly: ignore [bad-function-definition]
-    head: User = None
+    manager: User | None = None,
+    head: User | None = None
 ):
     """Уведомляет менеджера и нач. отдела о новой заявке."""
     msg_plain = (

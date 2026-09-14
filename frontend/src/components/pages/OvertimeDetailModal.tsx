@@ -90,6 +90,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    maxDate: new Date(),
                     defaultDate: editStartTime ? new Date(editStartTime) : undefined,
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
@@ -123,6 +124,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    maxDate: new Date(),
                     defaultDate: editEndTime ? new Date(editEndTime) : undefined,
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
@@ -130,7 +132,14 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             let endDate = selectedDates[0];
                             const startVal = editStartFpRef.current?.selectedDates?.[0];
                             if (startVal && endDate <= startVal) {
-                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                if (shifted > new Date()) {
+                                    alert('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
+                                    setEditEndTime('');
+                                    editEndFpRef.current?.clear();
+                                    return;
+                                }
+                                endDate = shifted;
                                 editEndFpRef.current?.setDate(endDate, false);
                             }
                             setEditEndTime(toLocalISOString(endDate));
@@ -143,7 +152,14 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             let endDate = selectedDates[0];
                             const startVal = editStartFpRef.current?.selectedDates?.[0];
                             if (startVal && endDate <= startVal) {
-                                endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+                                if (shifted > new Date()) {
+                                    alert('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
+                                    setEditEndTime('');
+                                    editEndFpRef.current?.clear();
+                                    return;
+                                }
+                                endDate = shifted;
                                 editEndFpRef.current?.setDate(endDate, false);
                             }
                             setEditEndTime(toLocalISOString(endDate));
@@ -188,8 +204,17 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
             return;
         }
 
+        const now = new Date();
         const startD = new Date(editStartTime);
+        if (startD > now) {
+            alert('Время начала переработки не может быть в будущем.');
+            return;
+        }
         const endD = editEndTime ? new Date(editEndTime) : null;
+        if (endD && endD > now) {
+            alert('Время окончания переработки не может быть в будущем.');
+            return;
+        }
         if (endD && startD && endD <= startD) {
             alert('Время окончания должно быть позже времени начала.');
             return;

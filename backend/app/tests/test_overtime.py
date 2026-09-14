@@ -346,3 +346,92 @@ async def test_update_overtime_time_logs_audit(
     assert log.details["old_hours"] == 3.0
     assert log.details["new_hours"] == 2.0
 
+
+@pytest.mark.asyncio
+async def test_create_overtime_future_time_rejected(
+    client: AsyncClient,
+    admin_token_headers: dict,
+    test_project: Project,
+):
+    """Тест: попытка создания заявки с будущим временем отклоняется с кодом HTTP 400."""
+    now = datetime.now(timezone.utc)
+    
+    # 1. Будущее время начала
+    future_start = (now + timedelta(hours=2)).isoformat()
+    future_end = (now + timedelta(hours=4)).isoformat()
+    resp1 = await client.post(
+        "/api/v1/overtimes/",
+        json={
+            "project_id": test_project.id,
+            "start_time": future_start,
+            "end_time": future_end,
+            "description": "Future start test"
+        },
+        headers=admin_token_headers
+    )
+    assert resp1.status_code == 400
+    assert "не может быть в будущем" in resp1.json()["detail"]
+
+    # 2. Время начала в прошлом, но время окончания в будущем
+    past_start = (now - timedelta(hours=2)).isoformat()
+    future_end2 = (now + timedelta(hours=2)).isoformat()
+    resp2 = await client.post(
+        "/api/v1/overtimes/",
+        json={
+            "project_id": test_project.id,
+            "start_time": past_start,
+            "end_time": future_end2,
+            "description": "Future end test"
+        },
+        headers=admin_token_headers
+    )
+    assert resp2.status_code == 400
+    assert "Время окончания переработки не может быть в будущем." in resp2.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_overtime_future_time_rejected(
+    client: AsyncClient,
+    admin_token_headers: dict,
+    test_project: Project,
+):
+    """Тест: попытка редактирования времени заявки на будущее время отклоняется с кодом HTTP 400."""
+    now = datetime.now(timezone.utc)
+    
+    # 1. Создаем валидную заявку в прошлом
+    past_start = (now - timedelta(hours=5)).isoformat()
+    past_end = (now - timedelta(hours=2)).isoformat()
+    create_resp = await client.post(
+        "/api/v1/overtimes/",
+        json={
+            "project_id": test_project.id,
+            "start_time": past_start,
+            "end_time": past_end,
+            "description": "Update future test"
+        },
+        headers=admin_token_headers
+    )
+    assert create_resp.status_code == 200
+    ot_id = create_resp.json()["id"]
+
+    # 2. Пытаемся обновить end_time на будущее время
+    future_end = (now + timedelta(hours=2)).isoformat()
+    patch_resp1 = await client.patch(
+        f"/api/v1/overtimes/{ot_id}",
+        json={"end_time": future_end},
+        headers=admin_token_headers
+    )
+    assert patch_resp1.status_code == 400
+    assert "Время окончания переработки не может быть в будущем." in patch_resp1.json()["detail"]
+
+    # 3. Пытаемся обновить start_time на будущее время
+    future_start = (now + timedelta(hours=1)).isoformat()
+    patch_resp2 = await client.patch(
+        f"/api/v1/overtimes/{ot_id}",
+        json={"start_time": future_start, "end_time": (now + timedelta(hours=3)).isoformat()},
+        headers=admin_token_headers
+    )
+    assert patch_resp2.status_code == 400
+    assert "Время начала переработки не может быть в будущем." in patch_resp2.json()["detail"]
+
+

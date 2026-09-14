@@ -71,10 +71,16 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
             )
 
     # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
-    if start_time > datetime.now(timezone.utc) + timedelta(minutes=5):
+    now_utc = datetime.now(timezone.utc) + timedelta(minutes=5)
+    if start_time > now_utc:
         raise HTTPException(
             status_code=400, 
-            detail="Нельзя создавать заявку на будущее время."
+            detail="Время начала переработки не может быть в будущем."
+        )
+    if end_time and end_time > now_utc:
+        raise HTTPException(
+            status_code=400,
+            detail="Время окончания переработки не может быть в будущем."
         )
 
     # 2. Проверка на пересечение (Overlap)
@@ -474,7 +480,20 @@ async def update_overtime(
                 )
             )
 
-    # 1. Проверка на пересечение (Overlap) при изменении времени
+    # 1. Запрет на будущее время при обновлении (добавляем 5 минут буфера)
+    now_utc = datetime.now(timezone.utc) + timedelta(minutes=5)
+    if "start_time" in update_data and new_start > now_utc:
+        raise HTTPException(
+            status_code=400,
+            detail="Время начала переработки не может быть в будущем."
+        )
+    if "end_time" in update_data and new_end and new_end > now_utc:
+        raise HTTPException(
+            status_code=400,
+            detail="Время окончания переработки не может быть в будущем."
+        )
+
+    # 2. Проверка на пересечение (Overlap) при изменении времени
     if "start_time" in update_data or "end_time" in update_data:
         has_overlap = await overtime_repo.check_overlapping_overtimes(
             session, overtime.user_id, new_start, new_end, exclude_id=overtime.id
