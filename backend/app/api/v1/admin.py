@@ -64,13 +64,27 @@ async def create_department(
     Доступно только администраторам.
     """
     require_admin(current_user)
+    if dept_in.head_id is not None:
+        head_user = await user_repo.get_user_by_id(db, dept_in.head_id)
+        if not head_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Пользователь с ID {dept_in.head_id} для назначения руководителем отдела не найден."
+            )
+
     department = Department(**dept_in.model_dump())
-    new_dept = await org_repo.create_department(db, department)
-    
-    await audit_repo.create_audit_log(
-        db, current_user.id, "CREATE_DEPT", "department", new_dept.id, {"name": new_dept.name}
-    )
-    await db.commit()
+    try:
+        new_dept = await org_repo.create_department(db, department)
+        await audit_repo.create_audit_log(
+            db, current_user.id, "CREATE_DEPT", "department", new_dept.id, {"name": new_dept.name}
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Отдел с названием '{dept_in.name}' уже существует или нарушена целостность данных."
+        )
     return new_dept
 
 
@@ -246,10 +260,10 @@ async def update_project(
     # Номер проекта (code) иммутабелен после создания — исключаем на уровне API
     update_data.pop("code", None)
 
-    # Менеджер не может менять самого менеджера проекта (только админ)
-
-    if current_user.role != UserRole.admin and "manager_id" in update_data:
-        del update_data["manager_id"]
+    # Менеджер не может менять самого менеджера проекта и корпоративный лимит weekly_limit (только админ)
+    if current_user.role != UserRole.admin:
+        update_data.pop("manager_id", None)
+        update_data.pop("weekly_limit", None)
 
     updated_project = await org_repo.update_project(db, project, update_data)
     await audit_repo.create_audit_log(

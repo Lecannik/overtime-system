@@ -10,7 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
 from fastapi.responses import FileResponse
 from app.api.deps import get_current_user
-from app.models.user import User
+from app.core.database import get_session
+from app.models.user import User, UserRole
+from app.models.overtime import Overtime
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -102,10 +107,12 @@ os.makedirs(os.path.join(uploads_dir, "voice"), exist_ok=True)
 async def get_protected_upload(
     file_path: str,
     current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
     """
-    Безопасная выдача файлов из uploads только аутентифицированным пользователям.
-    Защищает конфиденциальные голосовые сообщения и документы сотрудников от неавторизованного доступа (Attack 5).
+    Безопасная выдача файлов из uploads только авторизованным пользователям.
+    Защищает конфиденциальные голосовые сообщения и документы сотрудников от неавторизованного доступа:
+    файл может скачать только его автор, руководитель проекта автора или администратор (BOLA / IDOR).
     """
     uploads_base = os.path.abspath("uploads")
     resolved_path = os.path.abspath(os.path.join(uploads_base, file_path))
@@ -115,6 +122,36 @@ async def get_protected_upload(
 
     if not os.path.exists(resolved_path) or not os.path.isfile(resolved_path):
         raise HTTPException(status_code=404, detail="Файл не найден")
+
+    # Проверка прав доступа (BOLA / IDOR):
+    # Администраторам доступ открыт ко всем файлам
+    if current_user.role != UserRole.admin:
+        filename = os.path.basename(resolved_path)
+        stmt = (
+            select(Overtime)
+            .options(selectinload(Overtime.project))
+            .where(Overtime.voice_url.like(f"%{filename}"))
+        )
+        result = await session.execute(stmt)
+        overtime = result.scalars().first()
+
+        if overtime:
+            is_author = overtime.user_id == current_user.id
+            is_manager = (
+                overtime.project is not None
+                and overtime.project.manager_id == current_user.id
+            )
+            is_dept_head = False
+            if current_user.role == UserRole.head and current_user.department_id:
+                author = await session.get(User, overtime.user_id)
+                if author and author.department_id == current_user.department_id:
+                    is_dept_head = True
+
+            if not (is_author or is_manager or is_dept_head):
+                raise HTTPException(
+                    status_code=403,
+                    detail="У вас нет прав для доступа к данному файлу."
+                )
 
     return FileResponse(resolved_path)
 

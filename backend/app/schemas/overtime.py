@@ -49,6 +49,18 @@ class OvertimeUpdate(BaseModel):
     description: str | None = Field(None, min_length=1, max_length=2000)
     location_name: str | None = None
 
+    @model_validator(mode="after")
+    def validate_duration(self) -> "OvertimeUpdate":
+        """
+        Защита от обхода минимального порога переработки через частичное обновление (Attack 3 v2).
+        Если переданы оба времени, их разница должна быть не менее 15 минут (900 секунд).
+        """
+        if self.start_time and self.end_time:
+            duration_sec = (self.end_time - self.start_time).total_seconds()
+            if duration_sec < 900:
+                raise ValueError("Минимальная длительность переработки составляет 15 минут.")
+        return self
+
 
 class OvertimeResponse(OvertimeBase):
     """

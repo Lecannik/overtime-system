@@ -373,11 +373,12 @@ async def cancel_overtime(
     if overtime.status == OvertimeStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Заявка уже отменена")
 
-    # Нельзя отменить уже утвержденную заявку рядовому сотруднику
-    if current_user.role != UserRole.admin and overtime.status == OvertimeStatus.APPROVED:
+    # Нельзя отменить уже утвержденную или отклоненную заявку рядовому сотруднику
+    if current_user.role != UserRole.admin and overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED):
+        status_word = "утвержденную" if overtime.status == OvertimeStatus.APPROVED else "отклоненную"
         raise HTTPException(
             status_code=400,
-            detail="Нельзя отменить уже утвержденную заявку. Для изменения статуса обратитесь к администратору."
+            detail=f"Нельзя отменить уже {status_word} заявку. Для изменения статуса обратитесь к администратору."
         )
 
     # Сохраняем предыдущий статус ДО изменения (для корректного аудит-лога)
@@ -444,11 +445,13 @@ async def restore_overtime(
             detail=f"Нельзя восстановить заявку со статусом '{overtime.status.russian_label}'. Доступно только для отменённых заявок."
         )
 
-    # Запрет сброса виз, если заявка уже была ранее согласована руководством
-    if current_user.role != UserRole.admin and (overtime.head_approved is True or overtime.manager_approved is True):
+    # Запрет сброса виз, если заявка уже была ранее согласована или отклонена руководством
+    if current_user.role != UserRole.admin and (
+        overtime.head_approved is not None or overtime.manager_approved is not None
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя восстановить заявку, которая была согласована руководством. Для восстановления обратитесь к администратору."
+            detail="Нельзя восстановить заявку, решение по которой уже было принято руководством. Для изменения статуса обратитесь к администратору."
         )
 
     # Сбрасываем все результаты согласования — заявка должна пройти проверку заново
@@ -533,6 +536,13 @@ async def update_overtime(
                     f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
                 )
             )
+        # Валидация минимальной длительности (Attack 3)
+        duration_sec = (new_end - new_start).total_seconds()
+        if duration_sec < 900:
+            raise HTTPException(
+                status_code=422,
+                detail="Минимальная длительность переработки составляет 15 минут."
+            )
 
     # 1. Запрет на будущее время при обновлении (добавляем 5 минут буфера)
     now_utc = datetime.now(timezone.utc) + timedelta(minutes=5)
@@ -556,6 +566,20 @@ async def update_overtime(
             raise HTTPException(
                 status_code=400,
                 detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
+            )
+
+    # Валидация целевого проекта при смене (Attack 4)
+    if "project_id" in update_data and update_data["project_id"] is not None:
+        target_project = await org_repo.get_project_by_id(session, update_data["project_id"])
+        if not target_project:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Проект с ID {update_data['project_id']} не найден."
+            )
+        if not target_project.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail="Нельзя привязать заявку к неактивному проекту."
             )
 
     # Выявляем факт изменения полей
