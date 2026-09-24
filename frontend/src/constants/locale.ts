@@ -136,3 +136,31 @@ export const formatTime = (date: string | Date | null | undefined): string => {
         hour: '2-digit', minute: '2-digit'
     });
 };
+
+/**
+ * Пресеты смарт-фильтров для экрана согласования (/review)
+ */
+export interface ReviewFilterPreset {
+    id: 'action_required' | 'in_review' | 'all';
+    label: string;
+    description: string;
+}
+
+export const REVIEW_FILTER_PRESETS: ReviewFilterPreset[] = [
+    {
+        id: 'action_required',
+        label: 'Требует моего решения',
+        description: 'Заявки, ожидающие вашего согласования (менеджера или начальника)',
+    },
+    {
+        id: 'in_review',
+        label: 'Все на согласовании',
+        description: 'Все нетерминальные заявки в процессе рассмотрения',
+    },
+    {
+        id: 'all',
+        label: 'Все заявки',
+        description: 'Все заявки за период, включая завершенные',
+    },
+];
+

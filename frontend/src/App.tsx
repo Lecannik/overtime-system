@@ -12,6 +12,8 @@ import ProfilePage from './components/pages/ProfilePage';
 import AnalyticsPage from './components/pages/AnalyticsPage';
 import ChangePasswordPage from './components/pages/ChangePasswordPage';
 import AuthSuccessPage from './components/pages/AuthSuccessPage';
+import ToastNotification from './components/atoms/ToastNotification';
+
 
 // Компонент-обертка для защиты маршрутов
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -129,6 +131,7 @@ function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        <ToastNotification />
       </Router>
     </ThemeProvider>
   );

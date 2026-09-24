@@ -24,6 +24,29 @@ DURATION_EXPR = func.sum(
     )
 )
 
+APPROVED_HOURS_EXPR = DURATION_EXPR
+
+PENDING_HOURS_EXPR = func.sum(
+    case(
+        (
+            Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED]),
+            func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
+        ),
+        else_=0
+    )
+)
+
+REJECTED_HOURS_EXPR = func.sum(
+    case(
+        (
+            Overtime.status == OvertimeStatus.REJECTED,
+            func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
+        ),
+        else_=0
+    )
+)
+
+
 def apply_date_filters(query, start_date: datetime | None, end_date: datetime | None):
     """
     Вспомогательная функция для применения временных рамок к любому запросу аналитики.
@@ -97,9 +120,12 @@ async def get_analytics_summary(
     query = select(
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
         func.count(Overtime.id).label("total_requests"),
-        func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.PENDING).label("pending"),
+        func.count(Overtime.id).filter(Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED])).label("pending"),
         func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.APPROVED).label("approved"),
-        func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.REJECTED).label("rejected")
+        func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.REJECTED).label("rejected"),
+        func.coalesce(APPROVED_HOURS_EXPR, 0).label("approved_hours"),
+        func.coalesce(PENDING_HOURS_EXPR, 0).label("pending_hours"),
+        func.coalesce(REJECTED_HOURS_EXPR, 0).label("rejected_hours"),
     )
 
     if manager_id:
@@ -131,7 +157,10 @@ async def get_analytics_summary(
         "total_requests": row.total_requests,
         "pending_requests": row.pending,
         "approved_requests": row.approved,
-        "rejected_requests": row.rejected
+        "rejected_requests": row.rejected,
+        "approved_hours": float(row.approved_hours),
+        "pending_hours": float(row.pending_hours),
+        "rejected_hours": float(row.rejected_hours),
     }
 
 async def get_project_analytics(

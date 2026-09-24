@@ -1,3 +1,4 @@
+import logging
 # pyrefly: ignore [missing-import]
 from sqlalchemy import select
 # pyrefly: ignore [missing-import]
@@ -12,14 +13,16 @@ from app.repositories import overtime as overtime_repo
 from app.models.audit import AuditLog
 from app.repositories import audit as audit_repo
 from app.services import notifications
+from app.services.websocket import ws_manager
 from app.repositories import organization as org_repo
 from app.repositories import user as user_repo
-
 
 from datetime import datetime, timedelta, timezone
 from app.core.utils import calculate_overtime_hours, ensure_utc
 from app.core.config import settings
 from app.core.cache import cache_clear
+
+logger = logging.getLogger(__name__)
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
@@ -164,6 +167,15 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
         await notifications.notify_new_overtime(session, ot_full, manager, head)
 
     cache_clear()
+    try:
+        await ws_manager.broadcast_to_all({
+            "type": "OVERTIME_CREATED",
+            "overtime_id": created_overtimes[0].id,
+            "employee_name": created_overtimes[0].user.full_name if created_overtimes[0].user else ""
+        })
+    except Exception as e:
+        logger.error(f"WebSocket broadcast error in create_new_overtime: {e}")
+
     return created_overtimes[0]
 
 
@@ -350,6 +362,18 @@ async def review_overtime(
 
     await notifications.notify_overtime_review(session, overtime, current_user)
 
+    try:
+        await ws_manager.broadcast_to_all({
+            "type": "OVERTIME_STATUS_CHANGED",
+            "overtime_id": overtime.id,
+            "new_status": overtime.status.value,
+            "reviewer_name": current_user.full_name,
+            "approved": review.approved,
+            "employee_name": overtime.user.full_name if overtime.user else ""
+        })
+    except Exception as e:
+        logger.error(f"WebSocket broadcast error in review_overtime: {e}")
+
     return overtime
 
 async def cancel_overtime(
@@ -406,6 +430,19 @@ async def cancel_overtime(
     await session.commit()
     await session.refresh(overtime)
     cache_clear()
+
+    try:
+        await ws_manager.broadcast_to_all({
+            "type": "OVERTIME_STATUS_CHANGED",
+            "overtime_id": overtime.id,
+            "new_status": overtime.status.value,
+            "reviewer_name": current_user.full_name,
+            "action": "cancel",
+            "employee_name": overtime.user.full_name if overtime.user else ""
+        })
+    except Exception as e:
+        logger.error(f"WebSocket broadcast error in cancel_overtime: {e}")
+
     return overtime
 
 
@@ -480,7 +517,19 @@ async def restore_overtime(
     await session.commit()
     await session.refresh(overtime)
     cache_clear()
+
+    # WebSocket broadcast об изменении статуса заявки
+    await ws_manager.broadcast_to_all({
+        "type": "OVERTIME_STATUS_CHANGED",
+        "overtime_id": overtime.id,
+        "new_status": overtime.status.value,
+        "reviewer_name": current_user.full_name,
+        "action": "restore",
+        "employee_name": overtime.user.full_name if overtime.user else "",
+    })
+
     return overtime
+
 
 
 async def update_overtime(
@@ -657,6 +706,17 @@ async def update_overtime(
     await session.commit()
     await session.refresh(result)
     cache_clear()
+
+    # WebSocket broadcast об изменении параметров заявки
+    await ws_manager.broadcast_to_all({
+        "type": "OVERTIME_STATUS_CHANGED",
+        "overtime_id": result.id,
+        "new_status": result.status.value,
+        "reviewer_name": current_user.full_name,
+        "action": "update",
+        "employee_name": result.user.full_name if result.user else "",
+    })
+
     return result
 
 

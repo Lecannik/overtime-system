@@ -31,10 +31,13 @@ class MSGraphService:
             logger.error("MS Graph Config Missing or initialization failed: ID, Secret or Tenant is not set!")
             return None
 
-        # Для client-credentials flow MSAL кэширует токен автоматически внутри acquire_token_for_client
-        result = self._app.acquire_token_for_client(scopes=self.scope)
-        if "access_token" in result:
-            logger.info("MS Graph Access Token acquired successfully (cached or new)")
+        # Проверяем наличие валидного токена в локальном кэше MSAL
+        result = self._app.acquire_token_silent(self.scope, account=None)
+        if not result or "access_token" not in result:
+            result = self._app.acquire_token_for_client(scopes=self.scope)
+
+        if result and "access_token" in result:
+            logger.debug("MS Graph Access Token acquired successfully (cached or new)")
             return result["access_token"]
         else:
             logger.error(f"MS Auth Error: {result.get('error')} - {result.get('error_description')}")

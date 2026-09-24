@@ -34,11 +34,12 @@ async def list_overtimes(
     end_date: date | None = None,
     view: str | None = None,
     search: Optional[str] = None,
+    preset: Optional[str] = Query(None, description="Смарт-пресет: 'action_required' | 'in_review'"),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту, периоду дат и поисковому запросу.
+    Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту, периоду дат, смарт-пресетам и поисковому запросу.
     """
     return await overtime_repo.get_overtimes(
         session, 
@@ -51,7 +52,8 @@ async def list_overtimes(
         page=page,
         page_size=page_size,
         view=view,
-        search=search
+        search=search,
+        preset=preset
     )
 
 
@@ -70,15 +72,21 @@ async def get_my_stats(
 async def get_calendar_summary(
     month: Optional[str] = None,
     year: Optional[int] = None,
+    status: Optional[OvertimeStatus] = None,
+    preset: Optional[str] = Query(None, description="Смарт-пресет: 'action_required' | 'in_review'"),
+    department_id: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить сводку заявок по дням для отображения в календарном виде (heatmap).
+    Получить сводку заявок по дням для отображения в календарном виде (heatmap) с фильтрацией по статусу, пресету и отделу.
 
     Параметры:
         - month: строка формата 'YYYY-MM' (например '2026-07').
         - year: год (например 2026) для годовой/квартальной выборки.
+        - status: конкретный статус заявки.
+        - preset: смарт-пресет ('action_required' | 'in_review').
+        - department_id: ID отдела.
 
     Возвращает словарь с ключами 'YYYY-MM-DD' и объектами:
     {'total', 'pending', 'approved', 'hours', 'entries'}.
@@ -89,7 +97,15 @@ async def get_calendar_summary(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещён"
         )
-    return await overtime_repo.get_calendar_summary(session, current_user, month=month, year=year)
+    return await overtime_repo.get_calendar_summary(
+        session, 
+        current_user, 
+        month=month, 
+        year=year,
+        status=status,
+        preset=preset,
+        department_id=department_id
+    )
 
 
 @router.post("/", response_model=OvertimeResponse)

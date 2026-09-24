@@ -59,9 +59,18 @@ const NotificationBell: React.FC = () => {
                     try {
                         const data = JSON.parse(event.data);
                         console.log('WebSocket event received:', data);
-                        if (data.type === 'NEW_NOTIFICATION' || data.type === 'OVERTIME_UPDATED' || data.type === 'OVERTIME_CREATED') {
+                        if (
+                            data.type === 'NEW_NOTIFICATION' ||
+                            data.type === 'OVERTIME_UPDATED' ||
+                            data.type === 'OVERTIME_CREATED' ||
+                            data.type === 'OVERTIME_STATUS_CHANGED'
+                        ) {
                             fetchNotifications();
                             window.dispatchEvent(new CustomEvent('overtime_update', { detail: data }));
+
+                            if (data.type === 'OVERTIME_STATUS_CHANGED' || data.type === 'OVERTIME_CREATED') {
+                                window.dispatchEvent(new CustomEvent('show_toast', { detail: data }));
+                            }
                         }
                     } catch (e) {
                         console.error('WebSocket message error:', e);

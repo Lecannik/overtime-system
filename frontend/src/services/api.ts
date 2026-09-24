@@ -247,12 +247,29 @@ export interface CalendarDayData {
 /** Словарь 'YYYY-MM-DD' → CalendarDayData */
 export type CalendarSummary = Record<string, CalendarDayData>;
 
+export interface CalendarSummaryParams {
+    month?: string;
+    year?: number;
+    status?: string;
+    preset?: string;
+    department_id?: number;
+}
+
 /**
- * Загружает сводку заявок по дням выбранного месяца для отображения в heatmap-календаре.
- * @param month - строка формата 'YYYY-MM' (например '2026-07')
+ * Загружает сводку заявок по дням выбранного месяца/года для отображения в heatmap-календаре с учетом фильтров.
  */
-export const getCalendarSummary = (month?: string, year?: number): Promise<CalendarSummary> =>
-    api.get<CalendarSummary>('/overtimes/calendar-summary', { params: { month, year } }).then(r => r.data);
+export const getCalendarSummary = (
+    paramsOrMonth?: string | CalendarSummaryParams,
+    year?: number
+): Promise<CalendarSummary> => {
+    let params: Record<string, unknown> = {};
+    if (typeof paramsOrMonth === 'string') {
+        params = { month: paramsOrMonth, year };
+    } else if (paramsOrMonth) {
+        params = { ...paramsOrMonth };
+    }
+    return api.get<CalendarSummary>('/overtimes/calendar-summary', { params }).then(r => r.data);
+};
 
 // --- ANALYTICS ---
 export const getAnalyticsSummary = (params?: AnalyticsParams) => 

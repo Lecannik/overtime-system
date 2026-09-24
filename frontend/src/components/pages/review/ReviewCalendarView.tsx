@@ -20,6 +20,10 @@ interface ReviewCalendarViewProps {
     // Callback для уведомления родительского контейнера об изменении периода дат
     onDateRangeChange: (start: string, end: string) => void;
     onClearSelection?: () => void;
+    statusFilter?: string;
+    preset?: string;
+    selectedDeptId?: string;
+    refreshKey?: number;
 }
 
 const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
@@ -33,6 +37,10 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
     inlineFormRenderer,
     onDateRangeChange,
     onClearSelection,
+    statusFilter,
+    preset,
+    selectedDeptId,
+    refreshKey,
 }) => {
     const [mode, setMode] = useState<CalendarMode>(() => {
         return (localStorage.getItem('review_calendar_mode') as CalendarMode) || 'month';
@@ -62,30 +70,44 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         return `${y}-${m}-${day}`;
     };
 
-    // Загрузка сводки по дням
-    useEffect(() => {
-        const fetchSummary = async () => {
-            setLoadingSummary(true);
-            try {
-                if (mode === 'quarter' || mode === 'year') {
-                    // Загружаем одним запросом за весь год
-                    const data = await getCalendarSummary(undefined, currentDate.getFullYear());
-                    setSummary(data);
-                } else {
-                    // Для дня, недели, месяца грузим только за один месяц
-                    const ym = formatToYm(currentDate);
-                    const data = await getCalendarSummary(ym);
-                    setSummary(data);
-                }
-            } catch (err) {
-                console.error('Error fetching calendar summary:', err);
-            } finally {
-                setLoadingSummary(false);
+    // Загрузка сводки по дням с учетом активных фильтров (статус, пресет, отдел)
+    const fetchSummary = async () => {
+        setLoadingSummary(true);
+        try {
+            const params: any = {
+                status: statusFilter && statusFilter !== 'ALL' ? statusFilter : undefined,
+                preset: preset && preset !== 'all' ? preset : undefined,
+                department_id: selectedDeptId ? parseInt(selectedDeptId, 10) : undefined,
+            };
+            if (mode === 'quarter' || mode === 'year') {
+                params.year = currentDate.getFullYear();
+            } else {
+                params.month = formatToYm(currentDate);
             }
-        };
+            const data = await getCalendarSummary(params);
+            setSummary(data || {});
+        } catch (err) {
+            console.error('Error fetching calendar summary:', err);
+        } finally {
+            setLoadingSummary(false);
+        }
+    };
 
+    useEffect(() => {
         fetchSummary();
-    }, [currentDate, mode]);
+    }, [currentDate, mode, statusFilter, preset, selectedDeptId, refreshKey]);
+
+    // Реактивное обновление при поступлении внешних событий изменения заявок
+    useEffect(() => {
+        const handleExternalUpdate = () => {
+            fetchSummary();
+        };
+        window.addEventListener('overtime_update', handleExternalUpdate);
+        return () => {
+            window.removeEventListener('overtime_update', handleExternalUpdate);
+        };
+    }, [currentDate, mode, statusFilter, preset, selectedDeptId]);
+
 
     // Синхронизация фильтра дат в родительском компоненте
     // Если выбран конкретный день (selectedDateStr), сужаем диапазон до этого дня,

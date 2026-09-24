@@ -7,6 +7,10 @@ class AnalyticsSummary(BaseModel):
     pending_requests: int
     approved_requests: int
     rejected_requests: int
+    approved_hours: float = 0.0
+    pending_hours: float = 0.0
+    rejected_hours: float = 0.0
+
 
 class ProjectAnalytics(BaseModel):
     project_id: int

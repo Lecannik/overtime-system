@@ -215,6 +215,9 @@ export interface AnalyticsSummary {
   pending_requests?: number;
   rejected_requests?: number;
   total_requests?: number;
+  approved_hours?: number;
+  pending_hours?: number;
+  rejected_hours?: number;
 }
 
 // ==================== ОБЩИЕ ====================

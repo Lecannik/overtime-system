@@ -9,7 +9,7 @@ import { api, getOvertimes, reviewOvertime, getAccessToken } from '../../service
 import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
-import { STATUS_LABELS } from '../../constants/locale';
+import { STATUS_LABELS, REVIEW_FILTER_PRESETS } from '../../constants/locale';
 import type { User, Overtime } from '../../types';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
@@ -89,6 +89,7 @@ const ReviewPage: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         return params.get('search') || '';
     });
+    const [presetFilter, setPresetFilter] = useState<'action_required' | 'in_review' | 'all'>('action_required');
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -229,6 +230,7 @@ const ReviewPage: React.FC = () => {
             const ovtRes = await getOvertimes({
                 page: currentPage,
                 page_size: currentSize,
+                preset: presetFilter !== 'all' ? presetFilter : undefined,
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
@@ -251,15 +253,15 @@ const ReviewPage: React.FC = () => {
         } finally {
             if (showLoader) setLoading(false);
         }
-    }, [currentPage, pageSize, statusFilter, startDate, endDate, debouncedSearch, viewMode, navigate, user, selectedDeptId]);
+    }, [currentPage, pageSize, presetFilter, statusFilter, startDate, endDate, debouncedSearch, viewMode, navigate, user, selectedDeptId]);
 
-    // 3. Загрузка овертаймов при изменении пагинации, статуса, поиска, вида, отдела или триггера обновления (с лоадером)
+    // 3. Загрузка овертаймов при изменении пагинации, пресета, статуса, поиска, вида, отдела или триггера обновления (с лоадером)
     useEffect(() => {
         const init = async () => {
             await fetchOvertimes(true, true);
         };
         init();
-    }, [currentPage, statusFilter, debouncedSearch, viewMode, updateTrigger, selectedDeptId, fetchOvertimes]);
+    }, [currentPage, presetFilter, statusFilter, debouncedSearch, viewMode, updateTrigger, selectedDeptId, fetchOvertimes]);
 
     // 4. Тихое обновление овертаймов при изменении дат или отдела (без лоадера)
     useEffect(() => {
@@ -411,6 +413,10 @@ const ReviewPage: React.FC = () => {
                     inlineFormRenderer={renderInlineForm}
                     onDateRangeChange={handleCalendarDateRangeChange}
                     onClearSelection={handleClearSelection}
+                    statusFilter={statusFilter}
+                    preset={presetFilter}
+                    selectedDeptId={user?.role === 'admin' ? selectedDeptId : undefined}
+                    refreshKey={updateTrigger}
                 />
             );
         }
@@ -537,47 +543,106 @@ const ReviewPage: React.FC = () => {
             </div>
 
             {/* Фильтры и переключатель видов */}
-            <div className="glass-card" style={{ padding: '16px', display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <input
-                        placeholder="Поиск по ФИО или проекту..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
-                    />
+            <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
+                {/* Смарт-пресеты согласования */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    marginBottom: '16px',
+                    paddingBottom: '16px',
+                    borderBottom: '1px solid var(--border)'
+                }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {REVIEW_FILTER_PRESETS.map((preset) => {
+                            const isActive = presetFilter === preset.id;
+                            return (
+                                <button
+                                    key={preset.id}
+                                    onClick={() => {
+                                        setPresetFilter(preset.id);
+                                        if (preset.id !== 'all') {
+                                            setStatusFilter('ALL');
+                                        }
+                                        setCurrentPage(1);
+                                    }}
+                                    title={preset.description}
+                                    style={{
+                                        border: 'none',
+                                        background: isActive ? 'var(--primary-gradient)' : 'var(--bg-secondary)',
+                                        color: isActive ? '#fff' : 'var(--text-secondary)',
+                                        padding: '8px 16px',
+                                        borderRadius: '10px',
+                                        cursor: 'pointer',
+                                        fontWeight: isActive ? 700 : 500,
+                                        fontSize: '0.85rem',
+                                        transition: 'all 0.2s ease-in-out',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: isActive ? '0 2px 10px rgba(0, 0, 0, 0.2)' : 'none'
+                                    }}
+                                >
+                                    {preset.id === 'action_required' && <CheckCircle2 size={16} />}
+                                    {preset.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {REVIEW_FILTER_PRESETS.find(p => p.id === presetFilter)?.description}
+                    </span>
                 </div>
-                
-                {/* Фильтр по отделам (только для админа) */}
-                {user?.role === 'admin' && (
+
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                            placeholder="Поиск по ФИО или проекту..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
+                        />
+                    </div>
+                    
+                    {/* Фильтр по отделам (только для админа) */}
+                    {user?.role === 'admin' && (
+                        <div style={{ position: 'relative', minWidth: '180px' }}>
+                            <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <select
+                                value={selectedDeptId}
+                                onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
+                                style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
+                            >
+                                <option value="">Все отделы</option>
+                                {departments.map(d => (
+                                    <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                        </div>
+                    )}
+
                     <div style={{ position: 'relative', minWidth: '180px' }}>
                         <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <select
-                            value={selectedDeptId}
-                            onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
+                            value={statusFilter}
+                            onChange={e => {
+                                setStatusFilter(e.target.value);
+                                if (e.target.value !== 'ALL') {
+                                    setPresetFilter('all');
+                                }
+                                setCurrentPage(1);
+                            }}
                             style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
                         >
-                            <option value="">Все отделы</option>
-                            {departments.map(d => (
-                                <option key={d.id} value={d.id.toString()}>{d.name}</option>
-                            ))}
+                            <option value="ALL">Все статусы</option>
+                            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                         <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                     </div>
-                )}
-
-                <div style={{ position: 'relative', minWidth: '180px' }}>
-                    <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <select
-                        value={statusFilter}
-                        onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-                        style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
-                    >
-                        <option value="ALL">Все статусы</option>
-                        {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                    </select>
-                    <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
-                </div>
 
                 {/* Поля календаря (скрываем в режиме Календаря, так как там встроенный выбор) */}
                 {viewMode !== 'calendar' && (
@@ -609,6 +674,7 @@ const ReviewPage: React.FC = () => {
                         )}
                     </div>
                 )}
+                </div>
             </div>
 
             {/* Массовые действия */}

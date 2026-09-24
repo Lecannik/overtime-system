@@ -3,7 +3,7 @@
 Инкапсулирует SQL-логику и правила выборки данных из базы.
 """
 
-from sqlalchemy import select, or_, func, cast, String
+from sqlalchemy import select, or_, and_, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from datetime import datetime, date, timedelta, timezone
@@ -30,11 +30,12 @@ async def get_overtimes(
     page: int = 1,
     page_size: int = 15,
     view: str | None = None,
-    search: str | None = None
+    search: str | None = None,
+    preset: str | None = None
 ):
     """
     Получает список заявок с учетом прав доступа текущего пользователя,
-    пагинации и поискового запроса.
+    пагинации, поискового запроса и смарт-пресетов.
     """
     # Базовый запрос
     base_query = select(Overtime).join(Project, Overtime.project_id == Project.id)
@@ -95,9 +96,38 @@ async def get_overtimes(
     if view == "review":
         filters.append(Overtime.status != OvertimeStatus.IN_PROGRESS)
 
-    # Дополнительные фильтры
-    if status:
+    # Пресеты фильтрации согласований
+    if preset == "in_review":
+        filters.append(Overtime.status.in_([
+            OvertimeStatus.PENDING,
+            OvertimeStatus.MANAGER_APPROVED,
+            OvertimeStatus.HEAD_APPROVED
+        ]))
+    elif preset == "action_required":
+        if current_user.role == UserRole.manager:
+            filters.append(and_(
+                Project.manager_id == current_user.id,
+                Overtime.manager_approved.is_(None),
+                Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.HEAD_APPROVED])
+            ))
+        elif current_user.role == UserRole.head:
+            my_depts = select(Department.id).where(Department.head_id == current_user.id)
+            filters.append(and_(
+                Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED]),
+                or_(
+                    and_(User.department_id.in_(my_depts), Overtime.head_approved.is_(None)),
+                    and_(Project.manager_id == current_user.id, Overtime.manager_approved.is_(None))
+                )
+            ))
+        elif current_user.role == UserRole.admin:
+            filters.append(Overtime.status.in_([
+                OvertimeStatus.PENDING,
+                OvertimeStatus.MANAGER_APPROVED,
+                OvertimeStatus.HEAD_APPROVED
+            ]))
+    elif status:
         filters.append(Overtime.status == status)
+
     if project_id:
         filters.append(Overtime.project_id == project_id)
     if department_id:
@@ -399,10 +429,13 @@ async def get_calendar_summary(
     current_user: User,
     month: str = None,
     year: int = None,
+    status: OvertimeStatus | None = None,
+    preset: str | None = None,
+    department_id: int | None = None,
 ) -> dict:
     """
     Возвращает сводку заявок на переработку, сгруппированных по дням,
-    для отображения в календарном виде (heatmap).
+    для отображения в календарном виде (heatmap), с учетом фильтров по статусам, пресетам и отделу.
 
     Формат month: 'YYYY-MM'. Доступность данных ограничена правами пользователя.
     Дни в ответе форматируются как 'YYYY-MM-DD' (ISO 8601), отображение на
@@ -413,6 +446,9 @@ async def get_calendar_summary(
         current_user: Текущий авторизованный пользователь.
         month: Строка формата 'YYYY-MM', определяющая отображаемый месяц.
         year: Год для годовой сводки.
+        status: Фильтр по конкретному статусу OvertimeStatus.
+        preset: Смарт-пресет ('action_required' | 'in_review').
+        department_id: ID отдела для фильтрации.
 
     Returns:
         Словарь вида {'YYYY-MM-DD': {'total': N, 'pending': N, 'approved': N,
@@ -471,6 +507,42 @@ async def get_calendar_summary(
 
     if role_filters:
         base_query = base_query.where(*role_filters)
+
+    # Фильтрация по подразделению
+    if department_id:
+        base_query = base_query.where(User.department_id == department_id)
+
+    # Применение смарт-пресетов и статусов к календарю
+    if preset == "in_review":
+        base_query = base_query.where(Overtime.status.in_([
+            OvertimeStatus.PENDING,
+            OvertimeStatus.MANAGER_APPROVED,
+            OvertimeStatus.HEAD_APPROVED
+        ]))
+    elif preset == "action_required":
+        if current_user.role == UserRole.manager:
+            base_query = base_query.where(and_(
+                Project.manager_id == current_user.id,
+                Overtime.manager_approved.is_(None),
+                Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.HEAD_APPROVED])
+            ))
+        elif current_user.role == UserRole.head:
+            my_depts = select(Department.id).where(Department.head_id == current_user.id)
+            base_query = base_query.where(and_(
+                Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED]),
+                or_(
+                    and_(User.department_id.in_(my_depts), Overtime.head_approved.is_(None)),
+                    and_(Project.manager_id == current_user.id, Overtime.manager_approved.is_(None))
+                )
+            ))
+        elif current_user.role == UserRole.admin:
+            base_query = base_query.where(Overtime.status.in_([
+                OvertimeStatus.PENDING,
+                OvertimeStatus.MANAGER_APPROVED,
+                OvertimeStatus.HEAD_APPROVED
+            ]))
+    elif status:
+        base_query = base_query.where(Overtime.status == status)
 
     result = await session.execute(base_query)
     overtimes = result.scalars().all()

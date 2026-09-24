@@ -76,10 +76,28 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
+const PieTooltip = ({ active, payload, statusViewMode, totalVal }: any) => {
+    if (active && payload && payload.length) {
+        const item = payload[0];
+        const val = item.value;
+        const percent = totalVal > 0 ? ((val / totalVal) * 100).toFixed(1) : '0';
+        const formatted = statusViewMode === 'count' ? `${val} шт.` : `${Number(val).toFixed(1)} ч.`;
+        return (
+            <div className="glass-card" style={{ padding: '10px 14px', border: 'none', boxShadow: 'var(--elevation-2)' }}>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: item.payload?.fill || 'var(--primary)', fontWeight: 700 }}>
+                    {item.name}: {formatted} ({percent}%)
+                </p>
+            </div>
+        );
+    }
+    return null;
+};
+
 const AnalyticsPage: React.FC = () => {
     const navigate = useNavigate();
     const [user, setUser] = useState<User | null>(null);
     const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+    const [statusViewMode, setStatusViewMode] = useState<'count' | 'hours'>('count');
     const [projects, setProjects] = useState<ProjectAnalytics[]>([]);
     const [departments, setDepartments] = useState<DepartmentAnalytics[]>([]);
     const [loading, setLoading] = useState(true);
@@ -341,11 +359,19 @@ const AnalyticsPage: React.FC = () => {
         }
     };
 
-    const pieData = summary ? [
-        { name: 'Одобрено', value: summary.approved_requests || summary.approved_count || 0 },
-        { name: 'Ожидает', value: summary.pending_requests || summary.pending_count || 0 },
-        { name: 'Отклонено', value: summary.rejected_requests || summary.rejected_count || 0 },
-    ].filter(d => (d.value || 0) > 0) : [];
+    const pieData = summary ? (
+        statusViewMode === 'count' ? [
+            { name: 'Одобрено', value: summary.approved_requests ?? summary.approved_count ?? 0 },
+            { name: 'Ожидает', value: summary.pending_requests ?? summary.pending_count ?? 0 },
+            { name: 'Отклонено', value: summary.rejected_requests ?? summary.rejected_count ?? 0 },
+        ] : [
+            { name: 'Одобрено', value: Number((summary.approved_hours ?? summary.total_hours ?? 0).toFixed(1)) },
+            { name: 'Ожидает', value: Number((summary.pending_hours ?? 0).toFixed(1)) },
+            { name: 'Отклонено', value: Number((summary.rejected_hours ?? 0).toFixed(1)) },
+        ]
+    ).filter(d => (d.value || 0) > 0) : [];
+
+    const totalPieValue = pieData.reduce((acc, curr) => acc + (curr.value || 0), 0);
 
     if (loading && !summary) return <div className="page-container"><Skeleton height={800} /></div>;
 
@@ -420,9 +446,37 @@ const AnalyticsPage: React.FC = () => {
 
             <div className="analytics-charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
                 <div className="glass-card" style={{ minWidth: 0 }}>
-                    <h4 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
-                    </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
+                        <h4 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <PieIcon size={20} style={{ color: 'var(--primary)' }} /> Статусы заявок
+                        </h4>
+                        <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
+                            <button
+                                onClick={() => setStatusViewMode('count')}
+                                style={{
+                                    padding: '6px 12px', fontSize: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                                    background: statusViewMode === 'count' ? 'var(--bg-secondary)' : 'transparent',
+                                    color: statusViewMode === 'count' ? 'var(--primary)' : 'var(--text-secondary)',
+                                    boxShadow: statusViewMode === 'count' ? 'var(--card-shadow)' : 'none',
+                                    fontWeight: statusViewMode === 'count' ? 700 : 500
+                                }}
+                            >
+                                Количество (шт.)
+                            </button>
+                            <button
+                                onClick={() => setStatusViewMode('hours')}
+                                style={{
+                                    padding: '6px 12px', fontSize: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                                    background: statusViewMode === 'hours' ? 'var(--bg-secondary)' : 'transparent',
+                                    color: statusViewMode === 'hours' ? 'var(--primary)' : 'var(--text-secondary)',
+                                    boxShadow: statusViewMode === 'hours' ? 'var(--card-shadow)' : 'none',
+                                    fontWeight: statusViewMode === 'hours' ? 700 : 500
+                                }}
+                            >
+                                Объем (ч.)
+                            </button>
+                        </div>
+                    </div>
                     <div style={{ height: '350px', position: 'relative', width: '100%', minWidth: 0 }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <PieChart>
@@ -431,7 +485,7 @@ const AnalyticsPage: React.FC = () => {
                                         <Cell key={`cell-${index}`} fill={STATUS_COLORS[_entry.name] || COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<PieTooltip statusViewMode={statusViewMode} totalVal={totalPieValue} />} />
                                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
                             </PieChart>
                         </ResponsiveContainer>
