@@ -625,21 +625,39 @@ const ReviewPage: React.FC = () => {
                         </div>
                     )}
 
-                    <div style={{ position: 'relative', minWidth: '180px' }}>
+                    <div style={{ position: 'relative', minWidth: '220px' }}>
                         <Filter size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <select
-                            value={statusFilter}
+                            value={presetFilter !== 'all' ? presetFilter : statusFilter}
                             onChange={e => {
-                                setStatusFilter(e.target.value);
-                                if (e.target.value !== 'ALL') {
+                                const val = e.target.value;
+                                if (val === 'action_required') {
+                                    setPresetFilter('action_required');
+                                    setStatusFilter('ALL');
+                                } else if (val === 'in_review') {
+                                    setPresetFilter('in_review');
+                                    setStatusFilter('ALL');
+                                } else if (val === 'ALL') {
                                     setPresetFilter('all');
+                                    setStatusFilter('ALL');
+                                } else {
+                                    setPresetFilter('all');
+                                    setStatusFilter(val);
                                 }
                                 setCurrentPage(1);
                             }}
                             style={{ height: '44px', padding: '0 32px 0 44px', borderRadius: '10px', width: '100%' }}
                         >
-                            <option value="ALL">Все статусы</option>
-                            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            <optgroup label="Смарт-фильтры">
+                                <option value="action_required">⚡ Требует моего решения</option>
+                                <option value="in_review">⏳ Все на согласовании</option>
+                                <option value="ALL">📋 Все заявки (все статусы)</option>
+                            </optgroup>
+                            <optgroup label="По конкретному статусу">
+                                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                                    <option key={k} value={k}>{v}</option>
+                                ))}
+                            </optgroup>
                         </select>
                         <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                     </div>
