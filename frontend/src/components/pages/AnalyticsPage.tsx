@@ -232,6 +232,7 @@ const AnalyticsPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     parseDate: safeParseDate,
                     onChange: () => {},
                     onClose: (selectedDates) => {
@@ -248,6 +249,7 @@ const AnalyticsPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     parseDate: safeParseDate,
                     onChange: () => {},
                     onClose: (selectedDates) => {
@@ -377,11 +379,13 @@ const AnalyticsPage: React.FC = () => {
                 </div>
 
                 {period === 'custom' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input ref={startInputRef} type="text" placeholder="дд/мм/гггг" style={{ width: '110px', textAlign: 'center' }} />
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                        <input ref={endInputRef} type="text" placeholder="дд/мм/гггг" style={{ width: '110px', textAlign: 'center' }} />
-                        <button className="primary" onClick={fetchAll}>Применить</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: '1 1 240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '180px' }}>
+                            <input ref={startInputRef} type="text" placeholder="дд/мм/гггг" style={{ flex: 1, minWidth: 0, width: '100%', textAlign: 'center' }} />
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            <input ref={endInputRef} type="text" placeholder="дд/мм/гггг" style={{ flex: 1, minWidth: 0, width: '100%', textAlign: 'center' }} />
+                        </div>
+                        <button className="primary" onClick={fetchAll} style={{ padding: '8px 16px', height: '42px' }}>Применить</button>
                     </div>
                 )}
 
@@ -466,7 +470,7 @@ const AnalyticsPage: React.FC = () => {
                             <BarChart
                                 data={([...chartData] as any[]).sort((a: any, b: any) => b.total_hours - a.total_hours).slice(0, compareBy === 'users' ? 8 : 12)}
                                 layout={compareBy === 'users' ? 'horizontal' : 'vertical'}
-                                margin={{ left: compareBy === 'users' ? 0 : 120, right: 30, top: 10, bottom: 20 }}
+                                margin={{ left: compareBy === 'users' ? 0 : 80, right: 20, top: 10, bottom: 20 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" vertical={compareBy !== 'users'} horizontal={compareBy === 'users'} stroke="var(--border)" opacity={0.4} />
                                 <XAxis
@@ -484,7 +488,7 @@ const AnalyticsPage: React.FC = () => {
                                     type={compareBy === 'users' ? 'number' : 'category'}
                                     dataKey={compareBy !== 'users' ? (compareBy === 'projects' ? "project_name" : "department_name") : "total_hours"}
                                     axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
-                                    width={compareBy === 'users' ? 40 : 120}
+                                    width={compareBy === 'users' ? 40 : 80}
                                     tickFormatter={compareBy !== 'users' ? (val) => (val && val.length > 18 ? val.slice(0, 15) + '...' : val) : undefined}
                                 />
                                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-tertiary)', opacity: 0.4 }} />

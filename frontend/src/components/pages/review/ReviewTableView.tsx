@@ -28,7 +28,7 @@ const ReviewTableView: React.FC<ReviewTableViewProps> = ({
         <div
             style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))',
                 gap: '16px',
             }}
         >

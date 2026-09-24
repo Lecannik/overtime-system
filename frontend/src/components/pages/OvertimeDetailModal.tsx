@@ -90,6 +90,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     maxDate: new Date(),
                     defaultDate: editStartTime ? new Date(editStartTime) : undefined,
                     parseDate: safeParseDate,
@@ -124,6 +125,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     maxDate: new Date(),
                     defaultDate: editEndTime ? new Date(editEndTime) : undefined,
                     parseDate: safeParseDate,
@@ -270,71 +272,73 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
     return (
         <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
             <div className="modal-content glass-card animate-scale-in"
-                style={{ maxWidth: '600px', padding: 0, overflow: 'hidden', borderRadius: '24px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+                style={{ maxWidth: '600px', padding: 0, display: 'flex', flexDirection: 'column' }}
                 onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
-                <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--accent-gradient)' }}>
-                            <FileText size={24} />
+                <div className="modal-header-responsive" style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                        <div className="icon-shape" style={{ width: '42px', height: '42px', minWidth: '42px', background: 'var(--accent-gradient)', flexShrink: 0 }}>
+                            <FileText size={22} />
                         </div>
-                        <div>
-                            <h3 style={{ fontWeight: 800, fontSize: '1.25rem' }}>Детали заявки</h3>
+                        <div style={{ minWidth: 0 }}>
+                            <h3 style={{ fontWeight: 800, fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Детали заявки</h3>
                             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID: {overtime.id} • {overtime.project?.code || 'Внутренний'}</p>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                         {currentUser?.role === 'admin' && !isEditing && (
                             <button
                                 onClick={handleStartEdit}
                                 className="action-button-modern"
                                 title="Редактировать заявку"
-                                style={{ width: '40px', height: '40px', color: 'var(--primary)' }}
+                                style={{ width: '38px', height: '38px', color: 'var(--primary)' }}
                             >
-                                <Edit2 size={18} />
+                                <Edit2 size={16} />
                             </button>
                         )}
-                        <button onClick={onClose} className="action-button-modern" style={{ width: '40px', height: '40px' }}><X size={20} /></button>
+                        <button onClick={onClose} className="action-button-modern" style={{ width: '38px', height: '38px' }}><X size={18} /></button>
                     </div>
                 </div>
 
-                <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px', overflowY: 'auto', flex: 1 }}>
+                <div className="modal-body-responsive" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', flex: 1 }}>
 
                     {/* Status Banner */}
                     <div style={{
-                        padding: '16px 24px',
-                        borderRadius: '16px',
+                        padding: '14px 20px',
+                        borderRadius: '14px',
                         background: overtime.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.1)' : overtime.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                         border: '1px solid',
                         borderColor: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '8px'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <ShieldCheck size={20} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)' }} />
-                            <span style={{ fontWeight: 800, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <ShieldCheck size={18} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 {STATUS_LABELS[overtime.status] || overtime.status}
                             </span>
                         </div>
                         {overtime.approved_hours !== null && (
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
                                 Утверждено: <span style={{ color: 'var(--primary)' }}>{overtime.approved_hours}ч</span>
                             </div>
                         )}
                     </div>
 
                     {/* Info Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div className="modal-two-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                             <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Сотрудник</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <UserIcon size={16} style={{ color: 'var(--primary)' }} />
-                                <span style={{ fontWeight: 600 }}>{overtime.user?.full_name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                <UserIcon size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                                <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{overtime.user?.full_name}</span>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                             <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Проект</label>
                             {isEditing ? (
                                 <select
@@ -347,7 +351,8 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                                         border: '1px solid var(--border)',
                                         background: 'var(--bg-tertiary)',
                                         color: 'var(--text-primary)',
-                                        fontSize: '0.85rem'
+                                        fontSize: '0.85rem',
+                                        width: '100%'
                                     }}
                                     disabled={loadingProjects}
                                 >
@@ -356,13 +361,13 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                                     ))}
                                 </select>
                             ) : (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <Tag size={16} style={{ color: 'var(--info)' }} />
-                                    <span style={{ fontWeight: 600 }}>{overtime.project?.name || 'Внутренний'}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                    <Tag size={16} style={{ color: 'var(--info)', flexShrink: 0 }} />
+                                    <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{overtime.project?.name || 'Внутренний'}</span>
                                 </div>
                             )}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: 'span 2' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: '1 / -1' }}>
                             <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Период (начало и окончание)</label>
                             {isEditing ? (
                                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -648,11 +653,11 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             />
                         </div>
 
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                        <div className="modal-footer-responsive" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px', flexWrap: 'wrap' }}>
                             <button
                                 onClick={onClose}
                                 className="action-button-modern"
-                                style={{ width: 'auto', height: '40px', padding: '0 20px', borderRadius: '10px', fontSize: '0.9rem' }}
+                                style={{ width: 'auto', minHeight: '40px', padding: '0 16px', borderRadius: '10px', fontSize: '0.85rem' }}
                                 disabled={submitting}
                             >
                                 Отмена
@@ -660,7 +665,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             <button
                                 onClick={() => handleAction(false)}
                                 className="primary"
-                                style={{ height: '40px', padding: '0 24px', background: 'var(--danger-gradient)', fontSize: '0.9rem', borderRadius: '10px' }}
+                                style={{ minHeight: '40px', padding: '0 20px', background: 'var(--danger-gradient)', fontSize: '0.85rem', borderRadius: '10px' }}
                                 disabled={submitting}
                             >
                                 Отклонить
@@ -668,7 +673,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                             <button
                                 onClick={() => handleAction(true)}
                                 className="primary"
-                                style={{ height: '40px', padding: '0 24px', background: 'var(--success-gradient)', fontSize: '0.9rem', borderRadius: '10px' }}
+                                style={{ minHeight: '40px', padding: '0 20px', background: 'var(--success-gradient)', fontSize: '0.85rem', borderRadius: '10px' }}
                                 disabled={submitting}
                             >
                                 Одобрить
@@ -676,8 +681,8 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         </div>
                     </div>
                 ) : (
-                    <div style={{ padding: '24px 32px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
-                        <button onClick={onClose} className="primary" style={{ width: 'auto', height: '40px', padding: '0 32px', borderRadius: '10px' }}>Закрыть</button>
+                    <div className="modal-header-responsive" style={{ padding: '16px 24px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                        <button onClick={onClose} className="primary" style={{ width: 'auto', minHeight: '40px', padding: '0 28px', borderRadius: '10px', fontSize: '0.9rem' }}>Закрыть</button>
                     </div>
                 )}
             </div>

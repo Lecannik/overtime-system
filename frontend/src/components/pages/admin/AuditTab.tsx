@@ -204,7 +204,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <form
                         onSubmit={handleSearchSubmit}
-                        style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '280px', position: 'relative' }}
+                        style={{ display: 'flex', gap: '8px', flex: 1, minWidth: 'min(100%, 280px)', position: 'relative' }}
                     >
                         <div style={{ position: 'relative', flex: 1 }}>
                             <Search
@@ -403,7 +403,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                         </div>
                     </div>
                 ) : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div className="table-scroll-container">
                         <table className="table-container" style={{ minWidth: '950px', width: '100%' }}>
                             <thead>
                                 <tr>

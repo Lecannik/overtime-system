@@ -91,23 +91,23 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
     return (
         <div className="modal-overlay" onClick={onClose} style={{ zIndex: 3000 }}>
             <div className="modal-content glass-card animate-scale-in"
-                style={{ maxWidth: '520px', padding: 0, overflow: 'hidden', borderRadius: '24px' }}
+                style={{ maxWidth: '520px', padding: 0 }}
                 onClick={e => e.stopPropagation()}>
 
-                <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ fontWeight: 800, fontSize: '1.25rem' }}>{editData ? 'Редактировать сотрудника' : 'Новый сотрудник'}</h3>
-                    <button onClick={onClose} className="action-button-modern" style={{ width: '40px', height: '40px' }}><X size={20} /></button>
+                <div className="modal-header-responsive" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                    <h3 style={{ fontWeight: 800, fontSize: '1.2rem' }}>{editData ? 'Редактировать сотрудника' : 'Новый сотрудник'}</h3>
+                    <button onClick={onClose} className="action-button-modern" style={{ width: '38px', height: '38px' }}><X size={18} /></button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <form onSubmit={handleSubmit} className="modal-body-responsive" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     {error && (
-                        <div style={{ padding: '16px', background: '#fee2e2', color: 'var(--danger)', borderRadius: '12px', fontSize: '0.875rem', display: 'flex', gap: '8px', fontWeight: 600 }}>
-                            <AlertCircle size={20} /> {error}
+                        <div style={{ padding: '14px 16px', background: '#fee2e2', color: 'var(--danger)', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', gap: '8px', fontWeight: 600 }}>
+                            <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} /> <span>{error}</span>
                         </div>
                     )}
 
                     <div className="form-group">
-                        <label>ФИО</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>ФИО</label>
                         <div style={{ position: 'relative' }}>
                             <UserIcon size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" style={{ paddingLeft: '44px' }} required />
@@ -115,7 +115,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                     </div>
 
                     <div className="form-group">
-                        <label>Email</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Email</label>
                         <div style={{ position: 'relative' }}>
                             <Mail size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="i.ivanov@company.com" style={{ paddingLeft: '44px' }} required />
@@ -124,7 +124,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
 
                     {!editData && (
                         <div className="form-group">
-                            <label>Начальный пароль</label>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Начальный пароль</label>
                             <div style={{ position: 'relative' }}>
                                 <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <input
@@ -146,9 +146,9 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                         </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                        <div className="form-group">
-                            <label>Роль</label>
+                    <div className="modal-two-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="form-group" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Роль</label>
                             <div style={{ position: 'relative' }}>
                                 <Shield size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <select value={role} onChange={e => setRole(e.target.value)} style={{ paddingLeft: '44px' }}>
@@ -156,8 +156,8 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                                 </select>
                             </div>
                         </div>
-                        <div className="form-group">
-                            <label>Компания</label>
+                        <div className="form-group" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Компания</label>
                             <div style={{ position: 'relative' }}>
                                 <Globe size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <select value={company} onChange={e => setCompany(e.target.value)} style={{ paddingLeft: '44px' }}>
@@ -168,7 +168,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                     </div>
 
                     <div className="form-group">
-                        <label>Отдел</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Отдел</label>
                         <div style={{ position: 'relative' }}>
                             <Building2 size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <select value={departmentId} onChange={e => setDepartmentId(e.target.value ? Number(e.target.value) : '')} style={{ paddingLeft: '44px' }}>
@@ -178,9 +178,9 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
-                        <button type="button" onClick={onClose} className="secondary" style={{ flex: 1, padding: '14px' }}>Отмена</button>
-                        <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '14px' }}>
+                    <div className="modal-footer-responsive" style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                        <button type="button" onClick={onClose} className="secondary" style={{ flex: 1, padding: '12px', minHeight: '44px', justifyContent: 'center' }}>Отмена</button>
+                        <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '12px', minHeight: '44px', justifyContent: 'center', fontWeight: 700 }}>
                             {loading ? 'Подождите...' : (editData ? 'Сохранить изменения' : 'Создать сотрудника')}
                         </button>
                     </div>

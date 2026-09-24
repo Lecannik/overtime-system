@@ -160,7 +160,8 @@ const ChangePasswordPage: React.FC = () => {
         }
         @media (max-width: 900px) {
           .login-container { grid-template-columns: 1fr; }
-          .login-right-section { display: none; }
+          .login-right-section { display: none !important; }
+          .login-left-section { padding: 32px 20px; }
         }
       `}</style>
     </div>

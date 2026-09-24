@@ -506,8 +506,21 @@ input.datetime-input-custom {
   cursor: pointer;
 }
 
-/* Адаптивность для страницы согласования */
+/* Адаптивность для мобильных устройств и планшетов */
 @media (max-width: 768px) {
+  /* Контейнер страницы */
+  .page-container {
+    padding: 16px 12px !important;
+  }
+
+  /* Предотвращение нежелательного автозума на iOS и удобство тапов */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 42px;
+  }
+
   /* Переключатель видов сверху на мобильных растягивается во всю ширину */
   .review-view-toggle {
     width: 100% !important;
@@ -565,57 +578,160 @@ input.datetime-input-custom {
     display: none !important;
   }
 
-  /* Адаптивные стили для полей дат (фильтр дат) */
-  .glass-card div[style*="display: flex"][style*="align-items: center"][style*="flex-wrap: wrap"] {
-    width: 100% !important;
-    justify-content: space-between !important;
-    gap: 8px !important;
-  }
-  .glass-card div[style*="display: flex"][style*="align-items: center"][style*="flex-wrap: wrap"] input {
-    flex: 1 !important;
-    width: auto !important;
-    min-width: 80px !important;
+  /* Увеличение touch targets */
+  button, select, input, textarea {
+    min-height: 42px;
   }
 }
 
-/* Мобильная адаптация модальных окон (подача заявок и просмотр деталей) */
-@media (max-width: 600px) {
-  .modal-overlay {
-    padding: 0 !important;
+@media (max-width: 480px) {
+  .page-container {
+    padding: 12px 8px !important;
   }
+}
+
+/* Мобильная адаптация модальных окон (подача заявок, редактирование, детали) */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px !important;
+    align-items: flex-end !important;
+  }
+
   .modal-content {
-    border-radius: 0 !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
+    border-radius: 20px 20px 14px 14px !important;
+    max-height: calc(100vh - 24px) !important;
+    max-height: calc(100dvh - env(safe-area-inset-bottom, 0px) - 24px) !important;
     max-width: 100% !important;
     width: 100% !important;
     display: flex !important;
     flex-direction: column !important;
-  }
-  
-  .modal-content > div {
-    border-radius: 0 !important;
-  }
-  
-  /* Увеличение Touch targets на телефонах */
-  button, select, input, textarea {
-    min-height: 44px;
+    margin-bottom: 0 !important;
   }
 
-  /* Для flatpickr на телефонах, чтобы кнопки были крупнее */
-  .flatpickr-calendar {
-    font-size: 16px !important;
+  .modal-header-responsive {
+    padding: 16px 20px !important;
+    flex-shrink: 0;
   }
 
-  /* Сетка карточки и формы на мобильных */
+  .modal-body-responsive {
+    padding: 16px 16px 20px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 auto !important;
+  }
+
+  /* Двухколоночные сетки в модалках переходят в одну колонку */
+  .modal-two-cols,
+  .modal-content div[style*="grid-template-columns"],
   .modal-content div[style*="gridTemplateColumns"] {
     grid-template-columns: 1fr !important;
-    gap: 16px !important;
+    gap: 14px !important;
   }
-  
-  /* Отступы внутри модалок на мобильных */
-  .modal-content div[style*="padding: 32px"],
-  .modal-content div[style*="padding: 24px 32px"] {
-    padding: 16px !important;
+
+  /* Кнопки геолокации в модалке */
+  .modal-geo-buttons {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .modal-geo-buttons button {
+    width: 100% !important;
+  }
+
+  /* Кнопки действий формы модалки */
+  .modal-footer-responsive {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 10px !important;
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 6px)) !important;
+  }
+  .modal-footer-responsive button {
+    flex: 1 !important;
+    padding: 12px !important;
+  }
+
+  /* Календарь flatpickr на смартфонах */
+  .flatpickr-calendar {
+    font-size: 15px !important;
+    max-width: 320px !important;
+    z-index: 99999 !important;
+  }
+}
+
+/* Полный запрет на отображение дублирующего мобильного инпута flatpickr */
+.flatpickr-mobile {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Утилиты адаптивности */
+.hide-on-mobile {
+  display: inherit;
+}
+.show-on-mobile {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+  .show-on-mobile {
+    display: flex !important;
+  }
+  .show-on-mobile-block {
+    display: block !important;
+  }
+}
+
+/* Адаптивный скролл для таблиц */
+.table-scroll-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.table-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+.table-scroll-container::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+.table-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* Адаптивная карточка переработки для мобильного режима */
+.mobile-overtime-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+.mobile-overtime-card:active {
+  background: var(--bg-tertiary);
+}
+
+/* Адаптивная сетка профиля пользователя */
+.profile-layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .profile-layout-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
   }
 }

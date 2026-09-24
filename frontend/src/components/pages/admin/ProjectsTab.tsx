@@ -388,7 +388,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
             ) : viewMode === 'table' ? (
                 /* ТАБЛИЧНЫЙ ВИД */
                 <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <div style={{ overflowX: 'auto' }}>
+                    <div className="table-scroll-container">
                         <table className="table-container" style={{ minWidth: '900px', width: '100%' }}>
                             <thead>
                                 <tr>
@@ -568,7 +568,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                 <div
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))',
                         gap: '16px',
                     }}
                 >
@@ -606,7 +606,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                                                 style={{
                                                     fontWeight: 800,
                                                     fontSize: '1.05rem',
-                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'break-word',
                                                     lineHeight: 1.2,
                                                     color: p.is_active ? 'var(--text-primary)' : 'var(--text-muted)',
                                                 }}

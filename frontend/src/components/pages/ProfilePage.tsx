@@ -100,7 +100,7 @@ const ProfilePage: React.FC = () => {
                     <p style={{ color: 'var(--text-secondary)' }}>Управление персональными данными и настройками безопасности.</p>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px', alignItems: 'start' }}>
+                <div className="profile-layout-grid">
                     {/* Left: User Info Card */}
                     <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
                         <div style={{ height: '100px', background: 'var(--accent-gradient)' }}></div>
@@ -141,7 +141,7 @@ const ProfilePage: React.FC = () => {
 
                     {/* Right: Settings Form */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                        <form className="glass-card" onSubmit={handleSave} style={{ padding: '32px' }}>
+                        <form className="glass-card" onSubmit={handleSave} style={{ padding: 'clamp(16px, 4vw, 32px)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
                                 <Bell size={24} style={{ color: 'var(--primary)' }} />
                                 <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Уведомления</h4>
@@ -176,7 +176,7 @@ const ProfilePage: React.FC = () => {
                                     </label>
 
                                     {prefs.tg_notifications && (
-                                        <div style={{ marginTop: '12px', paddingLeft: '52px', animation: 'fadeIn 0.2s ease-out' }}>
+                                        <div style={{ marginTop: '12px', paddingLeft: 'clamp(0px, 4vw, 52px)', animation: 'fadeIn 0.2s ease-out' }}>
                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                                 Telegram Chat ID (получите у бота, отправив команду /start)
                                             </p>

@@ -94,6 +94,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     maxDate: new Date(),
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
@@ -127,6 +128,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     dateFormat: "d/m/Y H:i",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     maxDate: new Date(),
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
@@ -396,35 +398,42 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         <div className="modal-overlay" onClick={handleOverlayClick} style={{ zIndex: 2000 }}>
             <div className="modal-content glass-card animate-scale-in" 
                 ref={modalRef}
-                style={{ maxWidth: '560px', padding: 0, overflow: 'hidden', borderRadius: '24px' }} 
+                style={{ maxWidth: '560px', padding: 0 }} 
                 onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
-                <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div className="icon-shape" style={{ width: '48px', height: '48px', background: 'var(--primary-gradient)' }}>
-                            <FileText size={24} />
+                <div className="modal-header-responsive" style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                        <div className="icon-shape" style={{ width: '42px', height: '42px', minWidth: '42px', background: 'var(--primary-gradient)', flexShrink: 0 }}>
+                            <FileText size={22} />
                         </div>
-                        <div>
-                            <h3 style={{ fontWeight: 800, fontSize: '1.25rem' }}>{editData ? 'Редактировать заявку' : 'Новая заявка'}</h3>
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Заполнение отчета о переработке</p>
+                        <div style={{ minWidth: 0 }}>
+                            <h3 style={{ fontWeight: 800, fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {editData ? 'Редактировать заявку' : 'Новая заявка'}
+                            </h3>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                Заполнение отчета о переработке
+                            </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="action-button-modern" style={{ width: '40px', height: '40px' }}><X size={20} /></button>
+                    <button onClick={onClose} className="action-button-modern" style={{ width: '38px', height: '38px', flexShrink: 0 }}><X size={18} /></button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <form onSubmit={handleSubmit} className="modal-body-responsive" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     {error && (
-                        <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', borderRadius: '12px', fontSize: '0.875rem', display: 'flex', gap: '8px', fontWeight: 600 }}>
-                            <AlertCircle size={20} /> {error}
+                        <div style={{ padding: '14px 16px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', gap: '8px', fontWeight: 600, alignItems: 'flex-start' }}>
+                            <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <span>{error}</span>
                         </div>
                     )}
 
                     {/* Проект */}
                     <div className="form-group" style={{ position: 'relative' }} ref={projectDropdownRef}>
-                        <label>Проект</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
+                            Проект
+                        </label>
                         <div style={{ position: 'relative' }}>
-                            <Tag size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <Tag size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
                                 value={projectSearch}
@@ -435,14 +444,15 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 }}
                                 onFocus={() => setIsProjectDropdownOpen(true)}
                                 placeholder="Выберите проект..."
-                                style={{ paddingLeft: '44px', cursor: 'text' }}
+                                style={{ paddingLeft: '44px', cursor: 'text', width: '100%' }}
                             />
                         </div>
                         
                         {isProjectDropdownOpen && (
                             <div className="glass-card scrollbar-hidden" style={{ 
                                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', 
-                                maxHeight: '200px', overflowY: 'auto', zIndex: 10, padding: '8px', gap: '4px', display: 'flex', flexDirection: 'column'
+                                maxHeight: '200px', overflowY: 'auto', zIndex: 100, padding: '8px', gap: '4px', display: 'flex', flexDirection: 'column',
+                                boxShadow: '0 12px 30px rgba(0,0,0,0.4)', background: 'var(--bg-secondary)'
                             }}>
                                 {lastProject && (
                                     <button
@@ -453,14 +463,14 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                             setIsProjectDropdownOpen(false);
                                         }}
                                         style={{
-                                            padding: '10px 16px', textAlign: 'left',
-                                            background: projectId === lastProject.id.toString() ? 'var(--bg-secondary)' : 'transparent',
+                                            padding: '10px 14px', textAlign: 'left',
+                                            background: projectId === lastProject.id.toString() ? 'var(--bg-tertiary)' : 'transparent',
                                             border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)',
-                                            borderBottom: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '8px'
+                                            borderBottom: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '8px', width: '100%'
                                         }}
                                     >
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>⏮ Предыдущий:</span>
-                                        <span style={{ fontWeight: 600 }}>{lastProject.name}</span>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', flexShrink: 0 }}>⏮ Предыдущий:</span>
+                                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lastProject.name}</span>
                                     </button>
                                 )}
                                 <button
@@ -480,8 +490,8 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                         setIsProjectDropdownOpen(false);
                                     }}
                                     style={{
-                                        padding: '10px 16px', textAlign: 'left', background: projectId === '' ? 'var(--bg-secondary)' : 'transparent',
-                                        border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)'
+                                        padding: '10px 14px', textAlign: 'left', background: projectId === '' ? 'var(--bg-tertiary)' : 'transparent',
+                                        border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', width: '100%'
                                     }}
                                 >
                                     Внутренний (Без проекта)
@@ -496,12 +506,12 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                             setIsProjectDropdownOpen(false);
                                         }}
                                         style={{
-                                            padding: '10px 16px', textAlign: 'left', background: projectId === p.id.toString() ? 'var(--bg-secondary)' : 'transparent',
-                                            border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                            padding: '10px 14px', textAlign: 'left', background: projectId === p.id.toString() ? 'var(--bg-tertiary)' : 'transparent',
+                                            border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'
                                         }}
                                     >
-                                        <span style={{ fontWeight: 600 }}>{p.name}</span>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{p.code}</span>
+                                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px' }}>{p.name}</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>{p.code}</span>
                                     </button>
                                 ))}
                                 {filteredProjects.length === 0 && (
@@ -511,30 +521,35 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                         )}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                        <div className="form-group">
-                            <label>Время начала</label>
+                    {/* Поля дат и времени — на мобильном переходят в 1 колонку */}
+                    <div className="modal-two-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="form-group" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
+                                Время начала
+                            </label>
                             <div style={{ position: 'relative' }}>
-                                <Calendar size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <Calendar size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                                 <input
                                     type="text"
                                     ref={startInputRef}
                                     className="datetime-input-custom"
                                     required
-                                    style={{ paddingLeft: '44px' }}
+                                    style={{ paddingLeft: '44px', width: '100%' }}
                                     placeholder="Выберите дату и время..."
                                 />
                             </div>
                         </div>
-                        <div className="form-group">
-                            <label>Время окончания (опц.)</label>
+                        <div className="form-group" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                Время окончания (опц.)
+                            </label>
                             <div style={{ position: 'relative' }}>
-                                <Clock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <Clock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                                 <input
                                     type="text"
                                     ref={endInputRef}
                                     className="datetime-input-custom"
-                                    style={{ paddingLeft: '44px' }}
+                                    style={{ paddingLeft: '44px', width: '100%' }}
                                     placeholder="Выберите дату и время..."
                                 />
                             </div>
@@ -542,31 +557,33 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     </div>
 
                     <div className="form-group">
-                        <label>Описание работ</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>
+                            Описание работ
+                        </label>
                         <textarea
                             value={description}
                             onChange={e => setDescription(e.target.value)}
                             placeholder="Что было сделано?"
                             required
                             rows={3}
-                            style={{ resize: 'none' }}
+                            style={{ resize: 'none', width: '100%', minHeight: '84px', boxSizing: 'border-box' }}
                         />
                     </div>
 
                     {/* Геолокация */}
-                    <div style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                            <MapPin size={20} style={{ color: 'var(--accent)' }} />
-                            <h4 style={{ fontWeight: 700, margin: 0, fontSize: '0.95rem' }}>Геолокация</h4>
+                    <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                            <MapPin size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                            <h4 style={{ fontWeight: 700, margin: 0, fontSize: '0.9rem' }}>Геолокация</h4>
                         </div>
                         
-                        {geoError && <div style={{ color: 'var(--error)', fontSize: '0.8rem', marginBottom: '12px' }}>{geoError}</div>}
+                        {geoError && <div style={{ color: 'var(--error)', fontSize: '0.8rem', marginBottom: '10px' }}>{geoError}</div>}
                         
-                        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                            <button type="button" onClick={() => getLocation('start')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                        <div className="modal-geo-buttons" style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                            <button type="button" onClick={() => getLocation('start')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', minHeight: '42px', fontSize: '0.85rem' }}>
                                 {geoLoading ? 'Определение...' : startLat ? 'Точка старта (Обновить)' : 'Точка старта'}
                             </button>
-                            <button type="button" onClick={() => getLocation('end')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                            <button type="button" onClick={() => getLocation('end')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', minHeight: '42px', fontSize: '0.85rem' }}>
                                 {geoLoading ? 'Определение...' : endLat ? 'Точка финиша (Обновить)' : 'Точка финиша'}
                             </button>
                         </div>
@@ -577,14 +594,17 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 placeholder="Или введите адрес вручную (Монтаж, БЦ Асыл Тау)"
                                 value={locationName}
                                 onChange={e => setLocationName(e.target.value)}
-                                style={{ fontSize: '0.85rem' }}
+                                style={{ fontSize: '0.85rem', width: '100%' }}
                             />
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
-                        <button type="button" onClick={onClose} className="secondary" style={{ flex: 1, padding: '14px' }}>Отмена</button>
-                        <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '14px' }}>
+                    {/* Footer Buttons */}
+                    <div className="modal-footer-responsive" style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                        <button type="button" onClick={onClose} className="secondary" style={{ flex: 1, padding: '12px', minHeight: '44px', justifyContent: 'center' }}>
+                            Отмена
+                        </button>
+                        <button type="submit" className="primary" disabled={loading} style={{ flex: 1.5, padding: '12px', minHeight: '44px', justifyContent: 'center', fontWeight: 700 }}>
                             {loading ? 'СОХРАНЕНИЕ...' : (editData ? 'СОХРАНИТЬ' : 'ОТПРАВИТЬ')}
                         </button>
                     </div>

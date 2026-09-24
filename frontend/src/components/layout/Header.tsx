@@ -61,7 +61,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
     }
 
     return (
-        <header className="glass-card" style={{
+        <header className="glass-card app-header" style={{
             padding: '12px 24px',
             marginBottom: '32px',
             display: 'flex',
@@ -254,6 +254,14 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
                     }
                     .header-btn-desktop {
                         display: none !important;
+                    }
+                }
+                @media (max-width: 768px) {
+                    header.app-header {
+                        padding: 10px 14px !important;
+                        margin-bottom: 16px !important;
+                        top: 8px !important;
+                        border-radius: 12px !important;
                     }
                 }
             `}</style>

@@ -138,6 +138,7 @@ const ReviewPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     parseDate: safeParseDate,
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
@@ -164,6 +165,7 @@ const ReviewPage: React.FC = () => {
                     dateFormat: "d/m/Y",
                     locale: Russian,
                     allowInput: true,
+                    disableMobile: true,
                     parseDate: safeParseDate,
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {

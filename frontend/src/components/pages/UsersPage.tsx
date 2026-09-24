@@ -534,7 +534,7 @@ const UsersPage: React.FC = () => {
                         <div className="glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
 
 
-                            <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '300px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: 'min(100%, 280px)', alignItems: 'center' }}>
                                 <div style={{ position: 'relative', flex: 1 }}>
                                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
                                     <input
@@ -583,7 +583,7 @@ const UsersPage: React.FC = () => {
                         </div>
 
                         <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-                            <div style={{ overflowX: 'auto' }}>
+                            <div className="table-scroll-container">
                                 <table className="table-container" style={{ minWidth: '850px' }}>
                                     <thead>
                                         <tr>
@@ -788,12 +788,12 @@ const UsersPage: React.FC = () => {
 
             {/* Модал создания проекта с валидацией формата кода */}
             {isProjectModalOpen && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000, backdropFilter: 'blur(4px)'
-                }}>
-                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsProjectModalOpen(false)}>
+                    <div
+                        className="modal-content glass-card animate-scale-in"
+                        style={{ maxWidth: '440px', width: '100%', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Новый проект</h3>
                             <button onClick={() => setIsProjectModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
@@ -837,7 +837,7 @@ const UsersPage: React.FC = () => {
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                        <div className="modal-footer-responsive" style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
                             <button
                                 onClick={handleSubmitProject}
                                 className="primary"
@@ -859,15 +859,11 @@ const UsersPage: React.FC = () => {
 
             {/* ==================== Odoo CRM Модал импорта ==================== */}
             {isOdooModalOpen && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1100, backdropFilter: 'blur(6px)'
-                }}>
-                    <div className="glass-card" style={{
-                        width: '680px', maxWidth: '95vw', maxHeight: '85vh',
+                <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsOdooModalOpen(false)}>
+                    <div className="modal-content glass-card animate-scale-in" style={{
+                        maxWidth: '680px', width: '100%',
                         display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
-                    }}>
+                    }} onClick={e => e.stopPropagation()}>
                         {/* Заголовок */}
                         <div style={{
                             padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
@@ -1047,15 +1043,11 @@ const UsersPage: React.FC = () => {
                 const allFilteredSelected = filteredProjects.length > 0 && filteredProjects.every(p => selectedOdooIntIds.has(p.id));
 
                 return (
-                    <div style={{
-                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        zIndex: 1100, backdropFilter: 'blur(6px)'
-                    }}>
-                        <div className="glass-card" style={{
-                            width: '800px', maxWidth: '95vw', maxHeight: '90vh',
+                    <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsOdooIntModalOpen(false)}>
+                        <div className="modal-content glass-card animate-scale-in" style={{
+                            maxWidth: '800px', width: '100%',
                             display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
-                        }}>
+                        }} onClick={e => e.stopPropagation()}>
                             {/* Заголовок */}
                             <div style={{
                                 padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
@@ -1341,12 +1333,12 @@ const UsersPage: React.FC = () => {
 
             {/* Модал редактирования отдела */}
             {editDeptId !== null && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000, backdropFilter: 'blur(4px)'
-                }}>
-                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setEditDeptId(null)}>
+                    <div
+                        className="modal-content glass-card animate-scale-in"
+                        style={{ maxWidth: '440px', width: '100%', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Редактировать отдел</h3>
                             <button onClick={() => setEditDeptId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
@@ -1371,7 +1363,7 @@ const UsersPage: React.FC = () => {
                             />
                         </div>
 
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                        <div className="modal-footer-responsive" style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
                             <button
                                 onClick={async () => {
                                     if (editDeptName.trim()) {
@@ -1399,12 +1391,12 @@ const UsersPage: React.FC = () => {
 
             {/* Модал редактирования проекта */}
             {editProjectId !== null && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 1000, backdropFilter: 'blur(4px)'
-                }}>
-                    <div className="glass-card" style={{ width: '440px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setEditProjectId(null)}>
+                    <div
+                        className="modal-content glass-card animate-scale-in"
+                        style={{ maxWidth: '440px', width: '100%', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Редактировать проект</h3>
                             <button onClick={() => setEditProjectId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
@@ -1442,7 +1434,7 @@ const UsersPage: React.FC = () => {
                             </label>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                        <div className="modal-footer-responsive" style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
                             <button
                                 onClick={async () => {
                                     if (editProjectName.trim()) {

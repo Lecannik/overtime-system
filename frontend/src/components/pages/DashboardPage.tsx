@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, Clock, AlertCircle, TrendingUp,
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
-  Settings, ChevronUp, ChevronDown, RotateCcw, Eye
+  Settings, ChevronUp, ChevronDown, RotateCcw, Eye, LayoutGrid, List
 } from 'lucide-react';
 import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, exportAnalytics, getAnalyticsSummary, getAccessToken } from '../../services/api';
 import Header from '../layout/Header';
@@ -29,23 +29,23 @@ interface ColumnConfig {
 }
 
 const formatToYmd = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const parseToDate = (str: string) => {
-    if (!str) return null;
-    const parts = str.split('-');
-    if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const day = parseInt(parts[2], 10);
-      return new Date(year, month, day);
-    }
-    const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
+  if (!str) return null;
+  const parts = str.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
 };
 
 /**
@@ -56,33 +56,33 @@ const parseToDate = (str: string) => {
  * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
  */
 const safeParseDate = (datestr: string, _format: string): Date => {
-    if (!datestr) return new Date(NaN);
-    try {
-        const trimmed = datestr.trim();
-        const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
-        if (parts.length >= 3) {
-            let day = parseInt(parts[0], 10);
-            let month = parseInt(parts[1], 10) - 1;
-            let year = parseInt(parts[2], 10);
-            if (parts[0].length === 4) {
-                year = parseInt(parts[0], 10);
-                day = parseInt(parts[2], 10);
-            }
-            if (year < 100) {
-                year += 2000;
-            }
-            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
-            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
-            if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
-                const date = new Date(year, month, day, hour, minute);
-                if (!isNaN(date.getTime())) return date;
-            }
-        }
-        const d = new Date(trimmed);
-        return isNaN(d.getTime()) ? new Date(NaN) : d;
-    } catch (e) {
-        return new Date(NaN);
+  if (!datestr) return new Date(NaN);
+  try {
+    const trimmed = datestr.trim();
+    const parts = trimmed.split(/[\/\s:\.-]+/).filter(Boolean);
+    if (parts.length >= 3) {
+      let day = parseInt(parts[0], 10);
+      let month = parseInt(parts[1], 10) - 1;
+      let year = parseInt(parts[2], 10);
+      if (parts[0].length === 4) {
+        year = parseInt(parts[0], 10);
+        day = parseInt(parts[2], 10);
+      }
+      if (year < 100) {
+        year += 2000;
+      }
+      const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+      const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year) && !isNaN(hour) && !isNaN(minute)) {
+        const date = new Date(year, month, day, hour, minute);
+        if (!isNaN(date.getTime())) return date;
+      }
     }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? new Date(NaN) : d;
+  } catch (e) {
+    return new Date(NaN);
+  }
 };
 
 const DashboardPage: React.FC = () => {
@@ -101,6 +101,7 @@ const DashboardPage: React.FC = () => {
   const [selectedDeptId, setSelectedDeptId] = useState<string>('');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedOvertimeDetail, setSelectedOvertimeDetail] = useState<Overtime | null>(null);
+  const [mobileView, setMobileView] = useState<'cards' | 'table'>('cards');
 
   // Debounce поиска — 350мс
   useEffect(() => {
@@ -237,6 +238,7 @@ const DashboardPage: React.FC = () => {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
+          disableMobile: true,
           parseDate: safeParseDate,
           onClose: (selectedDates) => {
             if (selectedDates[0]) {
@@ -263,6 +265,7 @@ const DashboardPage: React.FC = () => {
           dateFormat: "d/m/Y",
           locale: Russian,
           allowInput: true,
+          disableMobile: true,
           parseDate: safeParseDate,
           onClose: (selectedDates) => {
             if (selectedDates[0]) {
@@ -345,7 +348,7 @@ const DashboardPage: React.FC = () => {
   // 1. Загружаем общие данные при монтировании
   useEffect(() => {
     const init = async () => {
-        await fetchUserAndStats();
+      await fetchUserAndStats();
     };
     init();
   }, [fetchUserAndStats]);
@@ -353,7 +356,7 @@ const DashboardPage: React.FC = () => {
   // 2. Загрузка таблицы при смене страницы, статуса, поиска, вкладки или отдела (с лоадером)
   useEffect(() => {
     const init = async () => {
-        await fetchTableData(true);
+      await fetchTableData(true);
     };
     init();
   }, [currentPage, filterStatus, debouncedSearch, activeTab, selectedDeptId, fetchTableData]);
@@ -361,7 +364,7 @@ const DashboardPage: React.FC = () => {
   // 3. Загрузка таблицы при смене дат (без лоадера)
   useEffect(() => {
     const update = async () => {
-        await fetchTableData(false);
+      await fetchTableData(false);
     };
     update();
   }, [startDate, endDate, activeTab, selectedDeptId, fetchTableData]);
@@ -446,7 +449,7 @@ const DashboardPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
       link.setAttribute('download', `personal_report_${dateStr}.xlsx`);
@@ -486,7 +489,7 @@ const DashboardPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
       link.setAttribute('download', `personal_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
       document.body.appendChild(link);
@@ -525,7 +528,7 @@ const DashboardPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
       link.setAttribute('download', `company_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
       document.body.appendChild(link);
@@ -548,7 +551,7 @@ const DashboardPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
       link.setAttribute('download', `company_report_${dateStr}.xlsx`);
@@ -603,6 +606,88 @@ const DashboardPage: React.FC = () => {
     });
   }, [filteredOvertimes, sortKey, sortDir]);
 
+  const renderActionButtons = (ot: Overtime) => (
+    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+      {/* Просмотр деталей */}
+      <button
+        onClick={() => setSelectedOvertimeDetail(ot)}
+        className="action-button-modern"
+        title="Просмотреть детали"
+        style={{ color: 'var(--primary)' }}
+      >
+        <Eye size={16} />
+      </button>
+      {/* Кнопка восстановления для отменённых заявок */}
+      {ot.status === 'CANCELLED' && (
+        <button
+          onClick={() => handleRestore(ot.id)}
+          className="action-button-modern"
+          title="Восстановить заявку"
+          style={{ color: 'var(--primary)' }}
+        >
+          <RotateCcw size={16} />
+        </button>
+      )}
+      {/* Редактирование и отмена для активных заявок */}
+      {(ot.status === 'PENDING' || ot.status === 'IN_PROGRESS' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
+        ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
+          <>
+            <button
+              onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
+              className="action-button-modern"
+              title="Редактировать"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              onClick={() => handleCancel(ot.id)}
+              className="action-button-modern delete"
+              title="Удалить/Отменить"
+              style={{ color: 'var(--error)' }}
+            >
+              <Trash2 size={16} />
+            </button>
+          </>
+        )}
+      {ot.start_lat && ot.start_lng && (
+        <a
+          href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="action-button-modern"
+          title="Точка начала (карта)"
+          style={{ color: 'var(--success)' }}
+        >
+          <MapPin size={16} />
+        </a>
+      )}
+      {ot.end_lat && ot.end_lng && (
+        <a
+          href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="action-button-modern"
+          title="Точка финиша (карта)"
+          style={{ color: 'var(--error)' }}
+        >
+          <MapPin size={16} />
+        </a>
+      )}
+      {!ot.start_lat && ot.location_name && (
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="action-button-modern"
+          title={ot.location_name}
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <MapPin size={16} />
+        </a>
+      )}
+    </div>
+  );
+
   if (loading && !overtimes.length) return <LoadingOverlay />;
 
   return (
@@ -610,41 +695,41 @@ const DashboardPage: React.FC = () => {
       {loading && <LoadingOverlay />}
       {user && <Header user={user} />}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '32px' }}>
+      <div className="dashboard-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             {activeTab === 'my' ? 'Дашборд сотрудника' : 'Сводный дашборд компании'}
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
             {activeTab === 'my'
               ? 'Ваша активность и статус переработок за последнее время.'
               : 'Статистика и заявки всех сотрудников компании.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={() => activeTab === 'my' ? handleExportMonth('previous') : handleExportCompanyMonth('previous')} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
-          }} className="btn-secondary">
-            <FileDown size={18} /> ЭКСПОРТ (ПРОШЛЫЙ МЕСЯЦ)
-          </button>
-          <button onClick={() => activeTab === 'my' ? handleExportMonth('current') : handleExportCompanyMonth('current')} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
-          }} className="btn-secondary">
-            <FileDown size={18} /> ЭКСПОРТ (ТЕКУЩИЙ МЕСЯЦ)
-          </button>
-          <button onClick={() => activeTab === 'my' ? handleExport() : handleExportCompanyAll()} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px'
-          }} className="btn-secondary">
-            <FileDown size={18} /> ЭКСПОРТ (ОБЩИЙ)
-          </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           {activeTab === 'my' && (
-            <button onClick={() => setIsCreateModalOpen(true)} className="primary">
+            <button onClick={() => setIsCreateModalOpen(true)} className="primary" style={{ padding: '10px 20px', minHeight: '42px', fontWeight: 700 }}>
               <Plus size={20} /> НОВАЯ ЗАЯВКА
             </button>
           )}
+          <button onClick={() => activeTab === 'my' ? handleExportMonth('previous') : handleExportCompanyMonth('previous')} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
+          }} className="btn-secondary">
+            <FileDown size={16} /> Прошлый месяц
+          </button>
+          <button onClick={() => activeTab === 'my' ? handleExportMonth('current') : handleExportCompanyMonth('current')} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
+          }} className="btn-secondary">
+            <FileDown size={16} /> Текущий месяц
+          </button>
+          <button onClick={() => activeTab === 'my' ? handleExport() : handleExportCompanyAll()} style={{
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
+          }} className="btn-secondary">
+            <FileDown size={16} /> Общий отчет
+          </button>
         </div>
       </div>
 
@@ -739,23 +824,23 @@ const DashboardPage: React.FC = () => {
                   dataKey="date"
                   hide
                 />
-                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={(value) => `${value}ч`} />
-                 <RechartsTooltip
-                    contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
-                    itemStyle={{ color: 'var(--primary)' }}
-                    labelFormatter={(label) => {
-                        if (!label) return '';
-                        const parts = label.split('-');
-                        if (parts.length === 3) {
-                            return `Дата: ${parts[2]}.${parts[1]}.${parts[0]}`;
-                        }
-                        return `Дата: ${label}`;
-                    }}
-                    formatter={(value: any, name: any) => {
-                        if (name === 'hours') return [`${value} ч.`, 'Время переработки'];
-                        return [value, name];
-                    }}
-                  />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={(value) => `${value}ч`} />
+                <RechartsTooltip
+                  contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
+                  itemStyle={{ color: 'var(--primary)' }}
+                  labelFormatter={(label) => {
+                    if (!label) return '';
+                    const parts = label.split('-');
+                    if (parts.length === 3) {
+                      return `Дата: ${parts[2]}.${parts[1]}.${parts[0]}`;
+                    }
+                    return `Дата: ${label}`;
+                  }}
+                  formatter={(value: any, name: any) => {
+                    if (name === 'hours') return [`${value} ч.`, 'Время переработки'];
+                    return [value, name];
+                  }}
+                />
                 <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -763,17 +848,17 @@ const DashboardPage: React.FC = () => {
         </div>
 
         <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
-          <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
-          <div style={{ height: '200px', display: 'flex', alignItems: 'center', minWidth: 0 }}>
-            <div style={{ flex: 1, height: '100%', position: 'relative', width: '100%', minWidth: 0 }}>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
+          <div className="dashboard-pie-wrap" style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: '16px' }}>
+            <div style={{ flex: '1 1 200px', height: '180px', position: 'relative', width: '100%', minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={stats?.by_project || []}
                     dataKey="hours"
                     nameKey="project_name"
-                    innerRadius={60}
-                    outerRadius={80}
+                    innerRadius={50}
+                    outerRadius={70}
                     paddingAngle={5}
                   >
                     {(stats?.by_project || []).map((_entry: any, index: number) => (
@@ -782,20 +867,20 @@ const DashboardPage: React.FC = () => {
                       ][index % 6]} />
                     ))}
                   </Pie>
-                   <RechartsTooltip
-                     contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
-                     formatter={(value: any, name: any) => {
-                         return [`${value} ч.`, name];
-                     }}
-                   />
+                  <RechartsTooltip
+                    contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
+                    formatter={(value: any, name: any) => {
+                      return [`${value} ч.`, name];
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div style={{ width: '40%', display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '20px' }}>
+            <div className="dashboard-pie-legend" style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {(stats?.by_project || []).slice(0, 4).map((p: any, i: number) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
                   <div style={{
-                    width: '8px', height: '8px', borderRadius: '2px', background: [
+                    width: '8px', height: '8px', borderRadius: '2px', flexShrink: 0, background: [
                       'var(--primary)', 'var(--success)', 'var(--warning)', 'var(--info)', '#8b5cf6', '#ec4899'
                     ][i % 6]
                   }} />
@@ -809,152 +894,229 @@ const DashboardPage: React.FC = () => {
 
       {/* Table Card (Full Width) */}
       <div className="glass-card" style={{ padding: '0', display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
-          <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <h3 style={{ fontWeight: 700 }}>{activeTab === 'my' ? 'Мои переработки' : 'Все переработки'}</h3>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', flexGrow: 1, justifyContent: 'flex-end' }}>
-              {/* Фильтр по отделам */}
-              {user?.role === 'admin' && activeTab === 'all' && (
-                <select
-                  value={selectedDeptId}
-                  onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
-                  style={{ height: '36px', padding: '0 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)' }}
-                >
-                  <option value="">Все отделы</option>
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id.toString()}>{d.name}</option>
-                  ))}
-                </select>
-              )}
-
-              {/* Фильтр по статусу */}
+        <div className="dashboard-card-header" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '1.15rem' }}>{activeTab === 'my' ? 'Мои переработки' : 'Все переработки'}</h3>
+          <div className="dashboard-filters-wrap" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', flexGrow: 1, justifyContent: 'flex-end' }}>
+            {/* Фильтр по отделам */}
+            {user?.role === 'admin' && activeTab === 'all' && (
               <select
-                value={filterStatus}
-                onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}
-                style={{ height: '36px', padding: '0 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)' }}
+                value={selectedDeptId}
+                onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
+                style={{ height: '36px', padding: '0 10px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', flex: '1 1 130px', minWidth: '120px' }}
               >
-                <option value="">Все статусы</option>
-                <option value="PENDING">На согласовании</option>
-                <option value="HEAD_APPROVED">Утверждено рук.</option>
-                <option value="MANAGER_APPROVED">Утверждено мен.</option>
-                <option value="APPROVED">Одобрено</option>
-                <option value="REJECTED">Отклонено</option>
-                <option value="CANCELLED">Отменено</option>
-                <option value="IN_PROGRESS">В процессе</option>
+                <option value="">Все отделы</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                ))}
               </select>
+            )}
 
-              {/* Диапазон дат */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input
-                  ref={startInputCallbackRef}
-                  type="text"
-                  placeholder="дд/мм/гггг"
-                  style={{ height: '36px', width: '100px', padding: '0 8px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
-                  title="Начало периода"
-                />
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                <input
-                  ref={endInputCallbackRef}
-                  type="text"
-                  placeholder="дд/мм/гггг"
-                  style={{ height: '36px', width: '100px', padding: '0 8px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
-                  title="Конец периода"
-                />
-                {(startDate || endDate) && (
-                  <button
-                    onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
-                    className="action-button-modern"
-                    title="Сбросить даты"
-                    style={{ height: '36px', width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
+            {/* Фильтр по статусу */}
+            <select
+              value={filterStatus}
+              onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+              style={{ height: '36px', padding: '0 10px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', flex: '1 1 130px', minWidth: '120px' }}
+            >
+              <option value="">Все статусы</option>
+              <option value="PENDING">На согласовании</option>
+              <option value="HEAD_APPROVED">Утверждено рук.</option>
+              <option value="MANAGER_APPROVED">Утверждено мен.</option>
+              <option value="APPROVED">Одобрено</option>
+              <option value="REJECTED">Отклонено</option>
+              <option value="CANCELLED">Отменено</option>
+              <option value="IN_PROGRESS">В процессе</option>
+            </select>
 
-              <div style={{ position: 'relative', width: '220px', maxWidth: '100%', flexGrow: 1 }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  placeholder="Найти по описанию..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', width: '100%' }}
-                />
-              </div>
-              <div style={{ position: 'relative' }}>
+            {/* Диапазон дат — адаптивный блок, не вылезает за экран */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 210px', minWidth: '190px' }}>
+              <input
+                ref={startInputCallbackRef}
+                type="text"
+                placeholder="дд/мм/гггг"
+                style={{ height: '36px', flex: 1, minWidth: 0, width: '100%', padding: '0 6px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
+                title="Начало периода"
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', flexShrink: 0 }}>—</span>
+              <input
+                ref={endInputCallbackRef}
+                type="text"
+                placeholder="дд/мм/гггг"
+                style={{ height: '36px', flex: 1, minWidth: 0, width: '100%', padding: '0 6px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
+                title="Конец периода"
+              />
+              {(startDate || endDate) && (
                 <button
-                  onClick={() => setIsColConfigOpen(!isColConfigOpen)}
+                  onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
                   className="action-button-modern"
-                  title="Настройка колонок"
-                  style={{ height: '36px', width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Сбросить даты"
+                  style={{ height: '36px', width: '36px', minWidth: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Settings size={18} />
+                  ×
                 </button>
-                {isColConfigOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '42px',
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    boxShadow: 'var(--card-shadow)',
-                    zIndex: 100,
-                    width: '240px',
-                    padding: '12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px'
-                  }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '6px', marginBottom: '4px' }}>
-                      Настройка колонок
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-                      {columns.map((col, idx) => (
-                        <div
-                          key={col.id}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}
-                        >
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-primary)' }}>
-                            <input
-                              type="checkbox"
-                              checked={col.visible}
-                              disabled={col.id === 'date' || col.id === 'actions'}
-                              onChange={() => toggleColumnVisibility(col.id)}
-                            />
-                            <span>{col.label}</span>
-                          </label>
-                          <div style={{ display: 'flex', gap: '2px' }}>
-                            <button
-                              disabled={idx === 0}
-                              onClick={() => moveColumn(idx, idx - 1)}
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === 0 ? 0.3 : 1, color: 'var(--text-primary)' }}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              disabled={idx === columns.length - 1}
-                              onClick={() => moveColumn(idx, idx + 1)}
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === columns.length - 1 ? 0.3 : 1, color: 'var(--text-primary)' }}
-                            >
-                              ↓
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              )}
+            </div>
+
+            {/* Поиск */}
+            <div style={{ position: 'relative', flex: '1 1 180px', minWidth: '150px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                placeholder="Найти по описанию..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', width: '100%' }}
+              />
+            </div>
+
+            {/* Переключатель вида на мобильных: Карточки / Таблица */}
+            <div className="show-on-mobile" style={{ gap: '6px' }}>
+              <button
+                onClick={() => setMobileView(v => v === 'cards' ? 'table' : 'cards')}
+                className="action-button-modern"
+                title={mobileView === 'cards' ? 'Показать таблицу' : 'Показать карточки'}
+                style={{ height: '36px', width: '36px', minWidth: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}
+              >
+                {mobileView === 'cards' ? <List size={18} /> : <LayoutGrid size={18} />}
+              </button>
+            </div>
+
+            {/* Настройка колонок */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <button
+                onClick={() => setIsColConfigOpen(!isColConfigOpen)}
+                className="action-button-modern"
+                title="Настройка колонок"
+                style={{ height: '36px', width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Settings size={18} />
+              </button>
+              {isColConfigOpen && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '42px',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  boxShadow: 'var(--card-shadow)',
+                  zIndex: 100,
+                  width: '240px',
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '6px', marginBottom: '4px' }}>
+                    Настройка колонок
                   </div>
-                )}
-              </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {columns.map((col, idx) => (
+                      <div
+                        key={col.id}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}
+                      >
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-primary)' }}>
+                          <input
+                            type="checkbox"
+                            checked={col.visible}
+                            disabled={col.id === 'date' || col.id === 'actions'}
+                            onChange={() => toggleColumnVisibility(col.id)}
+                          />
+                          <span>{col.label}</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: '2px' }}>
+                          <button
+                            disabled={idx === 0}
+                            onClick={() => moveColumn(idx, idx - 1)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === 0 ? 0.3 : 1, color: 'var(--text-primary)' }}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            disabled={idx === columns.length - 1}
+                            onClick={() => moveColumn(idx, idx + 1)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === columns.length - 1 ? 0.3 : 1, color: 'var(--text-primary)' }}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div style={{ overflowX: 'auto', flex: 1, borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-            <table className="table-container" style={{ minWidth: '950px' }}>
-              <thead>
-                <tr>
-                  {columns.filter(c => c.visible).map(col => {
-                    const isSortable = ['date', 'user', 'project', 'hours', 'status'].includes(col.id);
-                    const isActive = sortKey === col.id;
-                    return (
+        </div>
+
+        {/* Мобильный карточный режим (для экранов смартфонов) */}
+        {mobileView === 'cards' && (
+          <div className="show-on-mobile" style={{ flexDirection: 'column', gap: '10px', padding: '12px' }}>
+            {sortedOvertimes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Ничего не найдено
+              </div>
+            ) : (
+              sortedOvertimes.map((ot: Overtime) => {
+                const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
+                return (
+                  <div key={ot.id} className="mobile-overtime-card">
+                    {/* Верхняя строка: Дата, Статус, Часы */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                        {formatDate(ot.start_time)}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
+                          {STATUS_LABELS[ot.status] || ot.status}
+                        </span>
+                        <span style={{ fontWeight: 800, fontSize: '0.9rem', color: isApproved ? 'var(--success)' : 'var(--primary)' }}>
+                          {isApproved && ot.approved_hours != null ? `${ot.approved_hours}ч` : `${ot.hours}ч`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Проект и Автор */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {ot.project?.name || 'Внутренний'}
+                      </div>
+                      {activeTab === 'all' && ot.user && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {ot.user.full_name} ({ot.user.email})
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Описание */}
+                    {ot.description && (
+                      <div className="line-clamp-2" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                        {ot.description}
+                      </div>
+                    )}
+
+                    {/* Время и кнопки действий */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '2px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {formatTime(ot.start_time)}{ot.end_time && ` - ${formatTime(ot.end_time)}`}
+                      </div>
+                      {renderActionButtons(ot)}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Табличный режим (для десктопа и при переключении на мобилках) */}
+        <div className={`table-scroll-container ${mobileView === 'cards' ? 'hide-on-mobile' : ''}`} style={{ flex: 1, borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+          <table className="table-container" style={{ minWidth: '850px' }}>
+            <thead>
+              <tr>
+                {columns.filter(c => c.visible).map(col => {
+                  const isSortable = ['date', 'user', 'project', 'hours', 'status'].includes(col.id);
+                  const isActive = sortKey === col.id;
+                  return (
                     <th
                       key={col.id}
                       className="table-header"
@@ -969,10 +1131,11 @@ const DashboardPage: React.FC = () => {
                         opacity: draggedColId === col.id ? 0.5 : 1,
                         borderLeft: draggedColId && draggedColId !== col.id ? '2px dashed var(--primary)' : undefined,
                         transition: 'all 0.2s ease',
-                        width: col.id === 'actions' ? '180px' : undefined,
-                        minWidth: col.id === 'actions' ? '180px' : undefined,
+                        width: col.id === 'actions' ? '160px' : undefined,
+                        minWidth: col.id === 'actions' ? '160px' : undefined,
                         userSelect: 'none',
                         color: isActive ? 'var(--primary)' : undefined,
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -986,186 +1149,108 @@ const DashboardPage: React.FC = () => {
                         )}
                       </span>
                     </th>
-                    );
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedOvertimes.map((ot: Overtime) => (
+                <tr key={ot.id}>
+                  {columns.filter(c => c.visible).map(col => {
+                    switch (col.id) {
+                      case 'date':
+                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '100px' }}>{formatDate(ot.start_time)}</td>;
+                      case 'user':
+                        return (
+                          <td key={col.id} className="table-cell" style={{ minWidth: '170px', maxWidth: '240px' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'break-word' }}>{ot.user?.full_name || '-'}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflowWrap: 'break-word' }}>{ot.user?.email}</div>
+                          </td>
+                        );
+                      case 'project':
+                        return (
+                          <td key={col.id} className="table-cell" style={{ minWidth: '160px', maxWidth: '240px' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'break-word' }}>{ot.project?.name || 'Внутренний'}</div>
+                          </td>
+                        );
+                      case 'hours':
+                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '80px' }}>{ot.hours}ч</td>;
+                      case 'approved_hours': {
+                        const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
+                        return (
+                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '90px' }}>
+                            {isApproved && ot.approved_hours != null
+                              ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
+                              : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                          </td>
+                        );
+                      }
+                      case 'status':
+                        return (
+                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '120px' }}>
+                            <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
+                              {STATUS_LABELS[ot.status] || ot.status}
+                            </span>
+                          </td>
+                        );
+                      case 'description':
+                        return <td key={col.id} className="table-cell" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
+                      case 'start_time':
+                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{formatTime(ot.start_time)}</td>;
+                      case 'end_time': {
+                        const isEndEpoch = ot.end_time && new Date(ot.end_time).getFullYear() <= 1970;
+                        return (
+                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>
+                            {ot.status === 'IN_PROGRESS' || !ot.end_time || isEndEpoch
+                              ? '-'
+                              : formatTime(ot.end_time)}
+                          </td>
+                        );
+                      }
+                      case 'actions':
+                        return (
+                          <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '160px', minWidth: '160px' }}>
+                            {renderActionButtons(ot)}
+                          </td>
+                        );
+                      default:
+                        return null;
+                    }
                   })}
                 </tr>
-              </thead>
-              <tbody>
-                {sortedOvertimes.map((ot: Overtime) => (
-                  <tr key={ot.id}>
-                    {columns.filter(c => c.visible).map(col => {
-                      switch (col.id) {
-                        case 'date':
-                          return <td key={col.id} className="table-cell">{formatDate(ot.start_time)}</td>;
-                        case 'user':
-                          return (
-                            <td key={col.id} className="table-cell" style={{ maxWidth: '200px', wordBreak: 'break-word' }}>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ot.user?.full_name || '-'}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{ot.user?.email}</div>
-                            </td>
-                          );
-                        case 'project':
-                          return (
-                            <td key={col.id} className="table-cell" style={{ maxWidth: '240px', wordBreak: 'break-word' }}>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ot.project?.name || 'Внутренний'}</div>
-                            </td>
-                          );
-                        case 'hours':
-                          return <td key={col.id} className="table-cell">{ot.hours}ч</td>;
-                        case 'approved_hours': {
-                          const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
-                          return (
-                            <td key={col.id} className="table-cell">
-                              {isApproved && ot.approved_hours != null
-                                ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
-                                : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                            </td>
-                          );
-                        }
-                        case 'status':
-                          return (
-                            <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>
-                              <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
-                                {STATUS_LABELS[ot.status] || ot.status}
-                              </span>
-                            </td>
-                          );
-                        case 'description':
-                          return <td key={col.id} className="table-cell" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
-                        case 'start_time':
-                          return <td key={col.id} className="table-cell">{formatTime(ot.start_time)}</td>;
-                        case 'end_time': {
-                          const isEndEpoch = ot.end_time && new Date(ot.end_time).getFullYear() <= 1970;
-                          return (
-                            <td key={col.id} className="table-cell">
-                              {ot.status === 'IN_PROGRESS' || !ot.end_time || isEndEpoch 
-                                ? '-' 
-                                : formatTime(ot.end_time)}
-                            </td>
-                          );
-                        }
-                        case 'actions':
-                          return (
-                            <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '180px', minWidth: '180px' }}>
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                {/* Просмотр деталей */}
-                                <button
-                                  onClick={() => setSelectedOvertimeDetail(ot)}
-                                  className="action-button-modern"
-                                  title="Просмотреть детали"
-                                  style={{ color: 'var(--primary)' }}
-                                >
-                                  <Eye size={16} />
-                                </button>
-                                {/* Кнопка восстановления для отменённых заявок */}
-                                {ot.status === 'CANCELLED' && (
-                                  <button
-                                    onClick={() => handleRestore(ot.id)}
-                                    className="action-button-modern"
-                                    title="Восстановить заявку"
-                                    style={{ color: 'var(--primary)' }}
-                                  >
-                                    <RotateCcw size={16} />
-                                  </button>
-                                )}
-                                {/* Редактирование и отмена для активных заявок */}
-                                {(ot.status === 'PENDING' || ot.status === 'IN_PROGRESS' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
-                                  ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
-                                    <>
-                                      <button
-                                        onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
-                                        className="action-button-modern"
-                                        title="Редактировать"
-                                      >
-                                        <Edit2 size={16} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleCancel(ot.id)}
-                                        className="action-button-modern delete"
-                                        title="Удалить/Отменить"
-                                        style={{ color: 'var(--error)' }}
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </>
-                                  )}
-                                {ot.start_lat && ot.start_lng && (
-                                  <a
-                                    href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="action-button-modern"
-                                    title="Точка начала (карта)"
-                                    style={{ color: 'var(--success)' }}
-                                  >
-                                    <MapPin size={16} />
-                                  </a>
-                                )}
-                                {ot.end_lat && ot.end_lng && (
-                                  <a
-                                    href={`https://www.google.com/maps?q=${ot.end_lat},${ot.end_lng}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="action-button-modern"
-                                    title="Точка финиша (карта)"
-                                    style={{ color: 'var(--error)' }}
-                                  >
-                                    <MapPin size={16} />
-                                  </a>
-                                )}
-                                {!ot.start_lat && ot.location_name && (
-                                  <a
-                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ot.location_name)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="action-button-modern"
-                                    title={ot.location_name}
-                                    style={{ color: 'var(--accent)' }}
-                                  >
-                                    <MapPin size={16} />
-                                  </a>
-                                )}
-                              </div>
-                            </td>
-                          );
-                        default:
-                          return null;
-                      }
-                    })}
-                  </tr>
-                ))}
-                {sortedOvertimes.length === 0 && (
-                  <tr><td colSpan={columns.filter(c => c.visible).length} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {sortedOvertimes.length === 0 && (
+                <tr><td colSpan={columns.filter(c => c.visible).length} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-          {/* Pagination UI */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Страница <b>{currentPage}</b> из <b>{totalPages}</b>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="action-button-modern"
-                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="action-button-modern"
-                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+        {/* Pagination UI */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            Страница <b>{currentPage}</b> из <b>{totalPages}</b>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="action-button-modern"
+              style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="action-button-modern"
+              style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
         </div>
+      </div>
 
       {isCreateModalOpen && (
         <CreateOvertimeModal
@@ -1175,8 +1260,8 @@ const DashboardPage: React.FC = () => {
             setIsCreateModalOpen(false);
             setEditOvertime(null);
             const update = async () => {
-                await fetchTableData(false);
-                await fetchUserAndStats();
+              await fetchTableData(false);
+              await fetchUserAndStats();
             };
             update();
           }}
@@ -1190,13 +1275,45 @@ const DashboardPage: React.FC = () => {
           onClose={() => setSelectedOvertimeDetail(null)}
           onStatusUpdate={() => {
             const update = async () => {
-                await fetchTableData(false);
-                await fetchUserAndStats();
+              await fetchTableData(false);
+              await fetchUserAndStats();
             };
             update();
           }}
         />
       )}
+
+      <style>{`
+        @media (max-width: 768px) {
+          .dashboard-page-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .dashboard-page-header > div:last-child {
+            width: 100% !important;
+            justify-content: space-between;
+          }
+          .dashboard-page-header button.primary {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+          .dashboard-card-header {
+            padding: 16px 14px !important;
+          }
+          .dashboard-filters-wrap {
+            width: 100% !important;
+            justify-content: flex-start !important;
+          }
+          .dashboard-pie-wrap {
+            flex-direction: column !important;
+          }
+          .dashboard-pie-legend {
+            width: 100% !important;
+            padding-left: 0 !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };
