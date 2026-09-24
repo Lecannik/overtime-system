@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useState } from 'react';
 import ReviewCard from './ReviewCard';
 import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';

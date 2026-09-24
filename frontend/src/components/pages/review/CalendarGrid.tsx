@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CalendarSummary, CalendarDayData } from '../../../services/api';

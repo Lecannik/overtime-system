@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React from 'react';
 import { CheckCircle, XCircle, Clock, Info, MapPin, Calendar } from 'lucide-react';
 import { STATUS_LABELS, formatDateTime } from '../../../constants/locale';

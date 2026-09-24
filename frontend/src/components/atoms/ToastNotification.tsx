@@ -22,7 +22,7 @@ const ToastNotification: React.FC = () => {
             if (!data) return;
 
             let title = 'Обновление заявки';
-            let message = '';
+            let message: string;
             let type: 'success' | 'danger' | 'warning' | 'info' = 'info';
 
             const statusText = data.new_status ? getStatusLabel(data.new_status) : '';

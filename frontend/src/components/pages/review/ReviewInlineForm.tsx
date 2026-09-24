@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useState } from 'react';
 import type { Overtime, User } from '../../../types';
 
