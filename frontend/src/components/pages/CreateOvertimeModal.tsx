@@ -133,41 +133,15 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
-                            let endDate = selectedDates[0];
-                            // Если время окончания раньше времени начала — ночная смена, +1 день
-                            const startVal = startFpRef.current?.selectedDates?.[0];
-                            if (startVal && endDate <= startVal) {
-                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
-                                if (shifted > new Date()) {
-                                    setError('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
-                                    setEndTime('');
-                                    endFpRef.current?.clear();
-                                    return;
-                                }
-                                endDate = shifted;
-                                endFpRef.current?.setDate(endDate, false);
-                            }
-                            setEndTime(toLocalISOString(endDate));
+                            setEndTime(toLocalISOString(selectedDates[0]));
+                            setError('');
                         } else {
                             setEndTime('');
                         }
                     },
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
-                            let endDate = selectedDates[0];
-                            const startVal = startFpRef.current?.selectedDates?.[0];
-                            if (startVal && endDate <= startVal) {
-                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
-                                if (shifted > new Date()) {
-                                    setError('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
-                                    setEndTime('');
-                                    endFpRef.current?.clear();
-                                    return;
-                                }
-                                endDate = shifted;
-                                endFpRef.current?.setDate(endDate, false);
-                            }
-                            setEndTime(toLocalISOString(endDate));
+                            setEndTime(toLocalISOString(selectedDates[0]));
                         }
                     }
                 });

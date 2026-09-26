@@ -131,40 +131,14 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     parseDate: safeParseDate,
                     onChange: (selectedDates) => {
                         if (selectedDates[0]) {
-                            let endDate = selectedDates[0];
-                            const startVal = editStartFpRef.current?.selectedDates?.[0];
-                            if (startVal && endDate <= startVal) {
-                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
-                                if (shifted > new Date()) {
-                                    alert('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
-                                    setEditEndTime('');
-                                    editEndFpRef.current?.clear();
-                                    return;
-                                }
-                                endDate = shifted;
-                                editEndFpRef.current?.setDate(endDate, false);
-                            }
-                            setEditEndTime(toLocalISOString(endDate));
+                            setEditEndTime(toLocalISOString(selectedDates[0]));
                         } else {
                             setEditEndTime('');
                         }
                     },
                     onClose: (selectedDates) => {
                         if (selectedDates[0]) {
-                            let endDate = selectedDates[0];
-                            const startVal = editStartFpRef.current?.selectedDates?.[0];
-                            if (startVal && endDate <= startVal) {
-                                const shifted = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
-                                if (shifted > new Date()) {
-                                    alert('Ночную смену можно зарегистрировать только после её фактического окончания (время окончания не может быть в будущем).');
-                                    setEditEndTime('');
-                                    editEndFpRef.current?.clear();
-                                    return;
-                                }
-                                endDate = shifted;
-                                editEndFpRef.current?.setDate(endDate, false);
-                            }
-                            setEditEndTime(toLocalISOString(endDate));
+                            setEditEndTime(toLocalISOString(selectedDates[0]));
                         }
                     }
                 });
