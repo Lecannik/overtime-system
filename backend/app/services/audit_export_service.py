@@ -16,14 +16,18 @@ from app.core.config import settings
 # Словарь человекопонятных названий действий на русском языке
 ACTION_TITLES: dict[str, str] = {
     "LOGIN": "Вход в систему",
+    "LOGIN_2FA": "Вход в систему (2FA)",
+    "LOGIN_SSO": "Вход в систему (SSO)",
     "LOGOUT": "Выход из системы",
     "PASSWORD_RESET_REQUEST": "Запрос сброса пароля",
     "PASSWORD_RESET_CONFIRM": "Подтверждение сброса пароля",
+    "PASSWORD_RESET": "Сброс пароля",
     "CHANGE_PASSWORD": "Смена пароля",
     "RESET_PASSWORD": "Сброс пароля администратором",
     "CREATE_USER": "Создание пользователя",
     "UPDATE_USER": "Обновление данных пользователя",
     "DELETE_USER": "Удаление пользователя",
+    "IMPORT_USER_MS": "Импорт сотрудников (Microsoft 365)",
     "CREATE_DEPT": "Создание отдела",
     "UPDATE_DEPT": "Изменение отдела",
     "DELETE_DEPT": "Удаление отдела",
@@ -32,8 +36,16 @@ ACTION_TITLES: dict[str, str] = {
     "DELETE_PROJECT": "Удаление проекта",
     "IMPORT_ODOO_PROJECTS": "Импорт проектов (Odoo XML-RPC)",
     "IMPORT_ODOO_INTEGRATION_PROJECTS": "Импорт проектов (Odoo API)",
+    "IMPORT_PROJECT_ODOO": "Импорт проектов (Odoo XML-RPC)",
+    "IMPORT_PROJECT_ODOO_INTEGRATION": "Импорт проектов (Odoo API)",
     "CREATE_OVERTIME": "Создание заявки на переработку",
     "UPDATE_OVERTIME_TIME": "Изменение времени переработки",
+    "ADMIN_UPDATE_OVERTIME": "Редактирование заявки администратором",
+    "DELETE_OVERTIME": "Удаление заявки",
+    "REVIEW_ADMIN": "Согласование администратором",
+    "REVIEW_HEAD": "Согласование руководителем",
+    "REVIEW_MANAGER": "Согласование менеджером",
+    "SELF_REVIEW_ADMIN": "Самосогласование администратором",
     "REVIEW_HEAD_APPROVED": "Согласование руководителем (Одобрено)",
     "REVIEW_HEAD_REJECTED": "Согласование руководителем (Отклонено)",
     "REVIEW_MANAGER_APPROVED": "Согласование менеджером (Одобрено)",
@@ -46,24 +58,36 @@ ACTION_TITLES: dict[str, str] = {
 # Категории действий для группировки
 ACTION_CATEGORIES: dict[str, str] = {
     "LOGIN": "Авторизация",
+    "LOGIN_2FA": "Авторизация",
+    "LOGIN_SSO": "Авторизация",
     "LOGOUT": "Авторизация",
     "PASSWORD_RESET_REQUEST": "Безопасность",
     "PASSWORD_RESET_CONFIRM": "Безопасность",
+    "PASSWORD_RESET": "Безопасность",
     "CHANGE_PASSWORD": "Безопасность",
     "RESET_PASSWORD": "Безопасность",
     "CREATE_USER": "Пользователи",
     "UPDATE_USER": "Пользователи",
     "DELETE_USER": "Пользователи",
+    "IMPORT_USER_MS": "Пользователи",
     "CREATE_DEPT": "Отделы",
     "UPDATE_DEPT": "Отделы",
     "DELETE_DEPT": "Отделы",
     "CREATE_PROJECT": "Проекты",
     "UPDATE_PROJECT": "Проекты",
     "DELETE_PROJECT": "Проекты",
-    "IMPORT_ODOO_PROJECTS": "Интеграция Odoo",
-    "IMPORT_ODOO_INTEGRATION_PROJECTS": "Интеграция Odoo",
+    "IMPORT_ODOO_PROJECTS": "Проекты",
+    "IMPORT_ODOO_INTEGRATION_PROJECTS": "Проекты",
+    "IMPORT_PROJECT_ODOO": "Проекты",
+    "IMPORT_PROJECT_ODOO_INTEGRATION": "Проекты",
     "CREATE_OVERTIME": "Заявки",
     "UPDATE_OVERTIME_TIME": "Заявки",
+    "ADMIN_UPDATE_OVERTIME": "Заявки",
+    "DELETE_OVERTIME": "Заявки",
+    "REVIEW_ADMIN": "Согласование",
+    "REVIEW_HEAD": "Согласование",
+    "REVIEW_MANAGER": "Согласование",
+    "SELF_REVIEW_ADMIN": "Согласование",
     "REVIEW_HEAD_APPROVED": "Согласование",
     "REVIEW_HEAD_REJECTED": "Согласование",
     "REVIEW_MANAGER_APPROVED": "Согласование",
@@ -96,7 +120,12 @@ def format_details_to_text(action: str, details: dict | None) -> str:
 
     parts: list[str] = []
 
-    if action == "UPDATE_OVERTIME_TIME":
+    if action in ("UPDATE_OVERTIME_TIME", "ADMIN_UPDATE_OVERTIME"):
+        emp_name = details.get("employee_name")
+        emp_email = details.get("employee_email")
+        if emp_name or emp_email:
+            parts.append(f"Сотрудник: {emp_name or ''} ({emp_email or ''})".strip())
+
         old_h = details.get("old_hours")
         new_h = details.get("new_hours")
         old_s = details.get("old_start")
@@ -114,8 +143,22 @@ def format_details_to_text(action: str, details: dict | None) -> str:
             parts.append(f"Начало: {old_s[:16]} → {new_s[:16]}")
         if old_e and new_e:
             parts.append(f"Окончание: {old_e[:16]} → {new_e[:16]}")
+        changes = details.get("changes")
+        if isinstance(changes, dict):
+            for field, val in changes.items():
+                if isinstance(val, dict):
+                    parts.append(f"{field}: {val.get('old')} → {val.get('new')}")
 
-    elif action.startswith("REVIEW_"):
+    elif action == "DELETE_OVERTIME":
+        emp_name = details.get("employee_name")
+        emp_email = details.get("employee_email")
+        if emp_name or emp_email:
+            parts.append(f"Сотрудник: {emp_name or ''} ({emp_email or ''})".strip())
+        if details.get("status"):
+            parts.append(f"Статус до удаления: {details.get('status')}")
+
+    elif action.startswith("REVIEW_") or action == "SELF_REVIEW_ADMIN":
+
         approved = details.get("approved")
         app_h = details.get("approved_hours")
         req_h = details.get("requested_hours")

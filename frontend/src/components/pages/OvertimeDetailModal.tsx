@@ -27,6 +27,27 @@ interface OvertimeDetailModalProps {
     ) => Promise<void>;
 }
 
+/**
+ * Вычисляет точную фактическую длительность между началом и окончанием переработки.
+ */
+const formatActualDuration = (startStr?: string | null, endStr?: string | null): string => {
+    if (!startStr || !endStr) return 'В процессе';
+    const s = new Date(startStr).getTime();
+    const e = new Date(endStr).getTime();
+    if (isNaN(s) || isNaN(e) || e <= s) return '0 сек.';
+    const totalSec = Math.floor((e - s) / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const sec = totalSec % 60;
+    if (h > 0) {
+        return `${h} ч. ${m} мин. ${sec} сек.`;
+    }
+    if (m > 0) {
+        return `${m} мин. ${sec} сек.`;
+    }
+    return `${sec} сек.`;
+};
+
 const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
     overtime,
     onClose,
@@ -393,9 +414,19 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         {!isEditing && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Длительность</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <Clock size={16} style={{ color: 'var(--warning)' }} />
-                                    <span style={{ fontWeight: 600 }}>{overtime.hours}ч (запрошено)</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Clock size={16} style={{ color: 'var(--accent)' }} />
+                                        <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>
+                                            Фактически: <span style={{ color: 'var(--text-primary)' }}>{formatActualDuration(overtime.start_time, overtime.end_time)}</span>
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '24px' }}>
+                                        К согласованию: <strong style={{ color: 'var(--warning)' }}>{overtime.hours}ч</strong> (запрошено)
+                                        {overtime.approved_hours !== null && overtime.approved_hours !== undefined && (
+                                            <> • Утверждено: <strong style={{ color: 'var(--primary)' }}>{overtime.approved_hours}ч</strong></>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

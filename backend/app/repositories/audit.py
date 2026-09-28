@@ -8,15 +8,68 @@ from app.models.user import User
 
 # Словарь сопоставления категорий действий для фильтрации
 CATEGORY_ACTION_MAP: dict[str, list[str]] = {
-    "auth": ["LOGIN", "LOGOUT"],
-    "security": ["PASSWORD_RESET_REQUEST", "PASSWORD_RESET_CONFIRM", "CHANGE_PASSWORD", "RESET_PASSWORD"],
-    "users": ["CREATE_USER", "UPDATE_USER", "DELETE_USER"],
-    "departments": ["CREATE_DEPT", "UPDATE_DEPT", "DELETE_DEPT"],
-    "projects": ["CREATE_PROJECT", "UPDATE_PROJECT", "DELETE_PROJECT", "IMPORT_ODOO_PROJECTS", "IMPORT_ODOO_INTEGRATION_PROJECTS"],
-    "overtimes": ["CREATE_OVERTIME", "UPDATE_OVERTIME_TIME", "CANCEL_OVERTIME", "RESTORE_OVERTIME"],
-    "reviews": ["REVIEW_HEAD_APPROVED", "REVIEW_HEAD_REJECTED", "REVIEW_MANAGER_APPROVED", "REVIEW_MANAGER_REJECTED"],
-    "system": ["AUTO_CLOSE_STALE"],
+    "auth": [
+        "LOGIN",
+        "LOGIN_2FA",
+        "LOGIN_SSO",
+        "LOGOUT",
+        "PASSWORD_RESET_REQUEST",
+        "PASSWORD_RESET_CONFIRM",
+        "PASSWORD_RESET",
+        "CHANGE_PASSWORD",
+        "RESET_PASSWORD",
+    ],
+    "security": [
+        "PASSWORD_RESET_REQUEST",
+        "PASSWORD_RESET_CONFIRM",
+        "PASSWORD_RESET",
+        "CHANGE_PASSWORD",
+        "RESET_PASSWORD",
+    ],
+    "users": [
+        "CREATE_USER",
+        "UPDATE_USER",
+        "DELETE_USER",
+        "RESET_PASSWORD",
+        "IMPORT_USER_MS",
+    ],
+    "departments": [
+        "CREATE_DEPT",
+        "UPDATE_DEPT",
+        "DELETE_DEPT",
+    ],
+    "projects": [
+        "CREATE_PROJECT",
+        "UPDATE_PROJECT",
+        "DELETE_PROJECT",
+        "IMPORT_ODOO_PROJECTS",
+        "IMPORT_ODOO_INTEGRATION_PROJECTS",
+        "IMPORT_PROJECT_ODOO",
+        "IMPORT_PROJECT_ODOO_INTEGRATION",
+    ],
+    "overtimes": [
+        "CREATE_OVERTIME",
+        "UPDATE_OVERTIME_TIME",
+        "ADMIN_UPDATE_OVERTIME",
+        "CANCEL_OVERTIME",
+        "RESTORE_OVERTIME",
+        "DELETE_OVERTIME",
+    ],
+    "reviews": [
+        "REVIEW_ADMIN",
+        "REVIEW_HEAD",
+        "REVIEW_MANAGER",
+        "SELF_REVIEW_ADMIN",
+        "REVIEW_HEAD_APPROVED",
+        "REVIEW_HEAD_REJECTED",
+        "REVIEW_MANAGER_APPROVED",
+        "REVIEW_MANAGER_REJECTED",
+    ],
+    "system": [
+        "AUTO_CLOSE_STALE",
+    ],
 }
+
 
 
 async def create_audit_log(

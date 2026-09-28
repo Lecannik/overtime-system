@@ -261,13 +261,20 @@ async def delete_overtime_admin(
     if not overtime:
         raise HTTPException(status_code=404, detail="Заявка не найдена")
 
+    target_user = await session.get(User, overtime.user_id)
     await audit_repo.create_audit_log(
         session,
         current_user.id,
         "DELETE_OVERTIME",
         "overtime",
         overtime_id,
-        {"user_id": overtime.user_id, "status": str(overtime.status)}
+        {
+            "user_id": overtime.user_id,
+            "employee_id": overtime.user_id,
+            "employee_name": target_user.full_name if target_user else None,
+            "employee_email": target_user.email if target_user else None,
+            "status": str(overtime.status)
+        }
     )
 
     await session.execute(sql_delete(Overtime).where(Overtime.id == overtime_id))

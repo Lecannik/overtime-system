@@ -69,6 +69,7 @@ export interface Overtime {
   total_hours: number | null;
   approved_hours: number | null;
   hours?: number; // legacy property
+  raw_hours?: number | null;
   location_name: string | null;
   start_lat: number | null;
   start_lng: number | null;

@@ -12,22 +12,36 @@ export interface ActionMeta {
     badgeBg: string;
 }
 
-/** Категории событий аудита для фильтрации */
+/** Категории событий аудита для фильтрации с пояснениями */
 export const AUDIT_CATEGORIES = [
-    { key: 'all', title: 'Все категории' },
-    { key: 'auth', title: 'Авторизация' },
-    { key: 'overtimes', title: 'Заявки и переработки' },
-    { key: 'reviews', title: 'Согласование' },
-    { key: 'users', title: 'Пользователи' },
-    { key: 'departments', title: 'Отделы' },
-    { key: 'projects', title: 'Проекты' },
-    { key: 'system', title: 'Системные' },
+    { key: 'all', title: 'Все категории', description: 'Полный журнал всех событий системы без фильтрации по типу' },
+    { key: 'auth', title: 'Авторизация', description: 'Входы пользователей (пароль, 2FA, SSO), завершение сессий, сброс и смена паролей' },
+    { key: 'overtimes', title: 'Заявки и переработки', description: 'Создание, редактирование администратором, отмена и удаление заявок на переработку' },
+    { key: 'reviews', title: 'Согласование', description: 'Решения менеджеров проектов, начальников отделов и администратора (одобрение/отклонение)' },
+    { key: 'users', title: 'Пользователи', description: 'Создание новых учетных записей, редактирование профилей, смена ролей и импорт из Office 365' },
+    { key: 'departments', title: 'Отделы', description: 'Создание подразделений, изменение названий отделов и назначение руководителей' },
+    { key: 'projects', title: 'Проекты', description: 'Создание и правка проектов, настройка недельных лимитов и синхронизация с Odoo' },
+    { key: 'system', title: 'Системные', description: 'Автоматические операции планировщика: автозакрытие зависших сессий и периодические проверки' },
 ] as const;
 
 /** Словарь метаинформации о действиях */
 export const ACTION_CONFIG: Record<string, ActionMeta> = {
     LOGIN: {
         title: 'Вход в систему',
+        category: 'auth',
+        categoryTitle: 'Авторизация',
+        badgeColor: '#38bdf8',
+        badgeBg: 'rgba(56, 189, 248, 0.15)',
+    },
+    LOGIN_2FA: {
+        title: 'Вход с 2FA',
+        category: 'auth',
+        categoryTitle: 'Авторизация',
+        badgeColor: '#38bdf8',
+        badgeBg: 'rgba(56, 189, 248, 0.15)',
+    },
+    LOGIN_SSO: {
+        title: 'Вход через SSO',
         category: 'auth',
         categoryTitle: 'Авторизация',
         badgeColor: '#38bdf8',
@@ -41,6 +55,13 @@ export const ACTION_CONFIG: Record<string, ActionMeta> = {
         badgeBg: 'rgba(148, 163, 184, 0.15)',
     },
     PASSWORD_RESET_REQUEST: {
+        title: 'Запрос сброса пароля',
+        category: 'auth',
+        categoryTitle: 'Безопасность',
+        badgeColor: '#f59e0b',
+        badgeBg: 'rgba(245, 158, 11, 0.15)',
+    },
+    PASSWORD_RESET: {
         title: 'Запрос сброса пароля',
         category: 'auth',
         categoryTitle: 'Безопасность',
@@ -88,6 +109,13 @@ export const ACTION_CONFIG: Record<string, ActionMeta> = {
         categoryTitle: 'Пользователи',
         badgeColor: '#ef4444',
         badgeBg: 'rgba(239, 68, 68, 0.15)',
+    },
+    IMPORT_USER_MS: {
+        title: 'Импорт из Office 365',
+        category: 'users',
+        categoryTitle: 'Пользователи',
+        badgeColor: '#8b5cf6',
+        badgeBg: 'rgba(139, 92, 246, 0.15)',
     },
     CREATE_DEPT: {
         title: 'Создание отдела',
@@ -145,6 +173,13 @@ export const ACTION_CONFIG: Record<string, ActionMeta> = {
         badgeColor: '#8b5cf6',
         badgeBg: 'rgba(139, 92, 246, 0.15)',
     },
+    IMPORT_PROJECT_ODOO: {
+        title: 'Импорт из Odoo',
+        category: 'projects',
+        categoryTitle: 'Проекты',
+        badgeColor: '#8b5cf6',
+        badgeBg: 'rgba(139, 92, 246, 0.15)',
+    },
     CREATE_OVERTIME: {
         title: 'Создание заявки',
         category: 'overtimes',
@@ -152,12 +187,75 @@ export const ACTION_CONFIG: Record<string, ActionMeta> = {
         badgeColor: '#38bdf8',
         badgeBg: 'rgba(56, 189, 248, 0.15)',
     },
+    CREATE_OVERTIME_MANUAL: {
+        title: 'Ручное создание заявки',
+        category: 'overtimes',
+        categoryTitle: 'Заявки',
+        badgeColor: '#10b981',
+        badgeBg: 'rgba(16, 185, 129, 0.15)',
+    },
+    ADMIN_UPDATE_OVERTIME: {
+        title: 'Правка заявки админом',
+        category: 'overtimes',
+        categoryTitle: 'Заявки',
+        badgeColor: '#f59e0b',
+        badgeBg: 'rgba(245, 158, 11, 0.15)',
+    },
     UPDATE_OVERTIME_TIME: {
         title: 'Изменение времени заявки',
         category: 'overtimes',
         categoryTitle: 'Заявки',
         badgeColor: '#f59e0b',
         badgeBg: 'rgba(245, 158, 11, 0.15)',
+    },
+    DELETE_OVERTIME: {
+        title: 'Удаление заявки',
+        category: 'overtimes',
+        categoryTitle: 'Заявки',
+        badgeColor: '#ef4444',
+        badgeBg: 'rgba(239, 68, 68, 0.15)',
+    },
+    CANCEL_OVERTIME: {
+        title: 'Отмена заявки',
+        category: 'overtimes',
+        categoryTitle: 'Заявки',
+        badgeColor: '#ef4444',
+        badgeBg: 'rgba(239, 68, 68, 0.15)',
+    },
+    RESTORE_OVERTIME: {
+        title: 'Восстановление заявки',
+        category: 'overtimes',
+        categoryTitle: 'Заявки',
+        badgeColor: '#10b981',
+        badgeBg: 'rgba(16, 185, 129, 0.15)',
+    },
+    REVIEW_ADMIN: {
+        title: 'Решение администратора',
+        category: 'reviews',
+        categoryTitle: 'Согласование',
+        badgeColor: '#7c3aed',
+        badgeBg: 'rgba(124, 58, 237, 0.15)',
+    },
+    REVIEW_HEAD: {
+        title: 'Решение нач. отдела',
+        category: 'reviews',
+        categoryTitle: 'Согласование',
+        badgeColor: '#2563eb',
+        badgeBg: 'rgba(37, 99, 235, 0.15)',
+    },
+    REVIEW_MANAGER: {
+        title: 'Решение менеджера',
+        category: 'reviews',
+        categoryTitle: 'Согласование',
+        badgeColor: '#0891b2',
+        badgeBg: 'rgba(8, 145, 178, 0.15)',
+    },
+    SELF_REVIEW_ADMIN: {
+        title: 'Самосогласование админом',
+        category: 'reviews',
+        categoryTitle: 'Согласование',
+        badgeColor: '#8b5cf6',
+        badgeBg: 'rgba(139, 92, 246, 0.15)',
     },
     REVIEW_HEAD_APPROVED: {
         title: 'Одобрено руководителем',
@@ -187,20 +285,6 @@ export const ACTION_CONFIG: Record<string, ActionMeta> = {
         badgeColor: '#ef4444',
         badgeBg: 'rgba(239, 68, 68, 0.15)',
     },
-    CANCEL_OVERTIME: {
-        title: 'Отмена заявки',
-        category: 'overtimes',
-        categoryTitle: 'Заявки',
-        badgeColor: '#ef4444',
-        badgeBg: 'rgba(239, 68, 68, 0.15)',
-    },
-    RESTORE_OVERTIME: {
-        title: 'Восстановление заявки',
-        category: 'overtimes',
-        categoryTitle: 'Заявки',
-        badgeColor: '#10b981',
-        badgeBg: 'rgba(16, 185, 129, 0.15)',
-    },
     AUTO_CLOSE_STALE: {
         title: 'Автозакрытие заявки',
         category: 'system',
@@ -227,13 +311,33 @@ export const formatActionSummary = (action: string, details?: Record<string, unk
         return '—';
     }
 
+    const employeeInfo = details.employee_name
+        ? `${String(details.employee_name)}${details.employee_email ? ` (${String(details.employee_email)})` : ''}`
+        : (details.employee_email ? String(details.employee_email) : '');
+
+    if (action === 'ADMIN_UPDATE_OVERTIME') {
+        const changes = [];
+        if (details.status) changes.push(`Статус: ${String(details.status)}`);
+        if (details.hours !== undefined) changes.push(`Часы: ${String(details.hours)} ч.`);
+        if (details.approved_hours !== undefined) changes.push(`Согл. часы: ${String(details.approved_hours)} ч.`);
+        if (details.admin_comment) changes.push(`Комментарий: «${String(details.admin_comment)}»`);
+        const changesStr = changes.length > 0 ? changes.join(', ') : 'Изменение параметров заявки';
+        return employeeInfo ? `Сотрудник: ${employeeInfo} • ${changesStr}` : changesStr;
+    }
+
+    if (action === 'DELETE_OVERTIME') {
+        const reason = details.reason ? `: «${String(details.reason)}»` : '';
+        return employeeInfo ? `Удалена заявка сотрудника ${employeeInfo}${reason}` : `Заявка удалена${reason}`;
+    }
+
     if (action === 'UPDATE_OVERTIME_TIME') {
         const oldH = details.old_hours;
         const newH = details.new_hours;
+        const emp = employeeInfo ? ` [${employeeInfo}]` : '';
         if (oldH !== undefined && newH !== undefined) {
-            return `Часы: ${String(oldH)} ч. → ${String(newH)} ч. (${String(details.updated_by || 'автор')})`;
+            return `Часы: ${String(oldH)} ч. → ${String(newH)} ч.${emp}`;
         }
-        return 'Изменение временных параметров заявки';
+        return `Изменение времени заявки${emp}`;
     }
 
     if (action.startsWith('REVIEW_')) {
@@ -246,6 +350,9 @@ export const formatActionSummary = (action: string, details?: Record<string, unk
         }
         if (comment) {
             res += ` • «${String(comment)}»`;
+        }
+        if (employeeInfo) {
+            res += ` [Сотрудник: ${employeeInfo}]`;
         }
         return res;
     }
@@ -280,16 +387,21 @@ export const formatActionSummary = (action: string, details?: Record<string, unk
         return parts.join(', ') || 'Изменение проекта';
     }
 
-    if (action.includes('IMPORT_ODOO')) {
+    if (action.includes('IMPORT_ODOO') || action === 'IMPORT_PROJECT_ODOO') {
         return `Импортировано: ${String(details.imported ?? 0)}, Пропущено: ${String(details.skipped ?? 0)}`;
     }
 
-    // Если обычный json
-    const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
-    if (entries.length > 0) {
-        return entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).slice(0, 2).join(', ');
+    if (action === 'IMPORT_USER_MS') {
+        return `Импортировано: ${String(details.created ?? details.imported ?? 0)}, Обновлено: ${String(details.updated ?? 0)}`;
     }
 
-    return '—';
+    // Если обычный json
+    const entries = Object.entries(details).filter(([k, v]) => k !== 'employee_name' && k !== 'employee_email' && v !== null && v !== undefined && v !== '');
+    if (entries.length > 0) {
+        const formatted = entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).slice(0, 2).join(', ');
+        return employeeInfo ? `Сотрудник: ${employeeInfo} • ${formatted}` : formatted;
+    }
+
+    return employeeInfo ? `Сотрудник: ${employeeInfo}` : '—';
 };
 

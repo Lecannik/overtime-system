@@ -16,6 +16,31 @@ def calculate_overtime_hours(start_time: datetime, end_time: datetime) -> float:
         return 0.0
     return float(math.ceil(delta.total_seconds() / 3600))
 
+def format_duration_human(total_seconds: int | float) -> str:
+    """
+    Форматирует длительность в секундах в понятное человекочитаемое текстовое представление на русском языке.
+    Для коротких сессий (менее 1 часа) точно отображает минуты и секунды, исключая вывод нулевых интервалов '0ч 0м'.
+    
+    :param total_seconds: Длительность в секундах (целое или дробное число).
+    :return: Человекочитаемая строка, например '45 сек.', '1м 15с' или '12ч 53м'.
+    """
+    sec = max(0, int(total_seconds))
+    if sec < 60:
+        return f"{sec} сек."
+    
+    hours = sec // 3600
+    minutes = (sec % 3600) // 60
+    rem_seconds = sec % 60
+    
+    if hours == 0:
+        if rem_seconds > 0:
+            return f"{minutes}м {rem_seconds}с"
+        return f"{minutes}м"
+    
+    if minutes > 0:
+        return f"{hours}ч {minutes}м"
+    return f"{hours}ч"
+
 def ensure_utc(dt: datetime | None) -> datetime | None:
     """
     Возвращает UTC-aware datetime. Наивные datetime считаются UTC.

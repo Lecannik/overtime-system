@@ -19,11 +19,37 @@ async def notify_new_overtime(
     head: User | None = None
 ):
     """Уведомляет менеджера и нач. отдела о новой заявке."""
+    from app.core.utils import format_duration_human
+
+    start_local = overtime.start_time
+    if start_local.tzinfo is None:
+        start_local = start_local.replace(tzinfo=timezone.utc)
+    start_local = start_local.astimezone(settings.tz_info)
+
+    end_local = overtime.end_time
+    time_str = f"{start_local.strftime('%d.%m %H:%M')}"
+    actual_dur_str = ""
+    if end_local:
+        if end_local.tzinfo is None:
+            end_local = end_local.replace(tzinfo=timezone.utc)
+        end_local = end_local.astimezone(settings.tz_info)
+        time_str += f" — {end_local.strftime('%H:%M')}"
+
+        secs = max(0, int((overtime.end_time - overtime.start_time).total_seconds()))
+        actual_dur_str = format_duration_human(secs)
+
+    time_line_plain = f"Период: {time_str}"
+    time_line_html = f"📅 <b>Период</b>: {time_str}"
+    if actual_dur_str:
+        time_line_plain += f"\nФактическое время: {actual_dur_str}"
+        time_line_html += f"\n⏳ <b>Фактическое время</b>: {actual_dur_str}"
+
     msg_plain = (
         f"Новая заявка #{overtime.id}\n"
         f"От: {overtime.user.full_name}\n"
         f"Проект: {overtime.project.name}\n"
-        f"Запрошено часов: {overtime.hours}ч\n"
+        f"{time_line_plain}\n"
+        f"Запрошено к согласованию: {overtime.hours}ч\n"
         f"Требуется решение"
     )
     
@@ -31,7 +57,8 @@ async def notify_new_overtime(
         f"🔔 <b>Новая заявка #{overtime.id}</b>\n"
         f"От: {overtime.user.full_name}\n"
         f"Проект: {overtime.project.name}\n"
-        f"⏱ <b>Запрошено часов</b>: {overtime.hours}ч\n"
+        f"{time_line_html}\n"
+        f"⏱ <b>К согласованию</b>: {overtime.hours}ч\n"
         f"Требуется решение"
     )
 
@@ -59,8 +86,8 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
         OvertimeStatus.PENDING: "🕒 Ожидает",
         OvertimeStatus.APPROVED: "✅ Одобрена",
         OvertimeStatus.REJECTED: "❌ Отклонена",
-        OvertimeStatus.MANAGER_APPROVED: "👨‍💼 Одобрена менеджером",
-        OvertimeStatus.HEAD_APPROVED: "🏫 Одобрена нач. отдела",
+        OvertimeStatus.MANAGER_APPROVED: "👨‍💼 Одобрена менеджером (ожидает руководителя)",
+        OvertimeStatus.HEAD_APPROVED: "🏫 Одобрена нач. отдела (ожидает менеджера)",
         OvertimeStatus.CANCELLED: "⏹ Отменена"
     }
 

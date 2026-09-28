@@ -263,7 +263,7 @@ async def start_location_handler(update: Update, context: ContextTypes.DEFAULT_T
 async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Запрос геопозиции при ЗАВЕРШЕНИИ.
-    Фиксирует время завершения переработки.
+    Фиксирует точное время завершения переработки сразу при нажатии кнопки.
     """
     user = await verify_user(update)
     if not user:
@@ -276,8 +276,16 @@ async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 reply_markup=start_markup()
             )
             return ConversationHandler.END
+        
+        now_utc = datetime.now(timezone.utc)
         context.user_data['active_id'] = active.id
-        context.user_data['end_time'] = datetime.now(timezone.utc)
+        context.user_data['stop_button_time'] = now_utc
+        context.user_data['end_time'] = now_utc
+
+        # Сохраняем end_time сразу в сессию БД для защиты от сброса контекста
+        active.end_time = now_utc
+        await session.commit()
+
         await update.message.reply_text(
             "⏹ Завершение работы. Пожалуйста, отправьте геопозицию (ФИНИШ):",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton("📍 Отправить местоположение (ФИНИШ)", request_location=True)], [KeyboardButton("❌ Отмена")]], resize_keyboard=True)
@@ -289,6 +297,8 @@ async def end_location_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     location = update.message.location
     context.user_data['end_lat'] = location.latitude
     context.user_data['end_lng'] = location.longitude
+    if not context.user_data.get('stop_button_time') and not context.user_data.get('end_time'):
+        context.user_data['end_time'] = datetime.now(timezone.utc)
     
     await update.message.reply_text("🗣 Теперь отправьте описание выполненных работ (текст или голос):")
     return SENDING_COMMENT
@@ -305,8 +315,8 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     end_lat = context.user_data.get('end_lat')
     end_lng = context.user_data.get('end_lng')
     
-    # Получаем зафиксированное при нажатии кнопки остановки время завершения
-    end_time = context.user_data.get('end_time') or datetime.now(timezone.utc)
+    # Получаем зафиксированное при остановке время завершения
+    end_time = context.user_data.get('stop_button_time') or context.user_data.get('end_time')
     
     comment_text = ""
     summary_text = ""
@@ -347,7 +357,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ Сессия не найдена. Возможно, она была автоматически закрыта системой.",
                 reply_markup=start_markup()
             )
-            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
                 context.user_data.pop(key, None)
             return ConversationHandler.END
 
@@ -358,9 +368,12 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML",
                 reply_markup=start_markup()
             )
-            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
                 context.user_data.pop(key, None)
             return ConversationHandler.END
+
+        if not end_time:
+            end_time = active.end_time or datetime.now(timezone.utc)
 
         if active:
             # Разделяем интервал по дням (00:00 локального времени)
@@ -424,16 +437,15 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await notifications.notify_new_overtime(session, ot_full, manager, head)
             
             # Вычисляем общую продолжительность и текст для бота
-            total_seconds = int((end_time - intervals[0][0]).total_seconds())
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
+            total_seconds = max(0, int((end_time - intervals[0][0]).total_seconds()))
             total_hours_float = total_seconds / 3600
             
             # Считаем сумму округленных часов по всем созданным частям
-            from app.core.utils import calculate_overtime_hours
+            from app.core.utils import calculate_overtime_hours, format_duration_human
             rounded_hours = sum(int(calculate_overtime_hours(ot.start_time, ot.end_time)) for ot in all_overtimes)
             
-            dur_str = f"{hours}ч {minutes}м (округлено по частям: {rounded_hours}ч)"
+            human_dur = format_duration_human(total_seconds)
+            dur_str = f"{human_dur} (к согласованию: {rounded_hours}ч)"
             
             # Если заявок больше одной, сообщаем об этом
             split_info = ""
@@ -478,7 +490,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(report, parse_mode="HTML", reply_markup=start_markup())
             
     # Очищаем временные переменные из context.user_data
-    for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'project_id']:
+    for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
         context.user_data.pop(key, None)
         
     return ConversationHandler.END

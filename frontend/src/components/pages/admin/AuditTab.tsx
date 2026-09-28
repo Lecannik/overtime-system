@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     History,
     Search,
@@ -9,7 +9,9 @@ import {
     Eye,
     ChevronLeft,
     ChevronRight,
-    RefreshCw
+    RefreshCw,
+    HelpCircle,
+    Info
 } from 'lucide-react';
 import type { AuditLog } from '../../../types';
 import { getAuditLogs, exportAuditLogs } from '../../../services/api';
@@ -65,6 +67,24 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
 
     // Выбранная запись для просмотра в модальном окне
     const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+
+    // Всплывающая справка по категориям и фильтрам
+    const [showCategoryLegend, setShowCategoryLegend] = useState(false);
+    const legendRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (legendRef.current && !legendRef.current.contains(event.target as Node)) {
+                setShowCategoryLegend(false);
+            }
+        };
+        if (showCategoryLegend) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showCategoryLegend]);
 
     // Загрузка логов аудита
     const fetchLogs = useCallback(async () => {
@@ -351,8 +371,8 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                         </div>
                     </div>
 
-                    {/* Фильтр по категориям */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {/* Фильтр по категориям с легендой */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }} ref={legendRef}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600 }}>
                             <Filter size={15} />
                             <span>Категория:</span>
@@ -371,6 +391,99 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                 </option>
                             ))}
                         </select>
+
+                        <button
+                            type="button"
+                            onClick={() => setShowCategoryLegend(!showCategoryLegend)}
+                            title="Справка по категориям и фильтрам"
+                            className="secondary"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '32px',
+                                height: '32px',
+                                padding: 0,
+                                borderRadius: '8px',
+                                color: showCategoryLegend ? 'var(--primary)' : 'var(--text-secondary)',
+                                borderColor: showCategoryLegend ? 'var(--primary)' : 'var(--border)',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <HelpCircle size={16} />
+                        </button>
+
+                        {/* Всплывающая подсказка / Легенда категорий */}
+                        {showCategoryLegend && (
+                            <div
+                                className="glass-card"
+                                style={{
+                                    position: 'absolute',
+                                    top: 'calc(100% + 8px)',
+                                    right: 0,
+                                    zIndex: 100,
+                                    width: 'min(92vw, 500px)',
+                                    maxHeight: '480px',
+                                    overflowY: 'auto',
+                                    padding: '16px',
+                                    background: 'var(--bg-secondary, #1e293b)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '12px',
+                                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.95rem' }}>
+                                        <Info size={18} style={{ color: 'var(--primary)' }} />
+                                        <span>Справка по категориям журнала</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCategoryLegend(false)}
+                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {AUDIT_CATEGORIES.map(cat => (
+                                        <div
+                                            key={cat.key}
+                                            style={{
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                background: selectedCategory === cat.key ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-tertiary, #0f172a)',
+                                                border: selectedCategory === cat.key ? '1px solid var(--primary)' : '1px solid transparent',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                                <span style={{ fontWeight: 600, fontSize: '0.82rem', color: selectedCategory === cat.key ? 'var(--primary)' : 'var(--text-primary)' }}>
+                                                    {cat.title}
+                                                </span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                                    {cat.key}
+                                                </span>
+                                            </div>
+                                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                                                {'description' in cat ? (cat as any).description : ''}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                        Справка по статусам согласования (BPMN):
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                                        <div>• <strong>Одобрено нач. отдела</strong>: согласовано руководителем отдела, ожидает решения менеджера проекта (при превышении лимита проекта).</div>
+                                        <div>• <strong>Одобрено менеджером</strong>: согласовано менеджером проекта, ожидает подтверждения начальника отдела.</div>
+                                        <div>• <strong>Одобрено</strong>: итоговое согласование завершено (или утверждено администратором напрямую).</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

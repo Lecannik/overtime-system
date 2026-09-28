@@ -307,6 +307,12 @@ async def review_overtime(
     if overtime.manager_approved is False or overtime.head_approved is False:
         overtime.status = OvertimeStatus.REJECTED
 
+    elif current_user.role == UserRole.admin and review.approved:
+        # Решение Администратора является наивысшим и окончательным — переводим сразу в APPROVED
+        overtime.status = OvertimeStatus.APPROVED
+        overtime.head_approved = True
+        overtime.manager_approved = True
+
     elif overtime.head_approved is True:
         # Проверяем лимит для принятия решения о финальном одобрении
         weekly_hours = await overtime_repo.get_weekly_overtime_hours(
@@ -348,7 +354,10 @@ async def review_overtime(
             "description": overtime.description,
             "requested_hours": overtime.hours,
             "raw_hours_exact": overtime.raw_hours,
-            "approved_hours": overtime.approved_hours
+            "approved_hours": overtime.approved_hours,
+            "employee_id": overtime.user_id,
+            "employee_name": overtime.user.full_name if overtime.user else None,
+            "employee_email": overtime.user.email if overtime.user else None,
         }
     )
 
@@ -663,6 +672,8 @@ async def update_overtime(
     # Запись аудит-лога
     if time_changed:
         from app.repositories import audit as audit_repo
+        emp_name = overtime.user.full_name if overtime.user else None
+        emp_email = overtime.user.email if overtime.user else None
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
@@ -675,6 +686,8 @@ async def update_overtime(
                 "is_own": overtime.user_id == current_user.id,
                 "description": overtime.description,
                 "employee_id": overtime.user_id,
+                "employee_name": emp_name,
+                "employee_email": emp_email,
                 "old_start": ensure_utc(old_start).isoformat() if old_start else None,
                 "new_start": ensure_utc(result.start_time).isoformat() if result.start_time else None,
                 "old_end": ensure_utc(old_end).isoformat() if old_end else None,
@@ -686,6 +699,8 @@ async def update_overtime(
 
     if current_user.role == UserRole.admin and (desc_changed or project_changed):
         from app.repositories import audit as audit_repo
+        emp_name = overtime.user.full_name if overtime.user else None
+        emp_email = overtime.user.email if overtime.user else None
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
@@ -695,6 +710,8 @@ async def update_overtime(
             details={
                 "updated_by": current_user.email,
                 "employee_id": overtime.user_id,
+                "employee_name": emp_name,
+                "employee_email": emp_email,
                 "overtime_status": str(overtime.status.value),
                 "changes": {
                     "description": {"old": old_desc, "new": result.description} if desc_changed else None,
