@@ -70,14 +70,6 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
             detail="Время окончания должно быть позже времени начала."
         )
 
-    # 0.3 Валидация минимальной длительности (защита от Attack 6)
-    duration_sec = (end_time - start_time).total_seconds()
-    if duration_sec < 900:
-        raise HTTPException(
-            status_code=422,
-            detail="Минимальная длительность переработки составляет 15 минут."
-        )
-
     # Приводим к UTC-aware для корректной работы с timestamptz колонками
     start_time = ensure_utc(start_time)
     end_time = ensure_utc(end_time)
@@ -608,13 +600,6 @@ async def update_overtime(
                     f"Длительность переработки ({total_hours:.1f}ч) превышает допустимый максимум "
                     f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
                 )
-            )
-        # Валидация минимальной длительности (Attack 3)
-        duration_sec = (new_end - new_start).total_seconds()
-        if duration_sec < 900:
-            raise HTTPException(
-                status_code=422,
-                detail="Минимальная длительность переработки составляет 15 минут."
             )
 
     # 1. Запрет на будущее время при обновлении (добавляем 5 минут буфера)

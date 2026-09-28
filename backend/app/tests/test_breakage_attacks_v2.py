@@ -228,21 +228,21 @@ async def test_attack_2_bola_idor_unauthorized_download_of_foreign_voice_recordi
 
 
 # =====================================================================
-# АТАКА 3: Защита от обхода минимального порога длительности через PATCH
+# АТАКА 3: Защита от некорректного времени (время окончания раньше начала) через PATCH
 # =====================================================================
 
 @pytest.mark.asyncio
-async def test_attack_3_bypass_minimum_15_minutes_duration_via_patch(
+async def test_attack_3_bypass_invalid_end_time_via_patch(
     client: AsyncClient,
     normal_user_token_headers: dict,
     test_project: Project,
 ):
     """
-    Атака 3: Контроль минимального порога длительности (15 минут) при обновлении через PATCH.
+    Атака 3: Контроль корректности интервала (время окончания должно быть позже начала) при обновлении через PATCH.
 
     Ожидаемое защитное поведение:
-        Сервер возвращает HTTP 422 Unprocessable Entity при попытке уменьшить длительность
-        переработки менее чем до 15 минут (900 секунд).
+        Сервер возвращает ошибку при попытке установить время окончания раньше или равным времени начала.
+        При этом короткие переработки (менее 15 минут) допустимы и округляются до 1 часа.
     """
     # 1. Создаем валидную переработку на 30 минут
     start_time_iso = "2026-07-10T18:00:00"
@@ -262,8 +262,8 @@ async def test_attack_3_bypass_minimum_15_minutes_duration_via_patch(
     assert create_resp.status_code == 200, f"Ошибка создания заявки: {create_resp.text}"
     overtime_id = create_resp.json()["id"]
 
-    # 2. Через PATCH пытаемся изменить время окончания на 1 секунду после начала
-    exploit_end_time = "2026-07-10T18:00:01"
+    # 2. Через PATCH пытаемся изменить время окончания раньше времени начала
+    exploit_end_time = "2026-07-10T17:59:59"
     patch_resp = await client.patch(
         f"/api/v1/overtimes/{overtime_id}",
         json={
@@ -272,11 +272,21 @@ async def test_attack_3_bypass_minimum_15_minutes_duration_via_patch(
         headers=normal_user_token_headers,
     )
 
-    # Защита подтверждена: запрос отклонен со статусом HTTP 422 Unprocessable Entity
-    assert patch_resp.status_code == 422, (
-        f"Ожидался статус 422 Unprocessable Entity при попытке установки длительности 1 сек, но получен {patch_resp.status_code}: {patch_resp.text}"
+    # Защита подтверждена: запрос отклонен
+    assert patch_resp.status_code in (400, 422)
+    assert "Время окончания должно быть позже времени начала" in patch_resp.text
+
+    # 3. При этом короткая переработка (например 1 мин 10 сек) успешно сохраняется и дает 1 час к согласованию
+    valid_short_end = "2026-07-10T18:01:10"
+    patch_resp2 = await client.patch(
+        f"/api/v1/overtimes/{overtime_id}",
+        json={
+            "end_time": valid_short_end,
+        },
+        headers=normal_user_token_headers,
     )
-    assert "Минимальная длительность переработки составляет 15 минут" in patch_resp.text
+    assert patch_resp2.status_code == 200
+    assert patch_resp2.json()["hours"] == 1.0
 
 
 # =====================================================================

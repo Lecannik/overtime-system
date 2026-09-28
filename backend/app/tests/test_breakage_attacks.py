@@ -382,34 +382,51 @@ async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
 
 
 # =====================================================================
-# АТАКА 6: Манипуляция округлением длительности переработки
+# АТАКА 6: Защита от некорректного интервала времени и корректность расчета микропереработок
 # =====================================================================
 
 @pytest.mark.asyncio
-async def test_attack_6_duration_rounding_exploitation_1_second_equals_1_hour(
+async def test_attack_6_duration_validation_and_micro_overtime_calculation(
     client: AsyncClient,
     normal_user_token_headers: dict,
     test_project: Project,
 ):
     """
-    Атака 6: Манипуляция округлением и микросекундными переработками (Duration Rounding Exploitation).
-    Ожидается блокировка заявки длительностью менее 15 минут статусом 422 Unprocessable Entity.
+    Атака 6: Проверка валидации временного интервала (end_time <= start_time)
+    и корректность округления коротких переработок (любая ненулевая переработка дает 1.0 час).
     """
-    resp = await client.post(
+    # 1. Попытка создать переработку с некорректным временем (окончание раньше начала)
+    resp_invalid = await client.post(
         "/api/v1/overtimes/",
         json={
             "project_id": test_project.id,
             "start_time": "2026-07-10T18:00:00",
-            "end_time": "2026-07-10T18:00:01",
-            "description": "Микросекундная работа: эксплуатация округления CEIL",
+            "end_time": "2026-07-10T17:59:59",
+            "description": "Попытка передать некорректное время окончания",
             "start_lat": 55.7558,
             "start_lng": 37.6173,
         },
         headers=normal_user_token_headers,
     )
-
-    # Проверка защиты: запрос с микросекундной переработкой (< 15 минут) отклоняется
-    assert resp.status_code == 422, (
-        f"Ожидался статус 422 Unprocessable Entity для заявки длительностью 1 сек, но получен {resp.status_code}: {resp.text}"
+    assert resp_invalid.status_code in (400, 422), (
+        f"Ожидалась ошибка валидации при end_time <= start_time, получено {resp_invalid.status_code}: {resp_invalid.text}"
     )
-    assert "15 минут" in resp.text
+    assert "Время окончания должно быть позже времени начала" in resp_invalid.text
+
+    # 2. Создание короткой переработки (1 секунда) должно успешно обрабатываться и округляться до 1 часа
+    resp_valid = await client.post(
+        "/api/v1/overtimes/",
+        json={
+            "project_id": test_project.id,
+            "start_time": "2026-07-10T18:00:00",
+            "end_time": "2026-07-10T18:00:01",
+            "description": "Короткая работа: 1 секунда округляется до 1 часа",
+            "start_lat": 55.7558,
+            "start_lng": 37.6173,
+        },
+        headers=normal_user_token_headers,
+    )
+    assert resp_valid.status_code == 200, f"Ошибка создания: {resp_valid.text}"
+    data = resp_valid.json()
+    assert data["hours"] == 1.0
+
