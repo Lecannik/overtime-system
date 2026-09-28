@@ -792,11 +792,50 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                     {selectedLog.target_type || '—'} {selectedLog.target_id ? `(#${selectedLog.target_id})` : ''}
                                 </div>
                             </div>
+                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email) && (
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                        Сотрудник (автор заявки)
+                                    </div>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginTop: '2px', color: 'var(--primary)' }}>
+                                        {String(selectedLog.details?.employee_name || '—')}
+                                    </div>
+                                    {Boolean(selectedLog.details?.employee_email) && (
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            {String(selectedLog.details?.employee_email)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Подробности и изменения */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Структура изменений</h4>
+
+                            {/* Информационная плашка целевого сотрудника */}
+                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email) && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '10px 14px',
+                                    background: 'rgba(99, 102, 241, 0.08)',
+                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    borderRadius: '8px',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <strong style={{ color: 'var(--text-secondary)' }}>Сотрудник:</strong>
+                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                        {String(selectedLog.details?.employee_name || '')}
+                                    </span>
+                                    {Boolean(selectedLog.details?.employee_email) && (
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                                            ({String(selectedLog.details?.employee_email)})
+                                        </span>
+                                    )}
+                                </div>
+                            )}
 
                             {selectedLog.action === 'UPDATE_OVERTIME_TIME' && selectedLog.details ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -850,6 +889,33 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                         </tbody>
                                     </table>
                                 </div>
+                            ) : selectedLog.action === 'ADMIN_UPDATE_OVERTIME' && selectedLog.details ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+                                    {Boolean(selectedLog.details.status) && (
+                                        <div>
+                                            <strong>Новый статус: </strong>
+                                            <span style={{ fontWeight: 700 }}>{String(selectedLog.details.status)}</span>
+                                        </div>
+                                    )}
+                                    {selectedLog.details.hours !== undefined && (
+                                        <div>
+                                            <strong>Запрошено часов: </strong>
+                                            <span>{String(selectedLog.details.hours)} ч.</span>
+                                        </div>
+                                    )}
+                                    {selectedLog.details.approved_hours !== undefined && (
+                                        <div>
+                                            <strong>Согласовано часов: </strong>
+                                            <span>{String(selectedLog.details.approved_hours)} ч.</span>
+                                        </div>
+                                    )}
+                                    {Boolean(selectedLog.details.admin_comment) && (
+                                        <div style={{ background: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px' }}>
+                                            <strong>Комментарий администратора: </strong>
+                                            <span>{String(selectedLog.details.admin_comment)}</span>
+                                        </div>
+                                    )}
+                                </div>
                             ) : selectedLog.action.startsWith('REVIEW_') && selectedLog.details ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
                                     <div>
@@ -870,6 +936,12 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                                 {String(selectedLog.details.approved_hours)} ч. (запрошено:{' '}
                                                 {String(selectedLog.details.requested_hours)} ч.)
                                             </span>
+                                        </div>
+                                    )}
+                                    {Boolean(selectedLog.details.description) && (
+                                        <div>
+                                            <strong>Описание работ: </strong>
+                                            <span>{String(selectedLog.details.description)}</span>
                                         </div>
                                     )}
                                     {Boolean(selectedLog.details.comment) && (

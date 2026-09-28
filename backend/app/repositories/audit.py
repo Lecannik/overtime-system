@@ -193,14 +193,40 @@ async def get_audit_logs(
     query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
     result = await session.execute(query)
 
+    rows = result.all()
+
+    # Автоматически обогащаем данные целевого сотрудника для заявок (включая исторические логи)
+    ot_ids = [
+        row.target_id for row in rows
+        if row.target_type == "overtime" and row.target_id and (not row.details or not row.details.get("employee_name"))
+    ]
+    ot_users = {}
+    if ot_ids:
+        from app.models.overtime import Overtime
+        ot_query = (
+            select(Overtime.id, User.full_name, User.email)
+            .join(User, Overtime.user_id == User.id)
+            .where(Overtime.id.in_(set(ot_ids)))
+        )
+        ot_res = await session.execute(ot_query)
+        for ot_id, full_name, email in ot_res.all():
+            ot_users[ot_id] = {"name": full_name, "email": email}
+
     items = []
-    for row in result.all():
+    for row in rows:
         user_dict = None
         if row.user_full_name or row.user_email:
             user_dict = {
                 "full_name": row.user_full_name or "Пользователь",
                 "email": row.user_email
             }
+
+        details = dict(row.details) if row.details else {}
+        if row.target_type == "overtime" and row.target_id in ot_users:
+            if not details.get("employee_name"):
+                details["employee_name"] = ot_users[row.target_id]["name"]
+            if not details.get("employee_email"):
+                details["employee_email"] = ot_users[row.target_id]["email"]
 
         items.append({
             "id": row.id,
@@ -209,7 +235,7 @@ async def get_audit_logs(
             "action": row.action,
             "target_type": row.target_type,
             "target_id": row.target_id,
-            "details": row.details,
+            "details": details if details else row.details,
             "timestamp": row.created_at
         })
 
@@ -253,8 +279,32 @@ async def get_audit_logs_for_export(
     query = query.order_by(AuditLog.created_at.desc())
     result = await session.execute(query)
 
+    rows = result.all()
+    ot_ids = [
+        row.target_id for row in rows
+        if row.target_type == "overtime" and row.target_id and (not row.details or not row.details.get("employee_name"))
+    ]
+    ot_users = {}
+    if ot_ids:
+        from app.models.overtime import Overtime
+        ot_query = (
+            select(Overtime.id, User.full_name, User.email)
+            .join(User, Overtime.user_id == User.id)
+            .where(Overtime.id.in_(set(ot_ids)))
+        )
+        ot_res = await session.execute(ot_query)
+        for ot_id, full_name, email in ot_res.all():
+            ot_users[ot_id] = {"name": full_name, "email": email}
+
     items = []
-    for row in result.all():
+    for row in rows:
+        details = dict(row.details) if row.details else {}
+        if row.target_type == "overtime" and row.target_id in ot_users:
+            if not details.get("employee_name"):
+                details["employee_name"] = ot_users[row.target_id]["name"]
+            if not details.get("employee_email"):
+                details["employee_email"] = ot_users[row.target_id]["email"]
+
         items.append({
             "id": row.id,
             "user_id": row.user_id,
@@ -265,7 +315,7 @@ async def get_audit_logs_for_export(
             "action": row.action,
             "target_type": row.target_type,
             "target_id": row.target_id,
-            "details": row.details,
+            "details": details if details else row.details,
             "timestamp": row.created_at
         })
 
