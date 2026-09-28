@@ -215,8 +215,8 @@ async def review_overtime(
             detail="Нельзя согласовать заявку, которая еще находится в процессе выполнения."
         )
 
-    # Защита машины состояний: запрет повторного согласования терминальных статусов
-    if overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED, OvertimeStatus.CANCELLED):
+    # Защита машины состояний: запрет повторного согласования терминальных статусов для не-администраторов
+    if current_user.role != UserRole.admin and overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED, OvertimeStatus.CANCELLED):
         raise HTTPException(
             status_code=400,
             detail="Заявка находится в финальном статусе и не может быть изменена."
@@ -304,14 +304,17 @@ async def review_overtime(
         overtime.approved_hours = review.approved_hours
 
     # 3. Финальный пересчет статуса
-    if overtime.manager_approved is False or overtime.head_approved is False:
+    if current_user.role == UserRole.admin:
+        if review.approved:
+            overtime.status = OvertimeStatus.APPROVED
+            overtime.head_approved = True
+            overtime.manager_approved = True
+        else:
+            overtime.status = OvertimeStatus.REJECTED
+            overtime.head_approved = False
+            overtime.manager_approved = False
+    elif overtime.manager_approved is False or overtime.head_approved is False:
         overtime.status = OvertimeStatus.REJECTED
-
-    elif current_user.role == UserRole.admin and review.approved:
-        # Решение Администратора является наивысшим и окончательным — переводим сразу в APPROVED
-        overtime.status = OvertimeStatus.APPROVED
-        overtime.head_approved = True
-        overtime.manager_approved = True
 
     elif overtime.head_approved is True:
         # Проверяем лимит для принятия решения о финальном одобрении

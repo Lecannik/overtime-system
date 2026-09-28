@@ -243,9 +243,10 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
     const canReview =
         currentUser &&
         currentUser.role !== 'employee' &&
-        overtime.status !== 'APPROVED' &&
-        overtime.status !== 'REJECTED' &&
-        overtime.status !== 'CANCELLED';
+        (currentUser.role === 'admin' ||
+            (overtime.status !== 'APPROVED' &&
+             overtime.status !== 'REJECTED' &&
+             overtime.status !== 'CANCELLED'));
 
     const handleAction = async (approved: boolean) => {
         if (!onReview) return;

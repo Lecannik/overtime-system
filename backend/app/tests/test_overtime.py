@@ -435,3 +435,99 @@ async def test_update_overtime_future_time_rejected(
     assert "Время начала переработки не может быть в будущем." in patch_resp2.json()["detail"]
 
 
+@pytest.mark.anyio
+async def test_admin_can_review_and_update_terminal_overtimes(
+    client: AsyncClient,
+    admin_token_headers: dict,
+    head_token_headers: dict,
+    test_project: Project,
+    db_session: AsyncSession
+):
+    """
+    Тест: Администратор обладает правами изменять, пересогласовывать и отменять
+    заявки в терминальных статусах (APPROVED, CANCELLED, REJECTED),
+    в то время как обычные согласующие блокируются защитой терминальных статусов.
+    """
+    from datetime import datetime, timezone, timedelta
+    from app.models.overtime import OvertimeStatus
+
+    now = datetime.now(timezone.utc) - timedelta(days=1)
+
+    # 1. Создаем тестовую заявку
+    create_resp = await client.post(
+        "/api/v1/overtimes/",
+        json={
+            "project_id": test_project.id,
+            "start_time": (now - timedelta(hours=4)).isoformat(),
+            "end_time": (now - timedelta(hours=1)).isoformat(),
+            "description": "Тест терминальных статусов администратора"
+        },
+        headers=admin_token_headers
+    )
+    assert create_resp.status_code == 200
+    ot_id = create_resp.json()["id"]
+
+    # 2. Переводим заявку в APPROVED
+    review_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/review",
+        json={"approved": True, "comment": "Первичное одобрение", "approved_hours": 3.0},
+        headers=admin_token_headers
+    )
+    assert review_resp.status_code == 200
+    assert review_resp.json()["status"] == OvertimeStatus.APPROVED.value
+
+    # 3. Начальник (не-админ) пытается пересогласовать одобренную заявку -> 400 Bad Request
+    head_review_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/review",
+        json={"approved": False, "comment": "Попытка начальника изменить одобренное", "as_role": "head"},
+        headers=head_token_headers
+    )
+    assert head_review_resp.status_code == 400
+    assert "Заявка находится в финальном статусе" in head_review_resp.json()["detail"]
+
+    # 4. Администратор отклоняет уже одобренную заявку -> 200 OK, переводится в REJECTED
+    admin_reject_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/review",
+        json={"approved": False, "comment": "Отклонено администратором после проверки"},
+        headers=admin_token_headers
+    )
+    assert admin_reject_resp.status_code == 200
+    assert admin_reject_resp.json()["status"] == OvertimeStatus.REJECTED.value
+
+    # 5. Администратор повторно одобряет отклоненную заявку с новыми часами -> 200 OK
+    admin_reapprove_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/review",
+        json={"approved": True, "comment": "Повторно согласовано админом", "approved_hours": 2.5},
+        headers=admin_token_headers
+    )
+    assert admin_reapprove_resp.status_code == 200
+    assert admin_reapprove_resp.json()["status"] == OvertimeStatus.APPROVED.value
+    assert admin_reapprove_resp.json()["approved_hours"] == 2.5
+
+    # 6. Администратор отменяет утвержденную заявку -> 200 OK, переводится в CANCELLED
+    cancel_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/cancel",
+        headers=admin_token_headers
+    )
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json()["status"] == OvertimeStatus.CANCELLED.value
+
+    # 7. Администратор одобряет отмененную заявку напрямую через review -> 200 OK, переводится в APPROVED
+    admin_from_cancelled_resp = await client.post(
+        f"/api/v1/overtimes/{ot_id}/review",
+        json={"approved": True, "comment": "Администратор восстановил и одобрил", "approved_hours": 3.0},
+        headers=admin_token_headers
+    )
+    assert admin_from_cancelled_resp.status_code == 200
+    assert admin_from_cancelled_resp.json()["status"] == OvertimeStatus.APPROVED.value
+
+    # 8. Администратор обновляет описание и параметры утвержденной заявки через PATCH -> 200 OK
+    patch_resp = await client.patch(
+        f"/api/v1/overtimes/{ot_id}",
+        json={"description": "Обновленное администратором описание заявки"},
+        headers=admin_token_headers
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["description"] == "Обновленное администратором описание заявки"
+
+

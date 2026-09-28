@@ -717,27 +717,31 @@ const DashboardPage: React.FC = () => {
           <RotateCcw size={16} />
         </button>
       )}
-      {/* Редактирование и отмена для активных заявок */}
-      {(ot.status === 'PENDING' || ot.status === 'IN_PROGRESS' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED' || user?.role === 'admin') &&
-        ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED' && (
-          <>
-            <button
-              onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
-              className="action-button-modern"
-              title="Редактировать"
-            >
-              <Edit2 size={16} />
-            </button>
-            <button
-              onClick={() => handleCancel(ot.id)}
-              className="action-button-modern delete"
-              title="Удалить/Отменить"
-              style={{ color: 'var(--error)' }}
-            >
-              <Trash2 size={16} />
-            </button>
-          </>
-        )}
+      {/* Редактирование: для администратора доступно в любом статусе, для остальных — только в активных */}
+      {(user?.role === 'admin' ||
+        (ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED')) && (
+          <button
+            onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
+            className="action-button-modern"
+            title="Редактировать"
+          >
+            <Edit2 size={16} />
+          </button>
+      )}
+
+      {/* Отмена: для не-отмененных заявок (администратор может отменить даже APPROVED, обычный сотрудник — только нетерминальные) */}
+      {ot.status !== 'CANCELLED' &&
+        (user?.role === 'admin' ||
+          (ot.status !== 'APPROVED' && ot.status !== 'REJECTED')) && (
+          <button
+            onClick={() => handleCancel(ot.id)}
+            className="action-button-modern delete"
+            title="Удалить/Отменить"
+            style={{ color: 'var(--error)' }}
+          >
+            <Trash2 size={16} />
+          </button>
+      )}
       {ot.start_lat && ot.start_lng && (
         <a
           href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
