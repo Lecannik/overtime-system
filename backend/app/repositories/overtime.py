@@ -281,8 +281,13 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     project_map = defaultdict(float)
     daily_map = defaultdict(float)
 
-    # Статистика за последние 30 дней
-    thirty_days_ago = (now - timedelta(days=30)).date()
+    # Статистика за последние 30 дней (непрерывный календарный диапазон ровно из 30 дней)
+    today = now.date()
+    thirty_days_ago = today - timedelta(days=29)
+    daily_map = {
+        (thirty_days_ago + timedelta(days=i)).isoformat(): {"hours": 0.0, "pending_hours": 0.0}
+        for i in range(30)
+    }
 
     for ot in approved_overtimes:
         h = ot.approved_hours if ot.approved_hours is not None else ot.hours
@@ -294,9 +299,21 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
             this_month_hours += h
         elif last_month_start <= ot_date <= last_month_end:
             last_month_hours += h
-            
-        if ot_date >= thirty_days_ago:
-            daily_map[ot_date.isoformat()] += h
+
+    # Учитываем как согласованные, так и ожидающие проверки переработки за последние 30 дней
+    for ot in all_overtimes:
+        ot_date = ot.start_time.date()
+        iso_date = ot_date.isoformat()
+        if iso_date in daily_map:
+            if ot.status == OvertimeStatus.APPROVED:
+                h = ot.approved_hours if ot.approved_hours is not None else ot.hours
+                daily_map[iso_date]["hours"] += h
+            elif ot.status in (
+                OvertimeStatus.PENDING,
+                OvertimeStatus.HEAD_APPROVED,
+                OvertimeStatus.MANAGER_APPROVED
+            ):
+                daily_map[iso_date]["pending_hours"] += ot.hours
 
     # Считаем активные (ожидающие) заявки
     # Ожидающие = PENDING (ждем нач. отдела) + промежуточные согласования (ждем менеджера)
@@ -310,13 +327,17 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     ])
 
     by_project = [
-        {"project_name": name, "hours": h} 
+        {"project_name": name, "hours": round(h, 1)} 
         for name, h in project_map.items()
     ]
     
     daily_stats = [
-        {"date": d, "hours": h}
-        for d, h in sorted(daily_map.items())
+        {
+            "date": d,
+            "hours": round(val["hours"], 1),
+            "pending_hours": round(val["pending_hours"], 1)
+        }
+        for d, val in sorted(daily_map.items())
     ]
 
     return {

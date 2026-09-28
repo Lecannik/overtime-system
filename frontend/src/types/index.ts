@@ -238,12 +238,18 @@ export interface OperationResult {
   detail?: string;
 }
 
+export interface DailyStatItem {
+    date: string;
+    hours: number;
+    pending_hours?: number;
+}
+
 export interface UserStats {
     total_approved_hours: number;
     total_requests: number;
     active_requests: number;
     projects_count: number;
-    daily_stats: Record<string, unknown>[];
+    daily_stats: DailyStatItem[];
     by_project: Record<string, unknown>[];
     current_month_hours: number;
     last_month_hours: number;

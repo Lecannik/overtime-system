@@ -121,7 +121,8 @@ class ProjectHours(BaseModel):
 
 class DayHours(BaseModel):
     date: str
-    hours: float
+    hours: float = 0.0
+    pending_hours: float = 0.0
 
 
 class PersonalStats(BaseModel):
