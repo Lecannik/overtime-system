@@ -26,6 +26,7 @@ interface ColumnConfig {
   id: string;
   label: string;
   visible: boolean;
+  width?: number;
 }
 
 const formatToYmd = (d: Date) => {
@@ -131,18 +132,31 @@ const DashboardPage: React.FC = () => {
     });
   };
 
+  const DEFAULT_COLUMN_WIDTHS: Record<string, number> = useMemo(() => ({
+    date: 110,
+    user: 220,
+    project: 200,
+    hours: 120,
+    approved_hours: 130,
+    status: 140,
+    description: 250,
+    start_time: 110,
+    end_time: 110,
+    actions: 160
+  }), []);
+
   const [columns, setColumns] = useState<ColumnConfig[]>(() => {
-    const defaultCols = [
-      { id: 'date', label: 'Дата', visible: true },
-      { id: 'user', label: 'Автор', visible: true },
-      { id: 'project', label: 'Проект', visible: true },
-      { id: 'hours', label: 'Часов запрошено', visible: true },
-      { id: 'approved_hours', label: 'Одобрено часов', visible: true },
-      { id: 'status', label: 'Статус', visible: true },
-      { id: 'description', label: 'Описание', visible: false },
-      { id: 'start_time', label: 'Начало', visible: false },
-      { id: 'end_time', label: 'Окончание', visible: false },
-      { id: 'actions', label: 'Действия', visible: true }
+    const defaultCols: ColumnConfig[] = [
+      { id: 'date', label: 'Дата', visible: true, width: 110 },
+      { id: 'user', label: 'Автор', visible: true, width: 220 },
+      { id: 'project', label: 'Проект', visible: true, width: 200 },
+      { id: 'hours', label: 'Часов запрошено', visible: true, width: 120 },
+      { id: 'approved_hours', label: 'Одобрено часов', visible: true, width: 130 },
+      { id: 'status', label: 'Статус', visible: true, width: 140 },
+      { id: 'description', label: 'Описание', visible: false, width: 250 },
+      { id: 'start_time', label: 'Начало', visible: false, width: 110 },
+      { id: 'end_time', label: 'Окончание', visible: false, width: 110 },
+      { id: 'actions', label: 'Действия', visible: true, width: 160 }
     ];
     const saved = localStorage.getItem('dashboard_columns');
     if (saved) {
@@ -160,8 +174,12 @@ const DashboardPage: React.FC = () => {
               merged.push(dCol);
             }
           } else {
-            // Колонка уже есть — синхронизировать label (на случай переименования)
-            merged[existingIdx] = { ...merged[existingIdx], label: dCol.label };
+            // Колонка уже есть — синхронизировать label и width при отсутствии
+            merged[existingIdx] = {
+              ...merged[existingIdx],
+              label: dCol.label,
+              width: merged[existingIdx].width || dCol.width
+            };
           }
         });
         return merged;
@@ -216,6 +234,71 @@ const DashboardPage: React.FC = () => {
 
     setColumns(newCols);
     setDraggedColId(null);
+  };
+
+  // Ресайз колонок таблицы
+  const [resizingColId, setResizingColId] = useState<string | null>(null);
+  const resizeStateRef = useRef<{
+    colId: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  const handleResizeStart = (e: React.MouseEvent, colId: string, currentWidth: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    resizeStateRef.current = {
+      colId,
+      startX: e.clientX,
+      startWidth: currentWidth,
+    };
+    setResizingColId(colId);
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const { colId: activeId, startX, startWidth: sw } = resizeStateRef.current;
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(70, Math.round(sw + deltaX));
+
+      setColumns(prev =>
+        prev.map(c => (c.id === activeId ? { ...c, width: newWidth } : c))
+      );
+    };
+
+    const onMouseUp = () => {
+      resizeStateRef.current = null;
+      setResizingColId(null);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const resetColumnWidths = () => {
+    setColumns(prev =>
+      prev.map(col => ({
+        ...col,
+        width: DEFAULT_COLUMN_WIDTHS[col.id] || 150,
+      }))
+    );
+  };
+
+  const resetSingleColumnWidth = (colId: string) => {
+    setColumns(prev =>
+      prev.map(col =>
+        col.id === colId
+          ? { ...col, width: DEFAULT_COLUMN_WIDTHS[colId] || 150 }
+          : col
+      )
+    );
   };
 
   // Pagination
@@ -605,6 +688,12 @@ const DashboardPage: React.FC = () => {
       return 0;
     });
   }, [filteredOvertimes, sortKey, sortDir]);
+
+  const visibleColumns = useMemo(() => columns.filter(c => c.visible), [columns]);
+  const totalTableWidth = useMemo(
+    () => visibleColumns.reduce((sum, c) => sum + (c.width || DEFAULT_COLUMN_WIDTHS[c.id] || 150), 0),
+    [visibleColumns, DEFAULT_COLUMN_WIDTHS]
+  );
 
   const renderActionButtons = (ot: Overtime) => (
     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -1042,6 +1131,37 @@ const DashboardPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={resetColumnWidths}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      background: 'transparent',
+                      border: '1px dashed var(--border)',
+                      borderRadius: '6px',
+                      padding: '6px 8px',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      marginTop: '4px',
+                      width: '100%',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)';
+                      (e.currentTarget as HTMLElement).style.color = 'var(--primary)';
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                      (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    <span>Сбросить ширину колонок</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1110,17 +1230,18 @@ const DashboardPage: React.FC = () => {
 
         {/* Табличный режим (для десктопа и при переключении на мобилках) */}
         <div className={`table-scroll-container ${mobileView === 'cards' ? 'hide-on-mobile' : ''}`} style={{ flex: 1, borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-          <table className="table-container" style={{ minWidth: '850px' }}>
+          <table className="table-container" style={{ minWidth: `${Math.max(850, totalTableWidth)}px`, width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
-                {columns.filter(c => c.visible).map(col => {
+                {visibleColumns.map(col => {
                   const isSortable = ['date', 'user', 'project', 'hours', 'status'].includes(col.id);
                   const isActive = sortKey === col.id;
+                  const colWidth = col.width || DEFAULT_COLUMN_WIDTHS[col.id] || 150;
                   return (
                     <th
                       key={col.id}
                       className="table-header"
-                      draggable={col.id !== 'actions'}
+                      draggable={col.id !== 'actions' && !resizingColId}
                       onDragStart={e => handleDragStart(e, col.id)}
                       onDragOver={e => handleDragOver(e, col.id)}
                       onDrop={e => handleDrop(e, col.id)}
@@ -1130,24 +1251,39 @@ const DashboardPage: React.FC = () => {
                         textAlign: col.id === 'actions' ? 'right' : 'left',
                         opacity: draggedColId === col.id ? 0.5 : 1,
                         borderLeft: draggedColId && draggedColId !== col.id ? '2px dashed var(--primary)' : undefined,
-                        transition: 'all 0.2s ease',
-                        width: col.id === 'actions' ? '160px' : undefined,
-                        minWidth: col.id === 'actions' ? '160px' : undefined,
+                        transition: resizingColId ? 'none' : 'background-color 0.2s ease, opacity 0.2s ease',
+                        width: `${colWidth}px`,
+                        minWidth: `${colWidth}px`,
+                        maxWidth: `${colWidth}px`,
                         userSelect: 'none',
                         color: isActive ? 'var(--primary)' : undefined,
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        position: 'relative',
+                        boxSizing: 'border-box',
                       }}
                     >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 'calc(100% - 12px)' }}>
                         {col.label}
                         {isSortable && (
                           isActive
                             ? (sortDir === 'asc'
-                              ? <ChevronUp size={13} style={{ color: 'var(--primary)' }} />
-                              : <ChevronDown size={13} style={{ color: 'var(--primary)' }} />)
-                            : <ChevronUp size={13} style={{ opacity: 0.25 }} />
+                              ? <ChevronUp size={13} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                              : <ChevronDown size={13} style={{ color: 'var(--primary)', flexShrink: 0 }} />)
+                            : <ChevronUp size={13} style={{ opacity: 0.25, flexShrink: 0 }} />
                         )}
                       </span>
+                      {col.id !== 'actions' && (
+                        <div
+                          className={`column-resizer ${resizingColId === col.id ? 'resizing' : ''}`}
+                          onMouseDown={e => handleResizeStart(e, col.id, colWidth)}
+                          onClick={e => e.stopPropagation()}
+                          onDoubleClick={e => {
+                            e.stopPropagation();
+                            resetSingleColumnWidth(col.id);
+                          }}
+                          title="Потяните для изменения ширины (двойной клик для сброса)"
+                        />
+                      )}
                     </th>
                   );
                 })}
@@ -1156,29 +1292,36 @@ const DashboardPage: React.FC = () => {
             <tbody>
               {sortedOvertimes.map((ot: Overtime) => (
                 <tr key={ot.id}>
-                  {columns.filter(c => c.visible).map(col => {
+                  {visibleColumns.map(col => {
+                    const colWidth = col.width || DEFAULT_COLUMN_WIDTHS[col.id] || 150;
+                    const cellStyle: React.CSSProperties = {
+                      width: `${colWidth}px`,
+                      minWidth: `${colWidth}px`,
+                      maxWidth: `${colWidth}px`,
+                      boxSizing: 'border-box',
+                    };
                     switch (col.id) {
                       case 'date':
-                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '100px' }}>{formatDate(ot.start_time)}</td>;
+                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{formatDate(ot.start_time)}</td>;
                       case 'user':
                         return (
-                          <td key={col.id} className="table-cell" style={{ minWidth: '170px', maxWidth: '240px' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'break-word' }}>{ot.user?.full_name || '-'}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflowWrap: 'break-word' }}>{ot.user?.email}</div>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.user?.full_name || '-'}>{ot.user?.full_name || '-'}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.user?.email || ''}>{ot.user?.email}</div>
                           </td>
                         );
                       case 'project':
                         return (
-                          <td key={col.id} className="table-cell" style={{ minWidth: '160px', maxWidth: '240px' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'break-word' }}>{ot.project?.name || 'Внутренний'}</div>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.project?.name || 'Внутренний'}>{ot.project?.name || 'Внутренний'}</div>
                           </td>
                         );
                       case 'hours':
-                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '80px' }}>{ot.hours}ч</td>;
+                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{ot.hours}ч</td>;
                       case 'approved_hours': {
                         const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
                         return (
-                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '90px' }}>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                             {isApproved && ot.approved_hours != null
                               ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
                               : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -1187,20 +1330,20 @@ const DashboardPage: React.FC = () => {
                       }
                       case 'status':
                         return (
-                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap', minWidth: '120px' }}>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                             <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
                               {STATUS_LABELS[ot.status] || ot.status}
                             </span>
                           </td>
                         );
                       case 'description':
-                        return <td key={col.id} className="table-cell" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
+                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
                       case 'start_time':
-                        return <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>{formatTime(ot.start_time)}</td>;
+                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{formatTime(ot.start_time)}</td>;
                       case 'end_time': {
                         const isEndEpoch = ot.end_time && new Date(ot.end_time).getFullYear() <= 1970;
                         return (
-                          <td key={col.id} className="table-cell" style={{ whiteSpace: 'nowrap' }}>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
                             {ot.status === 'IN_PROGRESS' || !ot.end_time || isEndEpoch
                               ? '-'
                               : formatTime(ot.end_time)}
@@ -1209,7 +1352,7 @@ const DashboardPage: React.FC = () => {
                       }
                       case 'actions':
                         return (
-                          <td key={col.id} className="table-cell" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '160px', minWidth: '160px' }}>
+                          <td key={col.id} className="table-cell" style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
                             {renderActionButtons(ot)}
                           </td>
                         );
@@ -1220,7 +1363,7 @@ const DashboardPage: React.FC = () => {
                 </tr>
               ))}
               {sortedOvertimes.length === 0 && (
-                <tr><td colSpan={columns.filter(c => c.visible).length} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
+                <tr><td colSpan={visibleColumns.length} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
               )}
             </tbody>
           </table>

@@ -176,6 +176,39 @@ body {
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   background: var(--bg-secondary);
+  position: relative;
+}
+
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.column-resizer::after {
+  content: '';
+  width: 2px;
+  height: 50%;
+  background: transparent;
+  border-radius: 1px;
+  transition: background-color 0.15s ease, height 0.15s ease;
+}
+
+.table-header:hover .column-resizer::after,
+.column-resizer:hover::after,
+.column-resizer.resizing::after {
+  background: var(--primary);
+  height: 100%;
+  width: 3px;
 }
 
 .table-cell {

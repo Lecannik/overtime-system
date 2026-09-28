@@ -706,7 +706,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                     <div
                         className="glass-card"
                         style={{
-                            width: '680px',
+                            width: 'min(780px, 95vw)',
                             maxHeight: '90vh',
                             overflowY: 'auto',
                             padding: '28px',
@@ -740,7 +740,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                         <div
                             style={{
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                                 gap: '14px',
                                 background: 'var(--bg-tertiary)',
                                 padding: '16px',
@@ -778,6 +778,12 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                             color: getActionMeta(selectedLog.action).badgeColor,
                                             fontWeight: 700,
                                             fontSize: '0.8rem',
+                                            whiteSpace: 'normal',
+                                            wordBreak: 'break-word',
+                                            display: 'inline-block',
+                                            lineHeight: 1.35,
+                                            padding: '6px 12px',
+                                            maxWidth: '100%',
                                         }}
                                     >
                                         {getActionMeta(selectedLog.action).title}
