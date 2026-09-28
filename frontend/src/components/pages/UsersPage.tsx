@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Download, X as XIcon
+    Search, Edit2, Key, Trash2, Plus, Globe, RefreshCcw, Download, X as XIcon,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 import api, {
@@ -82,6 +83,9 @@ const UsersPage: React.FC = () => {
     const [selectedOdooIds, setSelectedOdooIds] = useState<Set<number>>(new Set());
     const [importLoading, setImportLoading] = useState(false);
     const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+    const [odooSearch, setOdooSearch] = useState('');
+    const [odooPage, setOdooPage] = useState(1);
+    const [odooPageSize, setOdooPageSize] = useState(10);
 
     // ==================== Состояние Odoo Integration (Микросервис) ====================
     const [isOdooIntConfigured, setIsOdooIntConfigured] = useState(false);
@@ -94,6 +98,104 @@ const UsersPage: React.FC = () => {
     const [odooIntSearch, setOdooIntSearch] = useState('');
     const [odooIntImportLoading, setOdooIntImportLoading] = useState(false);
     const [odooIntImportResult, setOdooIntImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+    const [odooIntPage, setOdooIntPage] = useState(1);
+    const [odooIntPageSize, setOdooIntPageSize] = useState(10);
+
+    // ==================== Фильтрация и пагинация Odoo (XML-RPC) ====================
+    const filteredOdooProjects = useMemo(() => {
+        const q = odooSearch.toLowerCase().trim();
+        if (!q) return odooProjects;
+        return odooProjects.filter(p => {
+            const nameMatch = p.name ? p.name.toLowerCase().includes(q) : false;
+            const codeMatch = p.code ? p.code.toLowerCase().includes(q) : false;
+            const idMatch = p.odoo_id ? p.odoo_id.toString().includes(q) : false;
+            const managerMatch = p.manager_name ? p.manager_name.toLowerCase().includes(q) : false;
+            return nameMatch || codeMatch || idMatch || managerMatch;
+        });
+    }, [odooProjects, odooSearch]);
+
+    const totalOdooPages = Math.max(1, Math.ceil(filteredOdooProjects.length / (odooPageSize >= 1000 ? (filteredOdooProjects.length || 1) : odooPageSize)));
+
+    const paginatedOdooProjects = useMemo(() => {
+        if (odooPageSize >= 1000) return filteredOdooProjects;
+        const start = (odooPage - 1) * odooPageSize;
+        return filteredOdooProjects.slice(start, start + odooPageSize);
+    }, [filteredOdooProjects, odooPage, odooPageSize]);
+
+    const isCurrentPageAllSelected = paginatedOdooProjects.length > 0 && paginatedOdooProjects.every(p => selectedOdooIds.has(p.odoo_id));
+    const isAllFilteredSelected = filteredOdooProjects.length > 0 && filteredOdooProjects.every(p => selectedOdooIds.has(p.odoo_id));
+
+    const toggleSelectCurrentPage = () => {
+        setSelectedOdooIds(prev => {
+            const next = new Set(prev);
+            if (isCurrentPageAllSelected) {
+                paginatedOdooProjects.forEach(p => next.delete(p.odoo_id));
+            } else {
+                paginatedOdooProjects.forEach(p => next.add(p.odoo_id));
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectAllFiltered = () => {
+        setSelectedOdooIds(prev => {
+            const next = new Set(prev);
+            if (isAllFilteredSelected) {
+                filteredOdooProjects.forEach(p => next.delete(p.odoo_id));
+            } else {
+                filteredOdooProjects.forEach(p => next.add(p.odoo_id));
+            }
+            return next;
+        });
+    };
+
+    // ==================== Фильтрация и пагинация Odoo (API) ====================
+    const filteredOdooIntProjects = useMemo(() => {
+        const search = odooIntSearch.toLowerCase().trim();
+        if (!search) return odooIntProjects;
+        return odooIntProjects.filter(p => {
+            const nameMatch = p.name ? p.name.toLowerCase().includes(search) : false;
+            const codeMatch = p.code ? p.code.toLowerCase().includes(search) : false;
+            const idMatch = p.id ? p.id.toString().includes(search) : false;
+            return nameMatch || codeMatch || idMatch;
+        });
+    }, [odooIntProjects, odooIntSearch]);
+
+    const totalOdooIntPages = Math.max(1, Math.ceil(filteredOdooIntProjects.length / (odooIntPageSize >= 1000 ? (filteredOdooIntProjects.length || 1) : odooIntPageSize)));
+
+    const paginatedOdooIntProjects = useMemo(() => {
+        if (odooIntPageSize >= 1000) return filteredOdooIntProjects;
+        const start = (odooIntPage - 1) * odooIntPageSize;
+        return filteredOdooIntProjects.slice(start, start + odooIntPageSize);
+    }, [filteredOdooIntProjects, odooIntPage, odooIntPageSize]);
+
+    const isCurrentPageAllSelectedInt = paginatedOdooIntProjects.length > 0 && paginatedOdooIntProjects.every(p => selectedOdooIntIds.has(p.id));
+    const isAllFilteredSelectedInt = filteredOdooIntProjects.length > 0 && filteredOdooIntProjects.every(p => selectedOdooIntIds.has(p.id));
+
+    const toggleSelectCurrentPageInt = () => {
+        setSelectedOdooIntIds(prev => {
+            const next = new Set(prev);
+            if (isCurrentPageAllSelectedInt) {
+                paginatedOdooIntProjects.forEach(p => next.delete(p.id));
+            } else {
+                paginatedOdooIntProjects.forEach(p => next.add(p.id));
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectAllFilteredInt = () => {
+        setSelectedOdooIntIds(prev => {
+            const next = new Set(prev);
+            if (isAllFilteredSelectedInt) {
+                filteredOdooIntProjects.forEach(p => next.delete(p.id));
+            } else {
+                filteredOdooIntProjects.forEach(p => next.add(p.id));
+            }
+            return next;
+        });
+    };
+
 
     const handleSort = (field: string) => {
         if (sortBy === field) {
@@ -159,10 +261,12 @@ const UsersPage: React.FC = () => {
         setOdooError('');
         setImportResult(null);
         setSelectedOdooIds(new Set());
+        setOdooSearch('');
+        setOdooPage(1);
         setOdooLoading(true);
         try {
             const data = await getOdooProjects();
-            setOdooProjects(data.projects);
+            setOdooProjects(data.projects || []);
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
             setOdooError(axiosError.response?.data?.detail || 'Ошибка подключения к Odoo CRM');
@@ -181,14 +285,6 @@ const UsersPage: React.FC = () => {
         });
     };
 
-    /** Выбрать все / снять выбор. */
-    const toggleSelectAll = () => {
-        if (selectedOdooIds.size === odooProjects.length) {
-            setSelectedOdooIds(new Set());
-        } else {
-            setSelectedOdooIds(new Set(odooProjects.map(p => p.odoo_id)));
-        }
-    };
 
     /** Запустить импорт выбранных проектов. */
     const handleImportSelected = async () => {
@@ -245,6 +341,7 @@ const UsersPage: React.FC = () => {
 
     /** Обновить список проектов (поиск производится на клиенте). */
     const handleOdooIntSearch = () => {
+        setOdooIntPage(1);
         loadOdooIntProjects(Array.from(selectedFields), odooIntSearch);
     };
 
@@ -255,6 +352,7 @@ const UsersPage: React.FC = () => {
         setOdooIntImportResult(null);
         setSelectedOdooIntIds(new Set());
         setOdooIntSearch('');
+        setOdooIntPage(1);
         loadOdooIntProjects(Array.from(selectedFields), '');
     };
 
@@ -283,21 +381,6 @@ const UsersPage: React.FC = () => {
         loadOdooIntProjects(Array.from(next), odooIntSearch);
     };
 
-    /** Выбрать все отфильтрованные проекты / снять выбор. */
-    const toggleSelectAllOdooInt = (filteredProjects: OdooIntegrationProject[]) => {
-        const allSelected = filteredProjects.every(p => selectedOdooIntIds.has(p.id));
-        setSelectedOdooIntIds(prev => {
-            const next = new Set(prev);
-            filteredProjects.forEach(p => {
-                if (allSelected) {
-                    next.delete(p.id);
-                } else {
-                    next.add(p.id);
-                }
-            });
-            return next;
-        });
-    };
 
     /** Запустить импорт выбранных проектов из микросервиса. */
     const handleImportOdooIntSelected = async () => {
@@ -861,14 +944,15 @@ const UsersPage: React.FC = () => {
             {isOdooModalOpen && (
                 <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsOdooModalOpen(false)}>
                     <div className="modal-content glass-card animate-scale-in" style={{
-                        maxWidth: '680px', width: '100%',
+                        maxWidth: '720px', width: '95%',
+                        maxHeight: '88vh', height: '88vh',
                         display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
                     }} onClick={e => e.stopPropagation()}>
                         {/* Заголовок */}
                         <div style={{
-                            padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
+                            padding: '20px 24px 16px', borderBottom: '1px solid var(--border)',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: 'var(--bg-secondary)'
+                            background: 'var(--bg-secondary)', flexShrink: 0
                         }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
@@ -876,29 +960,102 @@ const UsersPage: React.FC = () => {
                                 </h3>
                                 {!odooLoading && !odooError && odooProjects.length > 0 && (
                                     <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                        Найдено проектов: <strong>{odooProjects.length}</strong> · Выбрано: <strong>{selectedOdooIds.size}</strong>
+                                        Всего: <strong>{odooProjects.length}</strong>
+                                        {odooSearch && <> · Найдено: <strong>{filteredOdooProjects.length}</strong></>}
+                                        {' '}· Выбрано: <strong style={{ color: selectedOdooIds.size > 0 ? 'var(--accent)' : 'inherit' }}>{selectedOdooIds.size}</strong>
                                     </p>
                                 )}
                             </div>
                             <button
                                 onClick={() => setIsOdooModalOpen(false)}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', borderRadius: '8px' }}
                             >
-                                <XIcon size={22} />
+                                <XIcon size={20} />
                             </button>
                         </div>
 
-                        {/* Тело */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px' }}>
+                        {/* Панель поиска и выбора */}
+                        {!odooLoading && !odooError && odooProjects.length > 0 && (
+                            <div style={{
+                                padding: '12px 24px', borderBottom: '1px solid var(--border)',
+                                background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '10px',
+                                flexShrink: 0
+                            }}>
+                                <div style={{ position: 'relative', width: '100%' }}>
+                                    <input
+                                        type="text"
+                                        value={odooSearch}
+                                        onChange={e => { setOdooSearch(e.target.value); setOdooPage(1); }}
+                                        placeholder="Поиск по названию, коду или Odoo ID..."
+                                        style={{
+                                            width: '100%', padding: '9px 36px 9px 38px',
+                                            borderRadius: '10px', border: '1px solid var(--border)',
+                                            background: 'var(--bg-secondary)', color: 'var(--text-main)',
+                                            fontSize: '0.85rem', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                                    {odooSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setOdooSearch(''); setOdooPage(1); }}
+                                            style={{
+                                                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+                                                padding: '2px', display: 'flex', alignItems: 'center'
+                                            }}
+                                        >
+                                            <XIcon size={14} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            id="select-page-odoo"
+                                            checked={isCurrentPageAllSelected}
+                                            onChange={toggleSelectCurrentPage}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                        />
+                                        <label htmlFor="select-page-odoo" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                            {isCurrentPageAllSelected ? 'Снять выбор на странице' : `Выбрать все на странице (${paginatedOdooProjects.length})`}
+                                        </label>
+                                    </div>
+
+                                    {filteredOdooProjects.length > paginatedOdooProjects.length && (
+                                        <button
+                                            type="button"
+                                            onClick={toggleSelectAllFiltered}
+                                            className="secondary"
+                                            style={{
+                                                padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px',
+                                                color: isAllFilteredSelected ? 'var(--warning)' : 'var(--accent)',
+                                                borderColor: isAllFilteredSelected ? 'var(--warning)' : 'var(--border)'
+                                            }}
+                                        >
+                                            {isAllFilteredSelected ? 'Снять со всех найденных' : `Выбрать все найденные (${filteredOdooProjects.length})`}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Тело со скроллингом */}
+                        <div className="custom-scrollbar" style={{
+                            flex: 1, minHeight: 0, overflowY: 'auto',
+                            padding: '16px 24px', display: 'flex', flexDirection: 'column'
+                        }}>
                             {odooLoading && (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px', margin: 'auto' }}>
                                     <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                                     <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Подключение к Odoo CRM...</p>
                                 </div>
                             )}
 
                             {odooError && !odooLoading && (
-                                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600 }}>
+                                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '16px' }}>
                                     ⚠️ {odooError}
                                 </div>
                             )}
@@ -920,103 +1077,146 @@ const UsersPage: React.FC = () => {
                                 </div>
                             )}
 
-                            {!odooLoading && !odooError && odooProjects.length > 0 && (
-                                <>
-                                    {/* Строка «Выбрать все» */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
+                            {!odooLoading && !odooError && paginatedOdooProjects.map(p => {
+                                const isSelected = selectedOdooIds.has(p.odoo_id);
+                                return (
+                                    <div
+                                        key={p.odoo_id}
+                                        onClick={() => toggleOdooProject(p.odoo_id)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '12px',
+                                            padding: '12px 14px', borderRadius: '10px', cursor: 'pointer',
+                                            background: isSelected ? 'rgba(59,130,246,0.08)' : 'var(--bg-secondary)',
+                                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                            marginBottom: '8px', transition: 'all 0.15s ease',
+                                            boxShadow: isSelected ? '0 0 0 1px var(--accent)' : 'none'
+                                        }}
+                                    >
                                         <input
                                             type="checkbox"
-                                            checked={selectedOdooIds.size === odooProjects.length}
-                                            onChange={toggleSelectAll}
-                                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                            checked={isSelected}
+                                            onChange={() => toggleOdooProject(p.odoo_id)}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', flexShrink: 0, cursor: 'pointer' }}
                                         />
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={toggleSelectAll}>
-                                            {selectedOdooIds.size === odooProjects.length ? 'Снять всё' : 'Выбрать все'}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
+                                                {p.name}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                {p.code ? (
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56,189,248,0.12)', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(56,189,248,0.25)' }}>
+                                                        {p.code}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ fontSize: '0.72rem', color: 'var(--warning)', fontStyle: 'italic' }}>
+                                                        Без кода
+                                                    </span>
+                                                )}
+                                                {p.manager_name && (
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                        👤 {p.manager_name}
+                                                        {p.manager_email && <span style={{ opacity: 0.7 }}> ({p.manager_email})</span>}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 600, flexShrink: 0, padding: '2px 6px', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                                            #{p.odoo_id}
                                         </span>
                                     </div>
+                                );
+                            })}
 
-                                    {/* Список проектов */}
-                                    {odooProjects.map(p => (
-                                        <div
-                                            key={p.odoo_id}
-                                            onClick={() => toggleOdooProject(p.odoo_id)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '12px',
-                                                padding: '12px', borderRadius: '10px', cursor: 'pointer',
-                                                background: selectedOdooIds.has(p.odoo_id) ? 'rgba(59,130,246,0.07)' : 'transparent',
-                                                border: `1px solid ${selectedOdooIds.has(p.odoo_id) ? 'var(--accent)' : 'transparent'}`,
-                                                marginBottom: '6px', transition: 'all 0.15s'
-                                            }}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedOdooIds.has(p.odoo_id)}
-                                                onChange={() => toggleOdooProject(p.odoo_id)}
-                                                onClick={e => e.stopPropagation()}
-                                                style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', flexShrink: 0 }}
-                                            />
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {p.name}
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                    {p.code && (
-                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 700, background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                                                            {p.code}
-                                                        </span>
-                                                    )}
-                                                    {!p.code && (
-                                                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontStyle: 'italic' }}>
-                                                            Без кода
-                                                        </span>
-                                                    )}
-                                                    {p.manager_name && (
-                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                            👤 {p.manager_name}
-                                                            {p.manager_email && <span style={{ color: 'var(--text-muted)', opacity: 0.7 }}> ({p.manager_email})</span>}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>
-                                                #{p.odoo_id}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </>
+                            {!odooLoading && !odooError && odooProjects.length > 0 && filteredOdooProjects.length === 0 && (
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', margin: 'auto' }}>
+                                    <Search size={36} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                    <p>Ничего не найдено по запросу «{odooSearch}»</p>
+                                </div>
                             )}
 
                             {!odooLoading && !odooError && odooProjects.length === 0 && (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', margin: 'auto' }}>
                                     <Download size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
                                     <p>Проекты в Odoo не найдены или Odoo не настроен</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Футер с кнопками */}
+                        {/* Панель пагинации */}
+                        {!odooLoading && !odooError && filteredOdooProjects.length > 0 && (
+                            <div style={{
+                                padding: '10px 24px', borderTop: '1px solid var(--border)',
+                                background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', flexWrap: 'wrap', gap: '10px', flexShrink: 0
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Строк на стр:</span>
+                                    <select
+                                        value={odooPageSize}
+                                        onChange={e => { setOdooPageSize(Number(e.target.value)); setOdooPage(1); }}
+                                        style={{ padding: '3px 8px', width: 'auto', borderRadius: '8px', fontSize: '0.78rem', background: 'var(--bg-secondary)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+                                    >
+                                        {[10, 20, 50, 100, 1000].map(v => (
+                                            <option key={v} value={v}>{v === 1000 ? 'Все' : v}</option>
+                                        ))}
+                                    </select>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                        {(odooPage - 1) * odooPageSize + 1}–{Math.min(odooPage * odooPageSize, filteredOdooProjects.length)} из {filteredOdooProjects.length}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        disabled={odooPage <= 1}
+                                        onClick={() => setOdooPage(p => Math.max(1, p - 1))}
+                                        className="secondary"
+                                        style={{ padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                        <ChevronLeft size={14} /> Назад
+                                    </button>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', padding: '0 4px' }}>
+                                        {odooPage} / {totalOdooPages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={odooPage >= totalOdooPages}
+                                        onClick={() => setOdooPage(p => Math.min(totalOdooPages, p + 1))}
+                                        className="secondary"
+                                        style={{ padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                        Далее <ChevronRight size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Футер с кнопками действий */}
                         <div style={{
-                            padding: '16px 28px', borderTop: '1px solid var(--border)',
+                            padding: '16px 24px', borderTop: '1px solid var(--border)',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: 'var(--bg-secondary)', gap: '12px'
+                            background: 'var(--bg-secondary)', gap: '12px', flexShrink: 0
                         }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                                 {selectedOdooIds.size > 0
                                     ? `Выбрано ${selectedOdooIds.size} из ${odooProjects.length} проектов`
                                     : 'Выберите проекты для импорта'}
                             </span>
-                            <div style={{ display: 'flex', gap: '12px' }}>
+                            <div style={{ display: 'flex', gap: '10px' }}>
                                 <button
+                                    type="button"
                                     onClick={() => setIsOdooModalOpen(false)}
-                                    style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                                    style={{ padding: '8px 18px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem' }}
                                 >
                                     Закрыть
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleImportSelected}
                                     disabled={selectedOdooIds.size === 0 || importLoading}
                                     className="primary"
-                                    style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', borderRadius: '10px', fontSize: '0.85rem' }}
                                 >
                                     {importLoading ? (
                                         <>Импорт...</>
@@ -1031,305 +1231,371 @@ const UsersPage: React.FC = () => {
             )}
 
             {/* ==================== Odoo CRM Импорт (API) Модал ==================== */}
-            {isOdooIntModalOpen && (() => {
-                const filteredProjects = odooIntProjects.filter(p => {
-                    const search = odooIntSearch.toLowerCase().trim();
-                    if (!search) return true;
-                    const nameMatch = p.name ? p.name.toLowerCase().includes(search) : false;
-                    const codeMatch = p.code ? p.code.toLowerCase().includes(search) : false;
-                    return nameMatch || codeMatch;
-                });
-
-                const allFilteredSelected = filteredProjects.length > 0 && filteredProjects.every(p => selectedOdooIntIds.has(p.id));
-
-                return (
-                    <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsOdooIntModalOpen(false)}>
-                        <div className="modal-content glass-card animate-scale-in" style={{
-                            maxWidth: '800px', width: '100%',
-                            display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
-                        }} onClick={e => e.stopPropagation()}>
-                            {/* Заголовок */}
-                            <div style={{
-                                padding: '24px 28px 20px', borderBottom: '1px solid var(--border)',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                background: 'var(--bg-secondary)'
-                            }}>
-                                <div>
-                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-                                        Импорт проектов из Odoo CRM (API)
-                                    </h3>
-                                    {!odooIntLoading && !odooIntError && odooIntProjects.length > 0 && (
-                                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                            Всего проектов: <strong>{odooIntProjects.length}</strong> · Отфильтровано: <strong>{filteredProjects.length}</strong> · Выбрано: <strong>{selectedOdooIntIds.size}</strong>
-                                        </p>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={() => setIsOdooIntModalOpen(false)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
-                                >
-                                    <XIcon size={22} />
-                                </button>
+            {isOdooIntModalOpen && (
+                <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setIsOdooIntModalOpen(false)}>
+                    <div className="modal-content glass-card animate-scale-in" style={{
+                        maxWidth: '820px', width: '95%',
+                        maxHeight: '88vh', height: '88vh',
+                        display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden'
+                    }} onClick={e => e.stopPropagation()}>
+                        {/* Заголовок */}
+                        <div style={{
+                            padding: '20px 24px 16px', borderBottom: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'var(--bg-secondary)', flexShrink: 0
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                                    Импорт проектов из Odoo CRM (API)
+                                </h3>
+                                {!odooIntLoading && !odooIntError && odooIntProjects.length > 0 && (
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        Всего: <strong>{odooIntProjects.length}</strong>
+                                        {odooIntSearch && <> · Найдено: <strong>{filteredOdooIntProjects.length}</strong></>}
+                                        {' '}· Выбрано: <strong style={{ color: selectedOdooIntIds.size > 0 ? 'var(--accent)' : 'inherit' }}>{selectedOdooIntIds.size}</strong>
+                                    </p>
+                                )}
                             </div>
+                            <button
+                                onClick={() => setIsOdooIntModalOpen(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', borderRadius: '8px' }}
+                            >
+                                <XIcon size={20} />
+                            </button>
+                        </div>
 
-                            {/* Панель фильтров и полей */}
-                            {!odooIntLoading && !odooIntError && (
-                                <div style={{ padding: '16px 28px', borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    {/* Выбор полей */}
-                                    <div>
-                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                                            Выбор полей для выгрузки из Odoo:
-                                        </div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                                            {[
-                                                { id: 'name', label: 'Имя проекта', required: true },
-                                                { id: 'code', label: 'Код проекта', required: true },
-                                                { id: 'status', label: 'Статус', required: false },
-                                                { id: 'project_amount', label: 'Сумма', required: false },
-                                                { id: 'partner', label: 'Клиент', required: false },
-                                                { id: 'partner_company', label: 'Компания клиента', required: false },
-                                                { id: 'project_manager_ids', label: 'Менеджеры', required: false },
-                                            ].map(f => {
-                                                const isSelected = f.required || selectedFields.has(f.id);
-                                                return (
-                                                    <label
-                                                        key={f.id}
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: '6px',
-                                                            fontSize: '0.8rem', fontWeight: 600, padding: '4px 10px',
-                                                            borderRadius: '8px', background: isSelected ? 'rgba(59,130,246,0.1)' : 'var(--bg-secondary)',
-                                                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                                                            cursor: f.required ? 'not-allowed' : 'pointer',
-                                                            opacity: f.required ? 0.7 : 1,
-                                                            transition: 'all 0.15s'
-                                                        }}
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            disabled={f.required}
-                                                            onChange={() => toggleFieldSelection(f.id)}
-                                                            style={{ accentColor: 'var(--accent)' }}
-                                                        />
-                                                        {f.label}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
+                        {/* Панель фильтров и полей */}
+                        {!odooIntLoading && !odooIntError && (
+                            <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0 }}>
+                                {/* Выбор полей */}
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                                        Выбор полей для выгрузки из Odoo:
                                     </div>
-
-                                    {/* Текстовый поиск с кнопкой */}
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                        <div style={{ position: 'relative', flex: 1 }}>
-                                            <input
-                                                type="text"
-                                                value={odooIntSearch}
-                                                onChange={e => setOdooIntSearch(e.target.value)}
-                                                onKeyDown={e => e.key === 'Enter' && handleOdooIntSearch()}
-                                                placeholder="Поиск по названию или номеру проекта..."
-                                                style={{
-                                                    width: '100%', padding: '10px 16px 10px 42px',
-                                                    borderRadius: '10px', border: '1px solid var(--border)',
-                                                    background: 'var(--bg-secondary)', color: 'var(--text-main)',
-                                                    fontSize: '0.85rem', boxSizing: 'border-box'
-                                                }}
-                                            />
-                                            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                                        </div>
-                                        <button
-                                            onClick={handleOdooIntSearch}
-                                            disabled={odooIntLoading}
-                                            className="primary"
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                padding: '10px 18px', borderRadius: '10px',
-                                                fontWeight: 700, fontSize: '0.85rem',
-                                                whiteSpace: 'nowrap', flexShrink: 0
-                                            }}
-                                        >
-                                            <Search size={15} />
-                                            Найти
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Тело со списком проектов */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px' }}>
-                                {odooIntLoading && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px' }}>
-                                        <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Загрузка проектов из Odoo CRM API...</p>
-                                    </div>
-                                )}
-
-                                {odooIntError && !odooIntLoading && (
-                                    <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600 }}>
-                                        ⚠️ {odooIntError}
-                                    </div>
-                                )}
-
-                                {/* Результат импорта */}
-                                {odooIntImportResult && (
-                                    <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(34,197,94,0.08)', border: '1px solid var(--success)' }}>
-                                        <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
-                                            ✅ Импорт успешно завершён
-                                        </div>
-                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                            Создано проектов: <strong>{odooIntImportResult.imported}</strong> · Пропущено (уже существуют): <strong>{odooIntImportResult.skipped}</strong>
-                                        </div>
-                                        {odooIntImportResult.errors.length > 0 && (
-                                            <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--warning)' }}>
-                                                {odooIntImportResult.errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {!odooIntLoading && !odooIntError && filteredProjects.length > 0 && (
-                                    <>
-                                        {/* Строка «Выбрать все» */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)', marginBottom: '8px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={allFilteredSelected}
-                                                onChange={() => toggleSelectAllOdooInt(filteredProjects)}
-                                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
-                                            />
-                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => toggleSelectAllOdooInt(filteredProjects)}>
-                                                {allFilteredSelected ? 'Снять выделение со всех отфильтрованных' : 'Выбрать все отфильтрованные'}
-                                            </span>
-                                        </div>
-
-                                        {/* Список проектов */}
-                                        {filteredProjects.map(p => {
-                                            const isSelected = selectedOdooIntIds.has(p.id);
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        {[
+                                            { id: 'name', label: 'Имя проекта', required: true },
+                                            { id: 'code', label: 'Код проекта', required: true },
+                                            { id: 'status', label: 'Статус', required: false },
+                                            { id: 'project_amount', label: 'Сумма', required: false },
+                                            { id: 'partner', label: 'Клиент', required: false },
+                                            { id: 'partner_company', label: 'Компания клиента', required: false },
+                                            { id: 'project_manager_ids', label: 'Менеджеры', required: false },
+                                        ].map(f => {
+                                            const isSelected = f.required || selectedFields.has(f.id);
                                             return (
-                                                <div
-                                                    key={p.id}
-                                                    onClick={() => toggleOdooIntProject(p.id)}
+                                                <label
+                                                    key={f.id}
                                                     style={{
-                                                        display: 'flex', alignItems: 'center', gap: '16px',
-                                                        padding: '14px 16px', borderRadius: '10px', cursor: 'pointer',
-                                                        background: isSelected ? 'rgba(59,130,246,0.07)' : 'transparent',
-                                                        border: `1px solid ${isSelected ? 'var(--accent)' : 'transparent'}`,
-                                                        marginBottom: '6px', transition: 'all 0.15s'
+                                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                                        fontSize: '0.78rem', fontWeight: 600, padding: '3px 8px',
+                                                        borderRadius: '8px', background: isSelected ? 'rgba(59,130,246,0.1)' : 'var(--bg-secondary)',
+                                                        border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                                        cursor: f.required ? 'not-allowed' : 'pointer',
+                                                        opacity: f.required ? 0.7 : 1,
+                                                        transition: 'all 0.15s'
                                                     }}
                                                 >
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
-                                                        onChange={() => toggleOdooIntProject(p.id)}
-                                                        onClick={e => e.stopPropagation()}
-                                                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', flexShrink: 0 }}
+                                                        disabled={f.required}
+                                                        onChange={() => toggleFieldSelection(f.id)}
+                                                        style={{ accentColor: 'var(--accent)' }}
                                                     />
-                                                    <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-                                                        <div style={{ minWidth: 0 }}>
-                                                            <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                {p.name}
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                                {p.code && (
-                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 700, background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                                                                        {p.code}
-                                                                    </span>
-                                                                )}
-                                                                {!p.code && (
-                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontStyle: 'italic' }}>
-                                                                        Без кода
-                                                                    </span>
-                                                                )}
-                                                                {/* Дополнительные поля в зависимости от выбора */}
-                                                                {selectedFields.has('partner') && p.partner && (
-                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                                        🤝 Клиент: <strong>{Array.isArray(p.partner) ? p.partner[1] : (typeof p.partner === 'object' ? p.partner.name : p.partner)}</strong>
-                                                                    </span>
-                                                                )}
-                                                                {selectedFields.has('partner_company') && p.partner_company && (
-                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                                        🏢 Компания: <strong>{Array.isArray(p.partner_company) ? p.partner_company[1] : (typeof p.partner_company === 'object' ? p.partner_company.name : p.partner_company)}</strong>
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Блок с дополнительной информацией справа */}
-                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                                                            {selectedFields.has('status') && p.status && (
-                                                                <span style={{
-                                                                    fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase',
-                                                                    padding: '2px 6px', borderRadius: '6px',
-                                                                    background: p.status === 'worked' || p.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
-                                                                    color: p.status === 'worked' || p.status === 'active' ? 'var(--success)' : 'var(--text-muted)'
-                                                                }}>
-                                                                    {p.status}
-                                                                </span>
-                                                            )}
-                                                            {selectedFields.has('project_amount') && p.project_amount !== undefined && (
-                                                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                                                                    {new Intl.NumberFormat('ru-RU').format(p.project_amount ?? 0)} ₸
-                                                                </span>
-                                                            )}
-                                                            {selectedFields.has('project_manager_ids') && Array.isArray(p.project_manager_ids) && p.project_manager_ids.length > 0 && (
-                                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                                                    PM: {p.project_manager_ids.join(', ')}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>
-                                                        #{p.id}
-                                                    </span>
-                                                </div>
+                                                    {f.label}
+                                                </label>
                                             );
                                         })}
-                                    </>
-                                )}
-
-                                {!odooIntLoading && !odooIntError && filteredProjects.length === 0 && (
-                                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                                        <Globe size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
-                                        <p>Проекты с такими параметрами не найдены в Odoo CRM API</p>
                                     </div>
-                                )}
-                            </div>
+                                </div>
 
-                            {/* Футер с кнопками */}
-                            <div style={{
-                                padding: '16px 28px', borderTop: '1px solid var(--border)',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                background: 'var(--bg-secondary)', gap: '12px'
-                            }}>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                    {selectedOdooIntIds.size > 0
-                                        ? `Выбрано ${selectedOdooIntIds.size} из ${filteredProjects.length} отфильтрованных`
-                                        : 'Выберите проекты для добавления'}
-                                </span>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <button
-                                        onClick={() => setIsOdooIntModalOpen(false)}
-                                        style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}
-                                    >
-                                        Закрыть
-                                    </button>
-                                    <button
-                                        onClick={handleImportOdooIntSelected}
-                                        disabled={selectedOdooIntIds.size === 0 || odooIntImportLoading}
-                                        className="primary"
-                                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                                    >
-                                        {odooIntImportLoading ? (
-                                            <>Импорт...</>
-                                        ) : (
-                                            <><Plus size={16} /> Добавить выбранные ({selectedOdooIntIds.size})</>
+                                {/* Текстовый поиск с кнопкой */}
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <div style={{ position: 'relative', flex: 1 }}>
+                                        <input
+                                            type="text"
+                                            value={odooIntSearch}
+                                            onChange={e => { setOdooIntSearch(e.target.value); setOdooIntPage(1); }}
+                                            onKeyDown={e => e.key === 'Enter' && handleOdooIntSearch()}
+                                            placeholder="Поиск по названию или номеру проекта..."
+                                            style={{
+                                                width: '100%', padding: '9px 36px 9px 38px',
+                                                borderRadius: '10px', border: '1px solid var(--border)',
+                                                background: 'var(--bg-secondary)', color: 'var(--text-main)',
+                                                fontSize: '0.85rem', boxSizing: 'border-box'
+                                            }}
+                                        />
+                                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                                        {odooIntSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setOdooIntSearch(''); setOdooIntPage(1); }}
+                                                style={{
+                                                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                                                    background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+                                                    padding: '2px', display: 'flex', alignItems: 'center'
+                                                }}
+                                            >
+                                                <XIcon size={14} />
+                                            </button>
                                         )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleOdooIntSearch}
+                                        disabled={odooIntLoading}
+                                        className="primary"
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '9px 16px', borderRadius: '10px',
+                                            fontWeight: 700, fontSize: '0.82rem',
+                                            whiteSpace: 'nowrap', flexShrink: 0
+                                        }}
+                                    >
+                                        <Search size={14} />
+                                        Найти
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            id="select-page-odoo-int"
+                                            checked={isCurrentPageAllSelectedInt}
+                                            onChange={toggleSelectCurrentPageInt}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                                        />
+                                        <label htmlFor="select-page-odoo-int" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                            {isCurrentPageAllSelectedInt ? 'Снять выбор на странице' : `Выбрать все на странице (${paginatedOdooIntProjects.length})`}
+                                        </label>
+                                    </div>
+
+                                    {filteredOdooIntProjects.length > paginatedOdooIntProjects.length && (
+                                        <button
+                                            type="button"
+                                            onClick={toggleSelectAllFilteredInt}
+                                            className="secondary"
+                                            style={{
+                                                padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px',
+                                                color: isAllFilteredSelectedInt ? 'var(--warning)' : 'var(--accent)',
+                                                borderColor: isAllFilteredSelectedInt ? 'var(--warning)' : 'var(--border)'
+                                            }}
+                                        >
+                                            {isAllFilteredSelectedInt ? 'Снять со всех найденных' : `Выбрать все найденные (${filteredOdooIntProjects.length})`}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Тело со списком проектов */}
+                        <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column' }}>
+                            {odooIntLoading && (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '40px', margin: 'auto' }}>
+                                    <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Загрузка проектов из Odoo CRM API...</p>
+                                </div>
+                            )}
+
+                            {odooIntError && !odooIntLoading && (
+                                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 600, marginBottom: '16px' }}>
+                                    ⚠️ {odooIntError}
+                                </div>
+                            )}
+
+                            {/* Результат импорта */}
+                            {odooIntImportResult && (
+                                <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(34,197,94,0.08)', border: '1px solid var(--success)' }}>
+                                    <div style={{ fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                                        ✅ Импорт успешно завершён
+                                    </div>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        Создано проектов: <strong>{odooIntImportResult.imported}</strong> · Пропущено (уже существуют): <strong>{odooIntImportResult.skipped}</strong>
+                                    </div>
+                                    {odooIntImportResult.errors.length > 0 && (
+                                        <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--warning)' }}>
+                                            {odooIntImportResult.errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {!odooIntLoading && !odooIntError && paginatedOdooIntProjects.map(p => {
+                                const isSelected = selectedOdooIntIds.has(p.id);
+                                return (
+                                    <div
+                                        key={p.id}
+                                        onClick={() => toggleOdooIntProject(p.id)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '14px',
+                                            padding: '12px 14px', borderRadius: '10px', cursor: 'pointer',
+                                            background: isSelected ? 'rgba(59,130,246,0.08)' : 'var(--bg-secondary)',
+                                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                            marginBottom: '8px', transition: 'all 0.15s ease',
+                                            boxShadow: isSelected ? '0 0 0 1px var(--accent)' : 'none'
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleOdooIntProject(p.id)}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', flexShrink: 0, cursor: 'pointer' }}
+                                        />
+                                        <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 700, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
+                                                    {p.name}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                    {p.code ? (
+                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56,189,248,0.12)', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(56,189,248,0.25)' }}>
+                                                            {p.code}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.72rem', color: 'var(--warning)', fontStyle: 'italic' }}>
+                                                            Без кода
+                                                        </span>
+                                                    )}
+                                                    {selectedFields.has('partner') && p.partner && (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            🤝 Клиент: <strong>{Array.isArray(p.partner) ? p.partner[1] : (typeof p.partner === 'object' ? p.partner.name : p.partner)}</strong>
+                                                        </span>
+                                                    )}
+                                                    {selectedFields.has('partner_company') && p.partner_company && (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            🏢 Компания: <strong>{Array.isArray(p.partner_company) ? p.partner_company[1] : (typeof p.partner_company === 'object' ? p.partner_company.name : p.partner_company)}</strong>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                                {selectedFields.has('status') && p.status && (
+                                                    <span style={{
+                                                        fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase',
+                                                        padding: '2px 6px', borderRadius: '6px',
+                                                        background: p.status === 'worked' || p.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
+                                                        color: p.status === 'worked' || p.status === 'active' ? 'var(--success)' : 'var(--text-muted)'
+                                                    }}>
+                                                        {p.status}
+                                                    </span>
+                                                )}
+                                                {selectedFields.has('project_amount') && p.project_amount !== undefined && (
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                                        {new Intl.NumberFormat('ru-RU').format(p.project_amount ?? 0)} ₸
+                                                    </span>
+                                                )}
+                                                {selectedFields.has('project_manager_ids') && Array.isArray(p.project_manager_ids) && p.project_manager_ids.length > 0 && (
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                                        PM: {p.project_manager_ids.join(', ')}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 600, flexShrink: 0, padding: '2px 6px', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                                            #{p.id}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+
+                            {!odooIntLoading && !odooIntError && filteredOdooIntProjects.length === 0 && (
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', margin: 'auto' }}>
+                                    <Globe size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                                    <p>Проекты с такими параметрами не найдены в Odoo CRM API</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Панель пагинации API модала */}
+                        {!odooIntLoading && !odooIntError && filteredOdooIntProjects.length > 0 && (
+                            <div style={{
+                                padding: '10px 24px', borderTop: '1px solid var(--border)',
+                                background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', flexWrap: 'wrap', gap: '10px', flexShrink: 0
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Строк на стр:</span>
+                                    <select
+                                        value={odooIntPageSize}
+                                        onChange={e => { setOdooIntPageSize(Number(e.target.value)); setOdooIntPage(1); }}
+                                        style={{ padding: '3px 8px', width: 'auto', borderRadius: '8px', fontSize: '0.78rem', background: 'var(--bg-secondary)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+                                    >
+                                        {[10, 20, 50, 100, 1000].map(v => (
+                                            <option key={v} value={v}>{v === 1000 ? 'Все' : v}</option>
+                                        ))}
+                                    </select>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                        {(odooIntPage - 1) * odooIntPageSize + 1}–{Math.min(odooIntPage * odooIntPageSize, filteredOdooIntProjects.length)} из {filteredOdooIntProjects.length}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        disabled={odooIntPage <= 1}
+                                        onClick={() => setOdooIntPage(p => Math.max(1, p - 1))}
+                                        className="secondary"
+                                        style={{ padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                        <ChevronLeft size={14} /> Назад
+                                    </button>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', padding: '0 4px' }}>
+                                        {odooIntPage} / {totalOdooIntPages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={odooIntPage >= totalOdooIntPages}
+                                        onClick={() => setOdooIntPage(p => Math.min(totalOdooIntPages, p + 1))}
+                                        className="secondary"
+                                        style={{ padding: '4px 10px', fontSize: '0.78rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                        Далее <ChevronRight size={14} />
                                     </button>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Футер с кнопками */}
+                        <div style={{
+                            padding: '16px 24px', borderTop: '1px solid var(--border)',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: 'var(--bg-secondary)', gap: '12px', flexShrink: 0
+                        }}>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                                {selectedOdooIntIds.size > 0
+                                    ? `Выбрано ${selectedOdooIntIds.size} из ${filteredOdooIntProjects.length} проектов`
+                                    : 'Выберите проекты для добавления'}
+                            </span>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsOdooIntModalOpen(false)}
+                                    style={{ padding: '8px 18px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem' }}
+                                >
+                                    Закрыть
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleImportOdooIntSelected}
+                                    disabled={selectedOdooIntIds.size === 0 || odooIntImportLoading}
+                                    className="primary"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', borderRadius: '10px', fontSize: '0.85rem' }}
+                                >
+                                    {odooIntImportLoading ? (
+                                        <>Импорт...</>
+                                    ) : (
+                                        <><Plus size={16} /> Добавить выбранные ({selectedOdooIntIds.size})</>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                );
-            })()}
+                </div>
+            )}
 
             {/* Модал редактирования отдела */}
             {editDeptId !== null && (
