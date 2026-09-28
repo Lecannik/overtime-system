@@ -466,7 +466,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                                 </span>
                                             </div>
                                             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                                                {'description' in cat ? (cat as any).description : ''}
+                                                {cat.description}
                                             </p>
                                         </div>
                                     ))}
