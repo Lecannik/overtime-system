@@ -792,13 +792,14 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                     {selectedLog.target_type || '—'} {selectedLog.target_id ? `(#${selectedLog.target_id})` : ''}
                                 </div>
                             </div>
-                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email) && (
+                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email || selectedLog.details?.employee_id) && (
                                 <div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                                         Сотрудник (автор заявки)
                                     </div>
                                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginTop: '2px', color: 'var(--primary)' }}>
-                                        {String(selectedLog.details?.employee_name || '—')}
+                                        {String(selectedLog.details?.employee_name || 'Сотрудник')}
+                                        {selectedLog.details?.employee_id ? ` (#${selectedLog.details.employee_id})` : ''}
                                     </div>
                                     {Boolean(selectedLog.details?.employee_email) && (
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -814,10 +815,11 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                             <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Структура изменений</h4>
 
                             {/* Информационная плашка целевого сотрудника */}
-                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email) && (
+                            {Boolean(selectedLog.details?.employee_name || selectedLog.details?.employee_email || selectedLog.details?.employee_id) && (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
+                                    flexWrap: 'wrap',
                                     gap: '8px',
                                     padding: '10px 14px',
                                     background: 'rgba(99, 102, 241, 0.08)',
@@ -827,11 +829,16 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                 }}>
                                     <strong style={{ color: 'var(--text-secondary)' }}>Сотрудник:</strong>
                                     <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                                        {String(selectedLog.details?.employee_name || '')}
+                                        {String(selectedLog.details?.employee_name || 'Не указан')}
                                     </span>
                                     {Boolean(selectedLog.details?.employee_email) && (
                                         <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                                             ({String(selectedLog.details?.employee_email)})
+                                        </span>
+                                    )}
+                                    {Boolean(selectedLog.details?.employee_id) && (
+                                        <span style={{ fontSize: '0.75rem', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                                            ID: {String(selectedLog.details?.employee_id)}
                                         </span>
                                     )}
                                 </div>
@@ -840,8 +847,14 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                             {selectedLog.action === 'UPDATE_OVERTIME_TIME' && selectedLog.details ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                        Изменение времени переработки пользователем{' '}
-                                        <strong>{String(selectedLog.details.updated_by || 'Не указан')}</strong> (
+                                        Изменение времени переработки
+                                        {(selectedLog.details.employee_name || selectedLog.details.employee_email) ? (
+                                            <span>
+                                                {' '}для сотрудника <strong>{String(selectedLog.details.employee_name || '')}</strong>
+                                                {Boolean(selectedLog.details.employee_email) && ` (${String(selectedLog.details.employee_email)})`}
+                                            </span>
+                                        ) : ''}
+                                        {' '}пользователем <strong>{String(selectedLog.details.updated_by || 'Не указан')}</strong> (
                                         {String(selectedLog.details.role || '—')}).
                                     </div>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -859,6 +872,24 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                             </tr>
                                         </thead>
                                         <tbody>
+                                            {Boolean(selectedLog.details.employee_name || selectedLog.details.employee_email || selectedLog.details.employee_id) && (
+                                                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                                    <td style={{ padding: '8px 0', fontWeight: 600 }}>Сотрудник</td>
+                                                    <td colSpan={2} style={{ padding: '8px 0' }}>
+                                                        <span style={{ fontWeight: 600 }}>{String(selectedLog.details.employee_name || '—')}</span>
+                                                        {Boolean(selectedLog.details.employee_email) && (
+                                                            <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>
+                                                                ({String(selectedLog.details.employee_email)})
+                                                            </span>
+                                                        )}
+                                                        {Boolean(selectedLog.details.employee_id) && (
+                                                            <span style={{ color: 'var(--text-muted)', marginLeft: '6px', fontSize: '0.75rem' }}>
+                                                                [ID: {String(selectedLog.details.employee_id)}]
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )}
                                             <tr style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '8px 0', fontWeight: 600 }}>Начало</td>
                                                 <td style={{ padding: '8px 0', color: 'var(--danger)' }}>

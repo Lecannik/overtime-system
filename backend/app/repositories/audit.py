@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from sqlalchemy import select, func, or_, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit import AuditLog
@@ -144,6 +144,106 @@ def _build_audit_filters(
     return filters
 
 
+async def _enrich_audit_details(session: AsyncSession, rows: list) -> dict[int, dict]:
+    """
+    Автоматически обогащает словарь details данных записей аудита информацией о сотруднике.
+
+    Находит целевого сотрудника и дополняет details полями:
+    - employee_id: идентификатор сотрудника
+    - employee_name: ФИО сотрудника
+    - employee_email: почта сотрудника
+
+    Поиск сотрудника осуществляется:
+    1. По прямому employee_id или user_id в details.
+    2. По target_id заявки (Overtime.id -> Overtime.user_id -> User).
+
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param rows: Список строк журнала аудита.
+    :return: Словарь соответствия {row.id: enriched_details_dict}.
+    """
+    ot_ids: set[int] = set()
+    direct_user_ids: set[int] = set()
+
+    for row in rows:
+        details = row.details or {}
+        # Проверяем, нужно ли дополнить ФИО, email или employee_id
+        if not details.get("employee_name") or not details.get("employee_email") or not details.get("employee_id"):
+            if details.get("employee_id"):
+                try:
+                    direct_user_ids.add(int(details["employee_id"]))
+                except (ValueError, TypeError):
+                    pass
+            elif details.get("user_id") and row.target_type == "overtime":
+                try:
+                    direct_user_ids.add(int(details["user_id"]))
+                except (ValueError, TypeError):
+                    pass
+
+            if row.target_type == "overtime" and row.target_id:
+                try:
+                    ot_ids.add(int(row.target_id))
+                except (ValueError, TypeError):
+                    pass
+
+    users_by_id: dict[int, dict[str, Any]] = {}
+    ot_to_user_info: dict[int, dict[str, Any]] = {}
+
+    if ot_ids:
+        from app.models.overtime import Overtime
+        ot_query = (
+            select(Overtime.id, Overtime.user_id, User.full_name, User.email)
+            .join(User, Overtime.user_id == User.id)
+            .where(Overtime.id.in_(ot_ids))
+        )
+        ot_res = await session.execute(ot_query)
+        for ot_id, u_id, full_name, email in ot_res.all():
+            info = {"id": u_id, "name": full_name, "email": email}
+            ot_to_user_info[ot_id] = info
+            users_by_id[u_id] = info
+
+    needed_user_ids = direct_user_ids - set(users_by_id.keys())
+    if needed_user_ids:
+        u_query = select(User.id, User.full_name, User.email).where(User.id.in_(needed_user_ids))
+        u_res = await session.execute(u_query)
+        for u_id, full_name, email in u_res.all():
+            users_by_id[u_id] = {"id": u_id, "name": full_name, "email": email}
+
+    enriched: dict[int, dict] = {}
+    for row in rows:
+        details = dict(row.details) if row.details else {}
+        emp_info: dict[str, Any] | None = None
+
+        # 1. Попытка через details.employee_id
+        if details.get("employee_id"):
+            try:
+                emp_info = users_by_id.get(int(details["employee_id"]))
+            except (ValueError, TypeError):
+                pass
+
+        # 2. Попытка через target_id (заявка)
+        if not emp_info and row.target_type == "overtime" and row.target_id in ot_to_user_info:
+            emp_info = ot_to_user_info[row.target_id]
+
+        # 3. Попытка через details.user_id для заявок
+        if not emp_info and row.target_type == "overtime" and details.get("user_id"):
+            try:
+                emp_info = users_by_id.get(int(details["user_id"]))
+            except (ValueError, TypeError):
+                pass
+
+        if emp_info:
+            if not details.get("employee_name") and emp_info.get("name"):
+                details["employee_name"] = emp_info["name"]
+            if not details.get("employee_email") and emp_info.get("email"):
+                details["employee_email"] = emp_info["email"]
+            if not details.get("employee_id") and emp_info.get("id"):
+                details["employee_id"] = emp_info["id"]
+
+        enriched[row.id] = details
+
+    return enriched
+
+
 async def get_audit_logs(
     session: AsyncSession,
     limit: int = 100,
@@ -194,23 +294,7 @@ async def get_audit_logs(
     result = await session.execute(query)
 
     rows = result.all()
-
-    # Автоматически обогащаем данные целевого сотрудника для заявок (включая исторические логи)
-    ot_ids = [
-        row.target_id for row in rows
-        if row.target_type == "overtime" and row.target_id and (not row.details or not row.details.get("employee_name"))
-    ]
-    ot_users = {}
-    if ot_ids:
-        from app.models.overtime import Overtime
-        ot_query = (
-            select(Overtime.id, User.full_name, User.email)
-            .join(User, Overtime.user_id == User.id)
-            .where(Overtime.id.in_(set(ot_ids)))
-        )
-        ot_res = await session.execute(ot_query)
-        for ot_id, full_name, email in ot_res.all():
-            ot_users[ot_id] = {"name": full_name, "email": email}
+    enriched_details = await _enrich_audit_details(session, rows)
 
     items = []
     for row in rows:
@@ -221,12 +305,7 @@ async def get_audit_logs(
                 "email": row.user_email
             }
 
-        details = dict(row.details) if row.details else {}
-        if row.target_type == "overtime" and row.target_id in ot_users:
-            if not details.get("employee_name"):
-                details["employee_name"] = ot_users[row.target_id]["name"]
-            if not details.get("employee_email"):
-                details["employee_email"] = ot_users[row.target_id]["email"]
+        details = enriched_details.get(row.id, row.details)
 
         items.append({
             "id": row.id,
@@ -235,7 +314,7 @@ async def get_audit_logs(
             "action": row.action,
             "target_type": row.target_type,
             "target_id": row.target_id,
-            "details": details if details else row.details,
+            "details": details,
             "timestamp": row.created_at
         })
 
@@ -280,31 +359,11 @@ async def get_audit_logs_for_export(
     result = await session.execute(query)
 
     rows = result.all()
-    ot_ids = [
-        row.target_id for row in rows
-        if row.target_type == "overtime" and row.target_id and (not row.details or not row.details.get("employee_name"))
-    ]
-    ot_users = {}
-    if ot_ids:
-        from app.models.overtime import Overtime
-        ot_query = (
-            select(Overtime.id, User.full_name, User.email)
-            .join(User, Overtime.user_id == User.id)
-            .where(Overtime.id.in_(set(ot_ids)))
-        )
-        ot_res = await session.execute(ot_query)
-        for ot_id, full_name, email in ot_res.all():
-            ot_users[ot_id] = {"name": full_name, "email": email}
+    enriched_details = await _enrich_audit_details(session, rows)
 
     items = []
     for row in rows:
-        details = dict(row.details) if row.details else {}
-        if row.target_type == "overtime" and row.target_id in ot_users:
-            if not details.get("employee_name"):
-                details["employee_name"] = ot_users[row.target_id]["name"]
-            if not details.get("employee_email"):
-                details["employee_email"] = ot_users[row.target_id]["email"]
-
+        details = enriched_details.get(row.id, row.details)
         items.append({
             "id": row.id,
             "user_id": row.user_id,
@@ -315,7 +374,7 @@ async def get_audit_logs_for_export(
             "action": row.action,
             "target_type": row.target_type,
             "target_id": row.target_id,
-            "details": details if details else row.details,
+            "details": details,
             "timestamp": row.created_at
         })
 

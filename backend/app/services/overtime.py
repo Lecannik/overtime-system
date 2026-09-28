@@ -421,6 +421,9 @@ async def cancel_overtime(
     overtime.status = OvertimeStatus.CANCELLED
 
     # Логируем действие
+    target_user = overtime.user or (await session.get(User, overtime.user_id) if overtime.user_id else None)
+    emp_name = target_user.full_name if target_user else None
+    emp_email = target_user.email if target_user else None
     await audit_repo.create_audit_log(
         session=session,
         user_id=current_user.id,
@@ -431,7 +434,10 @@ async def cancel_overtime(
             "cancelled_by": current_user.email,
             "previous_status": previous_status,
             "is_own": overtime.user_id == current_user.id,
-            "description": overtime.description
+            "description": overtime.description,
+            "employee_id": overtime.user_id,
+            "employee_name": emp_name,
+            "employee_email": emp_email,
         }
     )
 
@@ -509,6 +515,9 @@ async def restore_overtime(
     overtime.approved_hours = None
 
     # Логируем действие
+    target_user = overtime.user or (await session.get(User, overtime.user_id) if overtime.user_id else None)
+    emp_name = target_user.full_name if target_user else None
+    emp_email = target_user.email if target_user else None
     await audit_repo.create_audit_log(
         session=session,
         user_id=current_user.id,
@@ -520,6 +529,9 @@ async def restore_overtime(
             "is_own": overtime.user_id == current_user.id,
             "description": overtime.description,
             "new_status": OvertimeStatus.PENDING,
+            "employee_id": overtime.user_id,
+            "employee_name": emp_name,
+            "employee_email": emp_email,
         }
     )
 
@@ -670,10 +682,12 @@ async def update_overtime(
     result = await overtime_repo.update_overtime(session, overtime, update_data)
 
     # Запись аудит-лога
+    target_user = overtime.user or (await session.get(User, overtime.user_id) if overtime.user_id else None)
+    emp_name = target_user.full_name if target_user else None
+    emp_email = target_user.email if target_user else None
+
     if time_changed:
         from app.repositories import audit as audit_repo
-        emp_name = overtime.user.full_name if overtime.user else None
-        emp_email = overtime.user.email if overtime.user else None
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
@@ -699,8 +713,6 @@ async def update_overtime(
 
     if current_user.role == UserRole.admin and (desc_changed or project_changed):
         from app.repositories import audit as audit_repo
-        emp_name = overtime.user.full_name if overtime.user else None
-        emp_email = overtime.user.email if overtime.user else None
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
