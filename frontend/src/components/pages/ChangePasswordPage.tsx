@@ -1,14 +1,14 @@
-/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, ArrowRight, Eye, EyeOff, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import { api, changePassword } from '../../services/api';
+import { changePassword } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Logo from '../atoms/Logo';
-import type { User } from '../../types';
 import { AxiosError } from 'axios';
 
 const ChangePasswordPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user, token, isLoading } = useAuth();
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,19 +17,12 @@ const ChangePasswordPage: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get('/auth/me');
-        setUser(res.data);
-      } catch (err) {
-        navigate('/login');
-      }
-    };
-    fetchUser();
-  }, [navigate]);
+    if (!isLoading && (!token || !user)) {
+      navigate('/login');
+    }
+  }, [isLoading, token, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +44,7 @@ const ChangePasswordPage: React.FC = () => {
     }
   };
 
-  if (!user) return null;
+  if (isLoading || !user) return null;
 
   return (
     <div className="login-container">

@@ -5,7 +5,8 @@ import {
     User as UserIcon, Mail, Shield, Building2, Globe, Save, Key,
     Bell, Smartphone, Camera, Loader2, CheckCircle2
 } from 'lucide-react';
-import api, { updateMyPreferences, getAccessToken } from '../../services/api';
+import { updateMyPreferences } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
 import { ROLE_LABELS, COMPANY_LABELS } from '../../constants/locale';
 import type { User, UserUpdatePreferences } from '../../types';
@@ -13,46 +14,49 @@ import { AxiosError } from 'axios';
 
 const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { user: authUser, token, refreshUser } = useAuth();
+    const [user, setUser] = useState<User | null>(authUser);
+    const [loading, setLoading] = useState(!authUser);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
 
     // Form states
-    const [prefs, setPrefs] = useState<UserUpdatePreferences>({
-        is_2fa_enabled: false,
-        tg_notifications: false,
-        email_notifications: true,
-        telegram_chat_id: ''
+    const [prefs, setPrefs] = useState<UserUpdatePreferences>(() => {
+        const notifLvl = authUser?.notification_level !== undefined ? authUser.notification_level : 2;
+        return {
+            is_2fa_enabled: authUser?.is_2fa_enabled ?? false,
+            tg_notifications: notifLvl === 2 || notifLvl === 3,
+            email_notifications: notifLvl === 1 || notifLvl === 2,
+            telegram_chat_id: authUser?.telegram_chat_id || ''
+        };
     });
 
-    const fetchUser = useCallback(async () => {
-        try {
-            const token = getAccessToken();
-            if (!token) { navigate('/login'); return; }
-            const res = await api.get('/auth/me');
-            const notifLvl = res.data.notification_level !== undefined ? res.data.notification_level : 2;
-            const emailEnabled = notifLvl === 1 || notifLvl === 2;
-            const tgEnabled = notifLvl === 2 || notifLvl === 3;
-
-            setUser(res.data);
-            setPrefs({
-                is_2fa_enabled: res.data.is_2fa_enabled,
-                tg_notifications: tgEnabled,
-                email_notifications: emailEnabled,
-                telegram_chat_id: res.data.telegram_chat_id || ''
-            });
-        } catch (err) {
-            console.error(err);
-            navigate('/login');
-        } finally {
-            setLoading(false);
-        }
-    }, [navigate]);
+    const initUserData = useCallback((currentUser: User) => {
+        const notifLvl = currentUser.notification_level !== undefined ? currentUser.notification_level : 2;
+        setUser(currentUser);
+        setPrefs({
+            is_2fa_enabled: currentUser.is_2fa_enabled,
+            tg_notifications: notifLvl === 2 || notifLvl === 3,
+            email_notifications: notifLvl === 1 || notifLvl === 2,
+            telegram_chat_id: currentUser.telegram_chat_id || ''
+        });
+        setLoading(false);
+    }, []);
 
     useEffect(() => {
-        fetchUser();
-    }, [fetchUser]);
+        if (!token) {
+            navigate('/login');
+            return;
+        }
+        if (authUser) {
+            initUserData(authUser);
+        } else {
+            refreshUser().then((u) => {
+                if (u) initUserData(u);
+                else navigate('/login');
+            });
+        }
+    }, [token, authUser, navigate, initUserData, refreshUser]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -78,8 +82,9 @@ const ProfilePage: React.FC = () => {
             });
             setSuccess(true);
             setTimeout(() => setSuccess(false), 3000);
-            // Обновим пользователя после сохранения
-            await fetchUser();
+            // Обновим пользователя после сохранения через AuthContext
+            const updated = await refreshUser();
+            if (updated) initUserData(updated);
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
             alert(axiosError.response?.data?.detail || 'Ошибка при сохранении настроек');

@@ -5,12 +5,13 @@ import {
     ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-import api, {
+import {
     getUsers, getDepartments, getAdminProjects, updateUser, resetUserPassword,
     deleteUser, deleteDepartment, deleteProject, createDepartment, createProject,
     updateDepartment, updateProject, getOdooStatus, getOdooProjects, importOdooProjects,
-    getAccessToken, getOdooIntegrationStatus, getOdooIntegrationProjects, importOdooIntegrationProjects
+    getOdooIntegrationStatus, getOdooIntegrationProjects, importOdooIntegrationProjects
 } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 import type { OdooProjectPreview, User, Department, Project, OdooIntegrationProject } from '../../types';
 import Header from '../layout/Header';
@@ -27,6 +28,7 @@ import { AxiosError } from 'axios';
 
 const UsersPage: React.FC = () => {
     const navigate = useNavigate();
+    const { user: authUser, token, refreshUser } = useAuth();
     const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'projects' | 'audit'>('users');
     const [users, setUsers] = useState<User[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
@@ -416,17 +418,17 @@ const UsersPage: React.FC = () => {
 
     useEffect(() => {
         const checkAuth = async () => {
-            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
             try {
-                const res = await api.get('/auth/me');
-                setCurrentUser(res.data);
-                if (res.data.role !== 'admin') { navigate('/dashboard'); return; }
+                const curUser = authUser || (await refreshUser());
+                if (!curUser) { navigate('/login'); return; }
+                setCurrentUser(curUser);
+                if (curUser.role !== 'admin') { navigate('/dashboard'); return; }
                 setAuthChecked(true);
             } catch { navigate('/login'); }
         };
         checkAuth();
-    }, [navigate]);
+    }, [navigate, token, authUser, refreshUser]);
 
     useEffect(() => {
         if (authChecked) {

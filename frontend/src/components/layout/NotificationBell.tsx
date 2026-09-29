@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead, getAccessToken } from '../../services/api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { formatTime } from '../../constants/locale';
 import type { Notification } from '../../types';
 
 const NotificationBell: React.FC = () => {
+    const { token } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -21,6 +23,8 @@ const NotificationBell: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        if (!token) return;
+
         // Use an IIFE or just call it directly if it's async, but we want to avoid
         // synchronous execution in the effect body that triggers state updates.
         const initFetch = async () => {
@@ -36,7 +40,6 @@ const NotificationBell: React.FC = () => {
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         const connectWebSocket = () => {
-            const token = getAccessToken();
             if (!token) return;
 
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -109,8 +112,10 @@ const NotificationBell: React.FC = () => {
                 ws.close();
             }
             if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            setNotifications([]);
+            setUnreadCount(0);
         };
-    }, [fetchNotifications]);
+    }, [token, fetchNotifications]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

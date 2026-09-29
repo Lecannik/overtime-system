@@ -5,7 +5,8 @@ import {
     CheckCircle2, Search, Filter, ShieldCheck, ChevronDown,
     ChevronLeft, ChevronRight, LayoutGrid, Calendar, AlignLeft
 } from 'lucide-react';
-import { api, getOvertimes, reviewOvertime, getAccessToken } from '../../services/api';
+import { api, getOvertimes, reviewOvertime } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import OvertimeDetailModal from './OvertimeDetailModal';
@@ -75,9 +76,10 @@ const safeParseDate = (datestr: string, _format: string): Date => {
 
 const ReviewPage: React.FC = () => {
     const navigate = useNavigate();
+    const { user: authUser, token, refreshUser } = useAuth();
     const [overtimes, setOvertimes] = useState<Overtime[]>([]);
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<User | null>(authUser);
     const [selectedDeptId, setSelectedDeptId] = useState<string>('');
     const [departments, setDepartments] = useState<any[]>([]);
     const [reviewingId, setReviewingId] = useState<number | null>(null);
@@ -188,12 +190,11 @@ const ReviewPage: React.FC = () => {
 
     // 1. Загрузка данных пользователя (один раз при монтировании)
     useEffect(() => {
-        const fetchUser = async () => {
+        const initUser = async () => {
             try {
-                const token = getAccessToken();
                 if (!token) { navigate('/login'); return; }
-                const userRes = await api.get('/auth/me');
-                const curUser = userRes.data;
+                const curUser = authUser || (await refreshUser());
+                if (!curUser) { navigate('/login'); return; }
                 if (curUser.role === 'employee') {
                     navigate('/dashboard');
                     return;
@@ -208,8 +209,8 @@ const ReviewPage: React.FC = () => {
                 console.error('Fetch user error:', err);
             }
         };
-        fetchUser();
-    }, [navigate]);
+        initUser();
+    }, [navigate, token, authUser, refreshUser]);
 
     // 2. Функция загрузки списка овертаймов
     // resetSelection=true — пользователь сам сменил фильтры/страницу/даты/вид, выбор нужно сбросить.
@@ -220,7 +221,6 @@ const ReviewPage: React.FC = () => {
             if (showLoader) {
                 setLoading(true);
             }
-            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
 
             // Если выбран вид "calendar", загружаем больше элементов за раз,

@@ -6,7 +6,8 @@ import {
   MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
   Settings, ChevronUp, ChevronDown, RotateCcw, Eye, LayoutGrid, List
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, exportAnalytics, getAnalyticsSummary, getAccessToken } from '../../services/api';
+import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, exportAnalytics, getAnalyticsSummary } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
 import CreateOvertimeModal from './CreateOvertimeModal';
 import OvertimeDetailModal from './OvertimeDetailModal';
@@ -88,10 +89,11 @@ const safeParseDate = (datestr: string, _format: string): Date => {
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user: authUser, token, refreshUser } = useAuth();
   const [overtimes, setOvertimes] = useState<Overtime[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(authUser);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editOvertime, setEditOvertime] = useState<Overtime | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -370,15 +372,14 @@ const DashboardPage: React.FC = () => {
 
   const fetchUserAndStats = useCallback(async () => {
     try {
-      const token = getAccessToken();
       if (!token) { navigate('/login'); return; }
 
-      const [userRes, statsRes] = await Promise.all([
-        api.get('/auth/me'),
-        getMyStats()
-      ]);
-      const curUser = userRes.data;
-      setUser(curUser);
+      const curUser = authUser || (await refreshUser());
+      if (curUser) {
+        setUser(curUser);
+      }
+
+      const statsRes = await getMyStats();
       setStats(statsRes);
 
       if (curUser?.role === 'admin') {
@@ -392,12 +393,11 @@ const DashboardPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch user and stats:', err);
     }
-  }, [navigate]);
+  }, [navigate, token, authUser, refreshUser]);
 
   const fetchTableData = useCallback(async (showLoader = false) => {
     try {
       if (showLoader) setLoading(true);
-      const token = getAccessToken();
       if (!token) { navigate('/login'); return; }
 
       const params: any = {

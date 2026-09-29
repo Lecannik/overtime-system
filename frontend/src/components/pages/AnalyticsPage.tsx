@@ -15,9 +15,9 @@ import api, {
     getAnalyticsSummary, getProjectAnalytics,
     getDepartmentAnalytics,
     getUserAnalytics, getReviewAnalytics,
-    exportAnalytics,
-    getAccessToken
+    exportAnalytics
 } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { COMPANY_LABELS } from '../../constants/locale';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
@@ -95,7 +95,8 @@ const PieTooltip = ({ active, payload, statusViewMode, totalVal }: any) => {
 
 const AnalyticsPage: React.FC = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState<User | null>(null);
+    const { user: authUser, token, refreshUser } = useAuth();
+    const [user, setUser] = useState<User | null>(authUser);
     const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
     const [statusViewMode, setStatusViewMode] = useState<'count' | 'hours'>('count');
     const [projects, setProjects] = useState<ProjectAnalytics[]>([]);
@@ -143,12 +144,12 @@ const AnalyticsPage: React.FC = () => {
     const fetchAll = useCallback(async () => {
         setLoading(true);
         try {
-            const token = getAccessToken();
             if (!token) { navigate('/login'); return; }
 
-            const me = await api.get('/auth/me');
-            setUser(me.data);
-            if (me.data.role === 'employee') {
+            const curUser = authUser || (await refreshUser());
+            if (!curUser) { navigate('/login'); return; }
+            setUser(curUser);
+            if (curUser.role === 'employee') {
                 navigate('/dashboard');
                 return;
             }
@@ -174,7 +175,7 @@ const AnalyticsPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [navigate, getFilterParams]);
+    }, [navigate, token, authUser, refreshUser, getFilterParams]);
 
     const formatToYmd = (d: Date) => {
         const year = d.getFullYear();

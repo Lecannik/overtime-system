@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
-import { api, requestPasswordReset, confirmPasswordReset, verify2FA, getAccessToken } from '../../services/api';
+import { api, requestPasswordReset, confirmPasswordReset, verify2FA } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../atoms/Logo';
 import { AxiosError } from 'axios';
@@ -10,7 +10,7 @@ type PageMode = 'login' | 'forgot' | 'reset-code' | '2fa';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, token } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,8 +35,8 @@ const LoginPage: React.FC = () => {
   const [twoFaEmail, setTwoFaEmail] = useState('');
 
   useEffect(() => {
-    if (getAccessToken()) navigate('/dashboard');
-  }, [navigate]);
+    if (token) navigate('/dashboard');
+  }, [token, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
