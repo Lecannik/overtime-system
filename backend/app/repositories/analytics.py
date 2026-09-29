@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, and_, desc, case
+from sqlalchemy import select, func, and_, desc, case, literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
@@ -286,7 +286,7 @@ async def get_user_analytics(
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
 
-    from sqlalchemy import literal
+
     query = select(
         User.id.label("user_id"),
         User.full_name,
@@ -316,7 +316,8 @@ async def get_user_analytics(
         query = query.where(User.department_id == department_id)
 
     query = apply_date_filters(query, start_date, end_date)
-    query = query.order_by(desc("total_hours"))
+    total_hours_col = func.coalesce(DURATION_EXPR, 0).label("total_hours")
+    query = query.order_by(desc(total_hours_col))
 
     result = await session.execute(query)
     return [

@@ -190,7 +190,6 @@ export const updateProject = (id: number, data: Partial<Project>) => api.patch<P
 export const deleteProject = (id: number) => api.delete(`/admin/projects/${id}`).then(r => r.data);
 
 // Odoo Projects
-// Odoo Projects
 export const getOdooStatus = () => api.get<{ configured: boolean }>('/admin/odoo/status').then(r => r.data);
 export const getOdooProjects = () => api.get<{ projects: OdooProjectPreview[] }>('/admin/odoo/projects').then(r => r.data);
 export const importOdooProjects = (projects: Partial<OdooProjectPreview>[]) => api.post('/admin/odoo/import', projects).then(r => r.data);

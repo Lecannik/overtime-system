@@ -26,15 +26,19 @@ class MSGraphService:
             self._app = None
 
     async def _get_access_token(self):
-        """Получает или обновляет токен доступа от Microsoft с использованием кэша MSAL."""
+        """
+        Получает или обновляет токен доступа от Microsoft с использованием кэша MSAL.
+
+        В client-credentials flow (app-only, без пользователя) метод acquire_token_for_client
+        автоматически проверяет in-memory кеш MSAL и возвращает кешированный токен,
+        если он ещё валиден. Повторная авторизация выполняется только при истечении.
+        """
         if self._app is None:
             logger.error("MS Graph Config Missing or initialization failed: ID, Secret or Tenant is not set!")
             return None
 
-        # Проверяем наличие валидного токена в локальном кэше MSAL
-        result = self._app.acquire_token_silent(self.scope, account=None)
-        if not result or "access_token" not in result:
-            result = self._app.acquire_token_for_client(scopes=self.scope)
+        # acquire_token_for_client автоматически использует in-memory кеш MSAL Singleton
+        result = self._app.acquire_token_for_client(scopes=self.scope)
 
         if result and "access_token" in result:
             logger.debug("MS Graph Access Token acquired successfully (cached or new)")
