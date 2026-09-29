@@ -109,3 +109,19 @@ async def test_analytics_summary_status_hours(
     assert isinstance(data["approved_hours"], (int, float))
     assert isinstance(data["pending_hours"], (int, float))
     assert isinstance(data["rejected_hours"], (int, float))
+
+
+@pytest.mark.asyncio
+async def test_health_check_endpoint(client: AsyncClient):
+    """Тест расширенного health-check эндпоинта: проверяет БД, TG-бота, Whisper и MS Graph."""
+    res = await client.get("/api/v1/health")
+    assert res.status_code == 200
+    data = res.json()
+    assert "status" in data
+    assert data["status"] in ("ok", "degraded")
+    assert "checks" in data
+    assert data["checks"]["database"] == "ok"
+    assert "telegram_bot" in data["checks"]
+    assert "whisper_model" in data["checks"]
+    assert "ms_graph" in data["checks"]
+

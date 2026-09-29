@@ -3,11 +3,16 @@
 Инкапсулирует SQL-логику и правила выборки данных из базы.
 """
 
+import calendar
+from collections import defaultdict
+from datetime import datetime, date, timedelta, timezone
+
 from sqlalchemy import select, or_, and_, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from datetime import datetime, date, timedelta, timezone
-from collections import defaultdict
+
+from app.core.config import settings
+from app.core.utils import calculate_overtime_hours
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.organization import Project, Department
 from app.models.user import User, UserRole
@@ -133,12 +138,10 @@ async def get_overtimes(
     if department_id:
         filters.append(User.department_id == department_id)
     if start_date:
-        from app.core.config import settings
         tz_local = settings.tz_info
         start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
         filters.append(Overtime.start_time >= start_datetime)
     if end_date:
-        from app.core.config import settings
         tz_local = settings.tz_info
         end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
         filters.append(Overtime.start_time <= end_datetime)
@@ -222,7 +225,6 @@ async def get_active_session(session: AsyncSession, user_id: int) -> Overtime | 
 
 async def get_all_stale_in_progress(session: AsyncSession, older_than_hours: int) -> list[Overtime]:
     """Возвращает все IN_PROGRESS сессии, которые не закрыты дольше older_than_hours часов."""
-    from sqlalchemy.orm import selectinload as _sl
     cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
     query = (
         select(Overtime)
@@ -230,7 +232,7 @@ async def get_all_stale_in_progress(session: AsyncSession, older_than_hours: int
             Overtime.status == OvertimeStatus.IN_PROGRESS,
             Overtime.start_time < cutoff
         )
-        .options(_sl(Overtime.project), _sl(Overtime.user))
+        .options(selectinload(Overtime.project), selectinload(Overtime.user))
     )
     result = await session.execute(query)
     return list(result.scalars().all())
@@ -424,7 +426,6 @@ async def get_weekly_overtime_hours(
     result = await session.execute(query)
     overtimes = result.scalars().all()
     
-    from app.core.utils import calculate_overtime_hours
     return sum(calculate_overtime_hours(ot.start_time, ot.end_time) for ot in overtimes)
 
 async def get_last_user_overtime(session: AsyncSession, user_id: int) -> Overtime | None:
@@ -475,9 +476,6 @@ async def get_calendar_summary(
         Словарь вида {'YYYY-MM-DD': {'total': N, 'pending': N, 'approved': N,
         'hours': F, 'entries': [...]}}
     """
-    from datetime import date as date_type
-    import calendar as cal_module
-    from app.core.config import settings
     tz_local = settings.tz_info
 
     if year:
@@ -488,8 +486,8 @@ async def get_calendar_summary(
             year_val, month_num = int(month[:4]), int(month[5:7])
         except (ValueError, IndexError):
             return {}
-        first_day = date_type(year_val, month_num, 1)
-        last_day = date_type(year_val, month_num, cal_module.monthrange(year_val, month_num)[1])
+        first_day = date(year_val, month_num, 1)
+        last_day = date(year_val, month_num, calendar.monthrange(year_val, month_num)[1])
         start_dt = datetime.combine(first_day, datetime.min.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
         end_dt = datetime.combine(last_day, datetime.max.time()).replace(tzinfo=tz_local).astimezone(timezone.utc)
     else:
