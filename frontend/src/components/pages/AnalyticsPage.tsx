@@ -338,11 +338,11 @@ const AnalyticsPage: React.FC = () => {
             setLoading(true);
             const params = getFilterParams();
             const blob = await exportAnalytics(params);
-            
+
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            
+
             const now = new Date();
             const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
             link.setAttribute('download', `overtime_report_${dateStr}.xlsx`);

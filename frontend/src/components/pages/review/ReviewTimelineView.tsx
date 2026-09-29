@@ -113,7 +113,7 @@ const ReviewTimelineView: React.FC<ReviewTimelineViewProps> = ({
                 const isCollapsed = collapsedDays.includes(dayKey);
                 const totalHours = getDayHours(items);
                 const color = getIndicatorColor(totalHours);
-                
+
                 const allSelected = items.map(ot => ot.id).every(id => selectedIds.includes(id));
 
                 return (

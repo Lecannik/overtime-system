@@ -3,9 +3,10 @@
 Ключ строится из имени функции + сериализованных параметров запроса.
 TTL по умолчанию — 5 минут: данные достаточно свежие для аналитики.
 """
-import time
+
 import hashlib
 import json
+import time
 from typing import Any
 
 _store: dict[str, tuple[Any, float]] = {}

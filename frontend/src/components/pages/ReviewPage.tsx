@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    CheckCircle2, Search, Filter, ShieldCheck, ChevronDown, 
+    CheckCircle2, Search, Filter, ShieldCheck, ChevronDown,
     ChevronLeft, ChevronRight, LayoutGrid, Calendar, AlignLeft
 } from 'lucide-react';
 import { api, getOvertimes, reviewOvertime, getAccessToken } from '../../services/api';
@@ -606,7 +606,7 @@ const ReviewPage: React.FC = () => {
                             style={{ paddingLeft: '40px', height: '44px', background: 'var(--bg-primary)' }}
                         />
                     </div>
-                    
+
                     {/* Фильтр по отделам (только для админа) */}
                     {user?.role === 'admin' && (
                         <div style={{ position: 'relative', minWidth: '180px' }}>

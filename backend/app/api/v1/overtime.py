@@ -1,24 +1,31 @@
 from datetime import date
+from typing import Any, Dict, Optional
+
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+
+# pyrefly: ignore [missing-import]
+from sqlalchemy import delete as sql_delete, select
+
 # pyrefly: ignore [missing-import]
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any, Optional
 
-from app.core.database import get_session
 from app.api.deps import get_current_user
+from app.core.database import get_session
 from app.core.rate_limit import overtime_create_limiter
-from app.models.user import User, UserRole
-from app.schemas.overtime import OvertimeCreate, OvertimeResponse, OvertimeReview, OvertimeUpdate, PersonalStats, PaginatedOvertimeResponse
 from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
+from app.models.user import User, UserRole
+from app.repositories import audit as audit_repo, overtime as overtime_repo
+from app.schemas.overtime import (
+    OvertimeCreate,
+    OvertimeResponse,
+    OvertimeReview,
+    OvertimeUpdate,
+    PaginatedOvertimeResponse,
+    PersonalStats,
+)
 from app.services import overtime as overtime_service
-from app.repositories import overtime as overtime_repo
-from app.repositories import audit as audit_repo
-# pyrefly: ignore [missing-import]
-from sqlalchemy import select, delete as sql_delete
-from typing import Optional
-
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
 
@@ -36,15 +43,15 @@ async def list_overtimes(
     search: Optional[str] = None,
     preset: Optional[str] = Query(None, description="Смарт-пресет: 'action_required' | 'in_review'"),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить список заявок на переработку с пагинацией, фильтрами по статусу, проекту, периоду дат, смарт-пресетам и поисковому запросу.
     """
     return await overtime_repo.get_overtimes(
-        session, 
-        current_user, 
-        status=status, 
+        session,
+        current_user,
+        status=status,
         project_id=project_id,
         department_id=department_id,
         start_date=start_date,
@@ -53,15 +60,12 @@ async def list_overtimes(
         page_size=page_size,
         view=view,
         search=search,
-        preset=preset
+        preset=preset,
     )
 
 
 @router.get("/stats/me", response_model=PersonalStats)
-async def get_my_stats(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+async def get_my_stats(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """
     Получить личную статистику переработок.
     """
@@ -76,7 +80,7 @@ async def get_calendar_summary(
     preset: Optional[str] = Query(None, description="Смарт-пресет: 'action_required' | 'in_review'"),
     department_id: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить сводку заявок по дням для отображения в календарном виде (heatmap) с фильтрацией по статусу, пресету и отделу.
@@ -93,18 +97,9 @@ async def get_calendar_summary(
     Доступность данных ограничена ролью текущего пользователя.
     """
     if current_user.role == UserRole.employee:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещён"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ запрещён")
     return await overtime_repo.get_calendar_summary(
-        session, 
-        current_user, 
-        month=month, 
-        year=year,
-        status=status,
-        preset=preset,
-        department_id=department_id
+        session, current_user, month=month, year=year, status=status, preset=preset, department_id=department_id
     )
 
 
@@ -113,7 +108,7 @@ async def create_overtime(
     request: Request,
     overtime_in: OvertimeCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     overtime_create_limiter.check_limit(request)
     """
@@ -125,12 +120,9 @@ async def create_overtime(
     return await overtime_service.create_new_overtime(session, overtime_in, current_user.id)
 
 
-
 @router.get("/{overtime_id}", response_model=OvertimeResponse)
 async def get_overtime(
-    overtime_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    overtime_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Получить детальную информацию о конкретной заявке.
@@ -149,9 +141,7 @@ async def get_overtime(
         is_manager = bool(overtime.project and overtime.project.manager_id == current_user.id)
         is_head = False
         if overtime.user and overtime.user.department_id:
-            dept_res = await session.execute(
-                select(Department).where(Department.id == overtime.user.department_id)
-            )
+            dept_res = await session.execute(select(Department).where(Department.id == overtime.user.department_id))
             dept = dept_res.scalar_one_or_none()
             if dept and dept.head_id == current_user.id:
                 is_head = True
@@ -159,7 +149,7 @@ async def get_overtime(
         if not (is_manager or is_head):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Доступ запрещен. Вы можете просматривать только свои заявки или заявки подотчетных сотрудников."
+                detail="Доступ запрещен. Вы можете просматривать только свои заявки или заявки подотчетных сотрудников.",
             )
 
     return overtime
@@ -170,7 +160,7 @@ async def review_overtime(
     overtime_id: int,
     review: OvertimeReview,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Согласовать или отклонить заявку на переработку.
@@ -182,19 +172,14 @@ async def review_overtime(
     """
     # Проверка прав: только менеджеры, начальники или админы могут согласовывать
     if current_user.role == UserRole.employee:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="У вас нет прав для согласования заявок"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="У вас нет прав для согласования заявок")
 
     return await overtime_service.review_overtime(session, overtime_id, review, current_user)
 
 
 @router.post("/{overtime_id}/cancel", response_model=OvertimeResponse)
 async def cancel_overtime_request(
-    overtime_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    overtime_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Отменить заявку на переработку.
@@ -207,9 +192,7 @@ async def cancel_overtime_request(
 
 @router.post("/{overtime_id}/restore", response_model=OvertimeResponse)
 async def restore_overtime_request(
-    overtime_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    overtime_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Восстановить отменённую заявку.
@@ -226,7 +209,7 @@ async def update_overtime_request(
     overtime_id: int,
     overtime_in: OvertimeUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Обновить данные заявки на переработку.
@@ -239,9 +222,7 @@ async def update_overtime_request(
 
 @router.delete("/{overtime_id}", status_code=204)
 async def delete_overtime_admin(
-    overtime_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    overtime_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Полностью удалить заявку на переработку.
@@ -252,8 +233,7 @@ async def delete_overtime_admin(
     """
     if current_user.role != UserRole.admin:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Удаление заявок доступно только администраторам"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Удаление заявок доступно только администраторам"
         )
 
     result = await session.execute(select(Overtime).where(Overtime.id == overtime_id))
@@ -273,10 +253,9 @@ async def delete_overtime_admin(
             "employee_id": overtime.user_id,
             "employee_name": target_user.full_name if target_user else None,
             "employee_email": target_user.email if target_user else None,
-            "status": str(overtime.status)
-        }
+            "status": str(overtime.status),
+        },
     )
 
     await session.execute(sql_delete(Overtime).where(Overtime.id == overtime_id))
     await session.commit()
-

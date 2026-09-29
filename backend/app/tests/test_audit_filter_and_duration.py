@@ -2,10 +2,10 @@
 Тесты для проверки корректности фильтрации журнала аудита,
 человекочитаемого форматирования времени и фиксации данных сотрудника.
 """
-import pytest
+
 from app.core.utils import format_duration_human
 from app.repositories.audit import CATEGORY_ACTION_MAP
-from app.services.audit_export_service import ACTION_TITLES, ACTION_CATEGORIES, format_details_to_text
+from app.services.audit_export_service import format_details_to_text
 
 
 def test_format_duration_human():
@@ -53,7 +53,7 @@ def test_audit_export_target_employee():
         "status": "APPROVED",
         "hours": 3.0,
         "employee_name": "Иван Иванов",
-        "employee_email": "admin@example.com"
+        "employee_email": "admin@example.com",
     }
     text = format_details_to_text("ADMIN_UPDATE_OVERTIME", details)
     assert "Сотрудник: Иван Иванов (admin@example.com)" in text

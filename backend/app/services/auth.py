@@ -1,9 +1,9 @@
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.user import get_user_by_email, create_user
 from app.core.security import hash_password, verify_password
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.repositories.user import create_user, get_user_by_email
 from app.schemas.user import UserCreate
 
 
@@ -29,12 +29,10 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
     # 2. Валидация существования отдела при его указании (CWE-755)
     if getattr(user_in, "department_id", None) is not None:
         from app.repositories.organization import get_department_by_id
+
         dept = await get_department_by_id(session, user_in.department_id)
         if not dept:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Отдел с ID {user_in.department_id} не найден."
-            )
+            raise HTTPException(status_code=404, detail=f"Отдел с ID {user_in.department_id} не найден.")
 
     # 3. Хешируем пароль
     hashed_pwd = hash_password(user_in.password)
@@ -47,7 +45,7 @@ async def register_user(session: AsyncSession, user_in: UserCreate):
         role=getattr(user_in, "role", UserRole.employee),
         department_id=user_in.department_id,
         company=user_in.company,
-        is_active=getattr(user_in, "is_active", True)
+        is_active=getattr(user_in, "is_active", True),
     )
 
     # 5. Сохраняем (добавляем await)
@@ -72,13 +70,13 @@ async def authenticate_user(session: AsyncSession, email: str, password: str):
     user = await get_user_by_email(session, email)
 
     if user is None:
-        raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
+        raise HTTPException(status_code=400, detail="Неверное имя пользователя или пароль.")
 
     if not user.hashed_password:
-        raise HTTPException(status_code=400, detail='Этот аккаунт настроен для входа через Microsoft.')
+        raise HTTPException(status_code=400, detail="Этот аккаунт настроен для входа через Microsoft.")
 
     if not verify_password(password, user.hashed_password):
-        raise HTTPException(status_code=400, detail='Неверное имя пользователя или пароль.')
+        raise HTTPException(status_code=400, detail="Неверное имя пользователя или пароль.")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Ваша учетная запись отключена. Обратитесь к администратору.")

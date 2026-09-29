@@ -180,21 +180,21 @@ const ProfilePage: React.FC = () => {
                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                                 Telegram Chat ID (получите у бота, отправив команду /start)
                                             </p>
-                                            <input 
-                                                type="text" 
-                                                placeholder="Например: 123456789" 
-                                                value={prefs.telegram_chat_id || ''} 
-                                                onChange={e => setPrefs({ ...prefs, telegram_chat_id: e.target.value })} 
-                                                style={{ 
-                                                    width: '100%', 
-                                                    padding: '10px 14px', 
-                                                    borderRadius: '10px', 
-                                                    background: 'var(--bg-tertiary)', 
+                                            <input
+                                                type="text"
+                                                placeholder="Например: 123456789"
+                                                value={prefs.telegram_chat_id || ''}
+                                                onChange={e => setPrefs({ ...prefs, telegram_chat_id: e.target.value })}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px 14px',
+                                                    borderRadius: '10px',
+                                                    background: 'var(--bg-tertiary)',
                                                     border: '1px solid var(--border-color)',
                                                     color: 'var(--text-main)',
                                                     fontSize: '0.85rem',
                                                     outline: 'none'
-                                                }} 
+                                                }}
                                             />
                                         </div>
                                     )}

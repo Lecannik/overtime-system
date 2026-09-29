@@ -1,43 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
-from app.core.database import get_session
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.core.database import get_session
 from app.models.user import User
-from app.schemas.notification import NotificationResponse
 from app.repositories import notification as notif_repo
+from app.schemas.notification import NotificationResponse
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
+
 @router.get("/", response_model=List[NotificationResponse])
 async def list_notifications(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Получить список моих уведомлений."""
     return await notif_repo.get_user_notifications(session, current_user.id)
 
+
 @router.post("/{notification_id}/read")
 async def mark_read(
-    notification_id: int,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    notification_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Пометить уведомление как прочитанное."""
     updated = await notif_repo.mark_as_read(session, notification_id, current_user.id)
     if not updated:
-        raise HTTPException(
-            status_code=404,
-            detail="Уведомление не найдено"
-        )
+        raise HTTPException(status_code=404, detail="Уведомление не найдено")
     return {"status": "ok"}
 
+
 @router.post("/read-all")
-async def mark_all_read(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+async def mark_all_read(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """Пометить все как прочитанные."""
     await notif_repo.mark_all_as_read(session, current_user.id)
     return {"status": "ok"}

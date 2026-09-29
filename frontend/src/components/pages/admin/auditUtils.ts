@@ -404,4 +404,3 @@ export const formatActionSummary = (action: string, details?: Record<string, unk
 
     return employeeInfo ? `Сотрудник: ${employeeInfo}` : '—';
 };
-

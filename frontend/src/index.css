@@ -593,18 +593,18 @@ input.datetime-input-custom {
     font-size: 0.75rem !important;
     gap: 4px !important;
   }
-  
+
   /* Макет календаря на мобильных выстраивается в один столбец */
   .calendar-view-layout {
     flex-direction: column !important;
   }
-  
+
   .calendar-sidebar-column {
     flex: 1 1 auto !important;
     width: 100% !important;
     max-width: 100% !important;
   }
-  
+
   /* Карточки Bulk Actions на мобильных выстраиваются вертикально */
   .bulk-actions-overlay {
     flex-direction: column !important;
@@ -620,7 +620,7 @@ input.datetime-input-custom {
     max-width: 100% !important;
     width: 100% !important;
   }
-  
+
   /* Сжимаем карточки во всю ширину */
   .timeline-day-grid {
     grid-template-columns: 1fr !important;

@@ -63,11 +63,11 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
     const [projectSearch, setProjectSearch] = useState('');
     const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
     const [lastProject, setLastProject] = useState<Project | null>(null);
-    
+
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [description, setDescription] = useState('');
-    
+
     const [startLat, setStartLat] = useState<number | null>(null);
     const [startLng, setStartLng] = useState<number | null>(null);
     const [endLat, setEndLat] = useState<number | null>(null);
@@ -228,7 +228,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                 setEndLat(editData.end_lat || null);
                 setEndLng(editData.end_lng || null);
                 setLocationName(editData.location_name || '');
-                
+
                 const selectedProj = projects.find(p => p.id.toString() === (editData.project_id ? editData.project_id.toString() : ''));
                 if (selectedProj) {
                     setProjectSearch(selectedProj.name);
@@ -355,10 +355,10 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
 
     const filteredProjects = projects.filter(p => {
         const searchLower = projectSearch.toLowerCase();
-        
+
         // 1. Поиск по названию
         if (p.name.toLowerCase().includes(searchLower)) return true;
-        
+
         // 2. Поиск по коду/номеру проекта
         if (p.code) {
             const cleanPCode = cleanCode(p.code);
@@ -370,11 +370,11 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
 
     return (
         <div className="modal-overlay" onClick={handleOverlayClick} style={{ zIndex: 2000 }}>
-            <div className="modal-content glass-card animate-scale-in" 
+            <div className="modal-content glass-card animate-scale-in"
                 ref={modalRef}
-                style={{ maxWidth: '560px', padding: 0 }} 
+                style={{ maxWidth: '560px', padding: 0 }}
                 onClick={e => e.stopPropagation()}>
-                
+
                 {/* Header */}
                 <div className="modal-header-responsive" style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
@@ -421,10 +421,10 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 style={{ paddingLeft: '44px', cursor: 'text', width: '100%' }}
                             />
                         </div>
-                        
+
                         {isProjectDropdownOpen && (
-                            <div className="glass-card scrollbar-hidden" style={{ 
-                                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', 
+                            <div className="glass-card scrollbar-hidden" style={{
+                                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px',
                                 maxHeight: '200px', overflowY: 'auto', zIndex: 100, padding: '8px', gap: '4px', display: 'flex', flexDirection: 'column',
                                 boxShadow: '0 12px 30px rgba(0,0,0,0.4)', background: 'var(--bg-secondary)'
                             }}>
@@ -450,8 +450,8 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const internalProj = projects.find(p => 
-                                            p.name.toLowerCase().includes('внутренн') || 
+                                        const internalProj = projects.find(p =>
+                                            p.name.toLowerCase().includes('внутренн') ||
                                             (p.code && p.code.toLowerCase() === 'internal')
                                         );
                                         if (internalProj) {
@@ -550,9 +550,9 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                             <MapPin size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                             <h4 style={{ fontWeight: 700, margin: 0, fontSize: '0.9rem' }}>Геолокация</h4>
                         </div>
-                        
+
                         {geoError && <div style={{ color: 'var(--error)', fontSize: '0.8rem', marginBottom: '10px' }}>{geoError}</div>}
-                        
+
                         <div className="modal-geo-buttons" style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
                             <button type="button" onClick={() => getLocation('start')} className="secondary" disabled={geoLoading} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', minHeight: '42px', fontSize: '0.85rem' }}>
                                 {geoLoading ? 'Определение...' : startLat ? 'Точка старта (Обновить)' : 'Точка старта'}
@@ -561,7 +561,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 {geoLoading ? 'Определение...' : endLat ? 'Точка финиша (Обновить)' : 'Точка финиша'}
                             </button>
                         </div>
-                        
+
                         <div className="form-group" style={{ marginBottom: 0 }}>
                             <input
                                 type="text"

@@ -1,9 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.organization import Department, Project
 
-
 # --- Departments ---
+
 
 async def create_department(session: AsyncSession, department: Department) -> Department:
     """Создать отдел."""
@@ -43,6 +44,7 @@ async def delete_department(session: AsyncSession, department: Department) -> No
 
 # --- Projects ---
 
+
 async def create_project(session: AsyncSession, project: Project) -> Project:
     """Создать проект."""
     session.add(project)
@@ -63,9 +65,7 @@ async def get_projects(session: AsyncSession, only_active: bool = False) -> list
 
 async def get_projects_by_manager(session: AsyncSession, manager_id: int) -> list[Project]:
     """Получить проекты, где пользователь является менеджером."""
-    result = await session.execute(
-        select(Project).where(Project.manager_id == manager_id).order_by(Project.id)
-    )
+    result = await session.execute(select(Project).where(Project.manager_id == manager_id).order_by(Project.id))
     return result.scalars().all()
 
 

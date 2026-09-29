@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
+
 import jwt
 from passlib.context import CryptContext
+
 from app.core.config import settings
 
-
 # Настройка bcrypt для хеширования
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -29,9 +30,5 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.update({"exp": expire})
 
     # 3. Собираем все вместе: данные + наш секретный ключ + алгоритм
-    encoded_jwt = jwt.encode(
-        to_encode, 
-        settings.SECRET_KEY, 
-        algorithm=settings.ALGORITHM
-    )
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt

@@ -1,40 +1,40 @@
 import logging
-# pyrefly: ignore [missing-import]
-from sqlalchemy import select
-# pyrefly: ignore [missing-import]
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta, timezone
+
 # pyrefly: ignore [missing-import]
 from fastapi import HTTPException
+
+# pyrefly: ignore [missing-import]
+from sqlalchemy import select
+
+# pyrefly: ignore [missing-import]
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.cache import cache_clear
+from app.core.config import settings
+from app.core.utils import ensure_utc
+from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, UserRole
-from app.models.organization import Department
+from app.repositories import audit as audit_repo, organization as org_repo, overtime as overtime_repo, user as user_repo
 from app.schemas.overtime import OvertimeCreate, OvertimeReview, OvertimeUpdate
-from app.repositories import overtime as overtime_repo
-from app.models.audit import AuditLog
-from app.repositories import audit as audit_repo
 from app.services import notifications
 from app.services.websocket import ws_manager
-from app.repositories import organization as org_repo
-from app.repositories import user as user_repo
-
-from datetime import datetime, timedelta, timezone
-from app.core.utils import calculate_overtime_hours, ensure_utc
-from app.core.config import settings
-from app.core.cache import cache_clear
 
 logger = logging.getLogger(__name__)
+
 
 async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate, user_id: int):
     """
     Создает новую заявку на переработку.
-    
+
     Бизнес-логика:
     1. Валидация времени (нельзя в будущее).
     2. Проверка на пересечение с уже существующими заявками сотрудника.
     3. Создание записи в БД.
     4. Проверка недельного лимита проекта (уведомление менеджера при превышении).
     5. Отправка уведомлений руководителям (Менеджер + Нач. отдела).
-    
+
     Args:
         session: Сессия БД.
         overtime_in: Данные из запроса (проект, время, описание, место).
@@ -42,33 +42,23 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
     """
     start_time = overtime_in.start_time
     end_time = overtime_in.end_time
-    
+
     # 0. Валидация существования и активности проекта (защита от краша 500 / AttributeError, Attack 1)
     project = await org_repo.get_project_by_id(session, overtime_in.project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Проект с ID {overtime_in.project_id} не найден."
-        )
+        raise HTTPException(status_code=404, detail=f"Проект с ID {overtime_in.project_id} не найден.")
     if not project.is_active:
-        raise HTTPException(
-            status_code=400,
-            detail="Нельзя создать заявку по неактивному проекту."
-        )
+        raise HTTPException(status_code=400, detail="Нельзя создать заявку по неактивному проекту.")
 
     # 0.1 Валидация обязательного заполнения времени окончания при ручном создании
     if not end_time:
         raise HTTPException(
-            status_code=400,
-            detail="Время окончания переработки обязательно для заполнения при ручном вводе."
+            status_code=400, detail="Время окончания переработки обязательно для заполнения при ручном вводе."
         )
-        
+
     # 0.2 Валидация порядка времени (защита от "отрицательных" часов)
     if end_time <= start_time:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания должно быть позже времени начала."
-        )
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала.")
 
     # Приводим к UTC-aware для корректной работы с timestamptz колонками
     start_time = ensure_utc(start_time)
@@ -83,110 +73,95 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
                 detail=(
                     f"Длительность переработки ({total_hours:.1f}ч) превышает допустимый максимум "
                     f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
-                )
+                ),
             )
 
     # 1. Запрет на будущее время (добавляем 5 минут буфера на случай рассинхрона часов)
     now_utc = datetime.now(timezone.utc) + timedelta(minutes=5)
     if start_time > now_utc:
-        raise HTTPException(
-            status_code=400, 
-            detail="Время начала переработки не может быть в будущем."
-        )
+        raise HTTPException(status_code=400, detail="Время начала переработки не может быть в будущем.")
     if end_time and end_time > now_utc:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания переработки не может быть в будущем."
-        )
+        raise HTTPException(status_code=400, detail="Время окончания переработки не может быть в будущем.")
 
     # 2. Проверка на пересечение (Overlap)
-    has_overlap = await overtime_repo.check_overlapping_overtimes(
-        session, user_id, start_time, end_time
-    )
+    has_overlap = await overtime_repo.check_overlapping_overtimes(session, user_id, start_time, end_time)
     if has_overlap:
         raise HTTPException(
-            status_code=400,
-            detail="У вас уже есть заявка, которая пересекается с этим интервалом времени."
+            status_code=400, detail="У вас уже есть заявка, которая пересекается с этим интервалом времени."
         )
 
     # 3. Базовое создание
     data = overtime_in.model_dump()
-    
+
     from app.core.utils import split_interval_by_days
+
     intervals = []
     if start_time and end_time:
         intervals = split_interval_by_days(start_time, end_time)
-        
+
     if not intervals:
         intervals = [(start_time, end_time)]
-        
+
     created_overtimes = []
     for s, e in intervals:
         item_data = data.copy()
         item_data["start_time"] = s
         item_data["end_time"] = e
-        overtime_db = Overtime(
-            **item_data,
-            user_id=user_id,
-            status=OvertimeStatus.PENDING
-        )
+        overtime_db = Overtime(**item_data, user_id=user_id, status=OvertimeStatus.PENDING)
         ot = await overtime_repo.create_overtime(session, overtime_db)
-        
+
         # Получаем полный объект с релейшнами
         ot_full = await overtime_repo.get_overtime_by_id(session, ot.id)
         created_overtimes.append(ot_full)
-        
+
         # 4. Проверка недельных лимитов для каждой части
         weekly_hours = await overtime_repo.get_weekly_overtime_hours(
             session, user_id, ot_full.project_id, target_date=ot_full.start_time
         )
-        
+
         # Получаем менеджера проекта
         manager = None
         if ot_full.project.manager_id:
             manager = await user_repo.get_user_by_id(session, ot_full.project.manager_id)
-        
+
         # Если лимит превышен — уведомляем менеджера
         if manager and weekly_hours > ot_full.project.weekly_limit:
             await notifications.notify_limit_exceeded(
                 session, ot_full, manager, weekly_hours, ot_full.project.weekly_limit
             )
-    
+
         # Получаем начальника для стандартного уведомления
         dept = await org_repo.get_department_by_id(session, ot_full.user.department_id)
         head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
-    
+
         await notifications.notify_new_overtime(session, ot_full, manager, head)
 
     cache_clear()
     try:
-        await ws_manager.broadcast_to_all({
-            "type": "OVERTIME_CREATED",
-            "overtime_id": created_overtimes[0].id,
-            "employee_name": created_overtimes[0].user.full_name if created_overtimes[0].user else ""
-        })
+        await ws_manager.broadcast_to_all(
+            {
+                "type": "OVERTIME_CREATED",
+                "overtime_id": created_overtimes[0].id,
+                "employee_name": created_overtimes[0].user.full_name if created_overtimes[0].user else "",
+            }
+        )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in create_new_overtime: {e}")
 
     return created_overtimes[0]
 
 
-async def review_overtime(
-    session: AsyncSession,
-    overtime_id: int,
-    review: OvertimeReview,
-    current_user: User
-):
+async def review_overtime(session: AsyncSession, overtime_id: int, review: OvertimeReview, current_user: User):
     """
     Обрабатывает решение руководителя (или администратора) по заявке.
-    
+
     Логика:
     1. Проверка прав доступа: роль (Manager/Head) должна соответствовать проекту/отделу заявки.
     2. Сохранение решения (Одобрено/Отклонено) и комментария.
     3. Обновление общего статуса заявки (Workflow).
     4. Логирование действия в AuditLog.
     5. Уведомление сотрудника о решении.
-    
+
     Workflow статусов (Бизнес-логика согласования):
     - Любой Reject (отклонение) -> REJECTED
     - Если одобряет Менеджер -> MANAGER_APPROVED (заявка ожидает одобрения Начальника)
@@ -203,24 +178,21 @@ async def review_overtime(
 
     if overtime.status == OvertimeStatus.IN_PROGRESS:
         raise HTTPException(
-            status_code=400,
-            detail="Нельзя согласовать заявку, которая еще находится в процессе выполнения."
+            status_code=400, detail="Нельзя согласовать заявку, которая еще находится в процессе выполнения."
         )
 
     # Защита машины состояний: запрет повторного согласования терминальных статусов для не-администраторов
-    if current_user.role != UserRole.admin and overtime.status in (OvertimeStatus.APPROVED, OvertimeStatus.REJECTED, OvertimeStatus.CANCELLED):
-        raise HTTPException(
-            status_code=400,
-            detail="Заявка находится в финальном статусе и не может быть изменена."
-        )
+    if current_user.role != UserRole.admin and overtime.status in (
+        OvertimeStatus.APPROVED,
+        OvertimeStatus.REJECTED,
+        OvertimeStatus.CANCELLED,
+    ):
+        raise HTTPException(status_code=400, detail="Заявка находится в финальном статусе и не может быть изменена.")
 
     # Защита от конфликта интересов: Самосогласование (Self-Approval)
-    is_self_approval = (overtime.user_id == current_user.id)
+    is_self_approval = overtime.user_id == current_user.id
     if is_self_approval and current_user.role != UserRole.admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Конфликт интересов: запрещено согласовывать собственную заявку."
-        )
+        raise HTTPException(status_code=403, detail="Конфликт интересов: запрещено согласовывать собственную заявку.")
 
     # 1. Режим Супер-админа: если админ не указал роль, одобряем за обоих сразу
 
@@ -231,46 +203,32 @@ async def review_overtime(
         overtime.head_comment = review.comment
     else:
         # 2. Обычный режим: определяем роль (с учетом as_role для админа)
-        acting_role = (
-            review.as_role
-            if (current_user.role == UserRole.admin and review.as_role)
-            else current_user.role
-        )
+        acting_role = review.as_role if (current_user.role == UserRole.admin and review.as_role) else current_user.role
 
         if acting_role == UserRole.manager:
             # Проверяем, что это менеджер ЭТОГО проекта
             if current_user.role != UserRole.admin and overtime.project.manager_id != current_user.id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Вы не являетесь менеджером этого проекта"
-                )
+                raise HTTPException(status_code=403, detail="Вы не являетесь менеджером этого проекта")
             overtime.manager_approved = review.approved
             overtime.manager_comment = review.comment
         elif acting_role == UserRole.head:
             # Проверяем, является ли пользователь начальником отдела сотрудника
             is_their_head = False
             if overtime.user.department_id:
-                dept_res = await session.execute(
-                    select(Department).where(Department.id == overtime.user.department_id)
-                )
+                dept_res = await session.execute(select(Department).where(Department.id == overtime.user.department_id))
                 dept = dept_res.scalar_one_or_none()
                 if dept and dept.head_id == current_user.id:
                     is_their_head = True
 
             # Проверяем, является ли пользователь менеджером этого проекта
             is_project_manager = (
-                overtime.project.manager_id is not None
-                and overtime.project.manager_id == current_user.id
+                overtime.project.manager_id is not None and overtime.project.manager_id == current_user.id
             )
 
-            if (
-                current_user.role != UserRole.admin
-                and not is_their_head
-                and not is_project_manager
-            ):
+            if current_user.role != UserRole.admin and not is_their_head and not is_project_manager:
                 raise HTTPException(
                     status_code=403,
-                    detail="Вы не являетесь ни начальником отдела этого сотрудника, ни менеджером проекта"
+                    detail="Вы не являетесь ни начальником отдела этого сотрудника, ни менеджером проекта",
                 )
 
             if is_their_head and is_project_manager:
@@ -289,7 +247,6 @@ async def review_overtime(
                 overtime.manager_comment = review.comment
         else:
             raise HTTPException(status_code=403, detail="У вас нет прав для этого действия")
-
 
     # Сохраняем переданные часы (если они есть в решении)
     if review.approved_hours is not None:
@@ -313,7 +270,7 @@ async def review_overtime(
         weekly_hours = await overtime_repo.get_weekly_overtime_hours(
             session, overtime.user_id, overtime.project_id, target_date=overtime.start_time
         )
-        
+
         # Если лимит не превышен, одобрения Начальника (Head) достаточно
         if weekly_hours <= overtime.project.weekly_limit:
             overtime.status = OvertimeStatus.APPROVED
@@ -327,7 +284,7 @@ async def review_overtime(
     elif overtime.manager_approved is True:
         overtime.status = OvertimeStatus.MANAGER_APPROVED
 
-    # Если заявка полностью одобрена, но часы не были изменены вручную — 
+    # Если заявка полностью одобрена, но часы не были изменены вручную —
     # устанавливаем их равными запрошенным (с учетом округления бизнес-логики)
     if overtime.status == OvertimeStatus.APPROVED and overtime.approved_hours is None:
         overtime.approved_hours = overtime.hours
@@ -353,7 +310,7 @@ async def review_overtime(
             "employee_id": overtime.user_id,
             "employee_name": overtime.user.full_name if overtime.user else None,
             "employee_email": overtime.user.email if overtime.user else None,
-        }
+        },
     )
 
     # 5. Сохраняем изменения
@@ -367,26 +324,25 @@ async def review_overtime(
     await notifications.notify_overtime_review(session, overtime, current_user)
 
     try:
-        await ws_manager.broadcast_to_all({
-            "type": "OVERTIME_STATUS_CHANGED",
-            "overtime_id": overtime.id,
-            "new_status": overtime.status.value,
-            "reviewer_name": current_user.full_name,
-            "approved": review.approved,
-            "employee_name": overtime.user.full_name if overtime.user else ""
-        })
+        await ws_manager.broadcast_to_all(
+            {
+                "type": "OVERTIME_STATUS_CHANGED",
+                "overtime_id": overtime.id,
+                "new_status": overtime.status.value,
+                "reviewer_name": current_user.full_name,
+                "approved": review.approved,
+                "employee_name": overtime.user.full_name if overtime.user else "",
+            }
+        )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in review_overtime: {e}")
 
     return overtime
 
-async def cancel_overtime(
-    session: AsyncSession,
-    overtime_id: int,
-    current_user: User
-):
+
+async def cancel_overtime(session: AsyncSession, overtime_id: int, current_user: User):
     """
-    Отменяет заявку. 
+    Отменяет заявку.
     Доступно владельцу заявки (если она еще не обработана под корень) или администратору.
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
@@ -406,7 +362,7 @@ async def cancel_overtime(
         status_word = "утвержденную" if overtime.status == OvertimeStatus.APPROVED else "отклоненную"
         raise HTTPException(
             status_code=400,
-            detail=f"Нельзя отменить уже {status_word} заявку. Для изменения статуса обратитесь к администратору."
+            detail=f"Нельзя отменить уже {status_word} заявку. Для изменения статуса обратитесь к администратору.",
         )
 
     # Сохраняем предыдущий статус ДО изменения (для корректного аудит-лога)
@@ -433,34 +389,31 @@ async def cancel_overtime(
             "employee_id": overtime.user_id,
             "employee_name": emp_name,
             "employee_email": emp_email,
-        }
+        },
     )
-
 
     await session.commit()
     await session.refresh(overtime)
     cache_clear()
 
     try:
-        await ws_manager.broadcast_to_all({
-            "type": "OVERTIME_STATUS_CHANGED",
-            "overtime_id": overtime.id,
-            "new_status": overtime.status.value,
-            "reviewer_name": current_user.full_name,
-            "action": "cancel",
-            "employee_name": overtime.user.full_name if overtime.user else ""
-        })
+        await ws_manager.broadcast_to_all(
+            {
+                "type": "OVERTIME_STATUS_CHANGED",
+                "overtime_id": overtime.id,
+                "new_status": overtime.status.value,
+                "reviewer_name": current_user.full_name,
+                "action": "cancel",
+                "employee_name": overtime.user.full_name if overtime.user else "",
+            }
+        )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in cancel_overtime: {e}")
 
     return overtime
 
 
-async def restore_overtime(
-    session: AsyncSession,
-    overtime_id: int,
-    current_user: User
-):
+async def restore_overtime(session: AsyncSession, overtime_id: int, current_user: User):
     """
     Восстанавливает отменённую заявку в статус PENDING.
 
@@ -489,7 +442,7 @@ async def restore_overtime(
     if overtime.status != OvertimeStatus.CANCELLED:
         raise HTTPException(
             status_code=400,
-            detail=f"Нельзя восстановить заявку со статусом '{overtime.status.russian_label}'. Доступно только для отменённых заявок."
+            detail=f"Нельзя восстановить заявку со статусом '{overtime.status.russian_label}'. Доступно только для отменённых заявок.",
         )
 
     # Запрет сброса виз, если заявка уже была ранее согласована или отклонена руководством
@@ -498,7 +451,7 @@ async def restore_overtime(
     ):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя восстановить заявку, решение по которой уже было принято руководством. Для изменения статуса обратитесь к администратору."
+            detail="Нельзя восстановить заявку, решение по которой уже было принято руководством. Для изменения статуса обратитесь к администратору.",
         )
 
     # Сбрасываем все результаты согласования — заявка должна пройти проверку заново
@@ -527,7 +480,7 @@ async def restore_overtime(
             "employee_id": overtime.user_id,
             "employee_name": emp_name,
             "employee_email": emp_email,
-        }
+        },
     )
 
     await session.commit()
@@ -535,28 +488,24 @@ async def restore_overtime(
     cache_clear()
 
     # WebSocket broadcast об изменении статуса заявки
-    await ws_manager.broadcast_to_all({
-        "type": "OVERTIME_STATUS_CHANGED",
-        "overtime_id": overtime.id,
-        "new_status": overtime.status.value,
-        "reviewer_name": current_user.full_name,
-        "action": "restore",
-        "employee_name": overtime.user.full_name if overtime.user else "",
-    })
+    await ws_manager.broadcast_to_all(
+        {
+            "type": "OVERTIME_STATUS_CHANGED",
+            "overtime_id": overtime.id,
+            "new_status": overtime.status.value,
+            "reviewer_name": current_user.full_name,
+            "action": "restore",
+            "employee_name": overtime.user.full_name if overtime.user else "",
+        }
+    )
 
     return overtime
 
 
-
-async def update_overtime(
-    session: AsyncSession,
-    overtime_id: int,
-    overtime_in: OvertimeUpdate,
-    current_user: User
-):
+async def update_overtime(session: AsyncSession, overtime_id: int, overtime_in: OvertimeUpdate, current_user: User):
     """
     Обновляет данные заявки.
-    При любом изменении данных сотрудником (проект, время), результаты 
+    При любом изменении данных сотрудником (проект, время), результаты
     предыдущих согласований сбрасываются в ожидание (None), а статус возвращается в PENDING.
     """
     overtime = await overtime_repo.get_overtime_by_id(session, overtime_id)
@@ -573,23 +522,25 @@ async def update_overtime(
         raise HTTPException(status_code=403, detail="Вы можете редактировать только свои заявки")
 
     # Редактировать можно только PENDING или IN_PROGRESS (чтобы не менять уже согласованное или отмененное)
-    if current_user.role != UserRole.admin and overtime.status not in (OvertimeStatus.PENDING, OvertimeStatus.IN_PROGRESS):
-        raise HTTPException(status_code=400, detail="Нельзя редактировать заявку, которая уже прошла согласование или отменена")
+    if current_user.role != UserRole.admin and overtime.status not in (
+        OvertimeStatus.PENDING,
+        OvertimeStatus.IN_PROGRESS,
+    ):
+        raise HTTPException(
+            status_code=400, detail="Нельзя редактировать заявку, которая уже прошла согласование или отменена"
+        )
 
     update_data = overtime_in.model_dump(exclude_unset=True)
-    
+
     # 0. Валидация времени (новая или старая - проверка на корректность)
     new_start = update_data.get("start_time", overtime.start_time)
     new_end = update_data.get("end_time", overtime.end_time)
-    
+
     new_start = ensure_utc(new_start)
     new_end = ensure_utc(new_end)
 
     if new_end and new_start and new_end <= new_start:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания должно быть позже времени начала."
-        )
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала.")
 
     if new_end and new_start:
         total_hours = (new_end - new_start).total_seconds() / 3600
@@ -599,21 +550,15 @@ async def update_overtime(
                 detail=(
                     f"Длительность переработки ({total_hours:.1f}ч) превышает допустимый максимум "
                     f"({settings.MAX_OVERTIME_HOURS}ч). Проверьте правильность введённых данных."
-                )
+                ),
             )
 
     # 1. Запрет на будущее время при обновлении (добавляем 5 минут буфера)
     now_utc = datetime.now(timezone.utc) + timedelta(minutes=5)
     if "start_time" in update_data and new_start > now_utc:
-        raise HTTPException(
-            status_code=400,
-            detail="Время начала переработки не может быть в будущем."
-        )
+        raise HTTPException(status_code=400, detail="Время начала переработки не может быть в будущем.")
     if "end_time" in update_data and new_end and new_end > now_utc:
-        raise HTTPException(
-            status_code=400,
-            detail="Время окончания переработки не может быть в будущем."
-        )
+        raise HTTPException(status_code=400, detail="Время окончания переработки не может быть в будущем.")
 
     # 2. Проверка на пересечение (Overlap) при изменении времени
     if "start_time" in update_data or "end_time" in update_data:
@@ -621,24 +566,15 @@ async def update_overtime(
             session, overtime.user_id, new_start, new_end, exclude_id=overtime.id
         )
         if has_overlap:
-            raise HTTPException(
-                status_code=400,
-                detail="У вас уже есть другая заявка, пересекающаяся с этим периодом."
-            )
+            raise HTTPException(status_code=400, detail="У вас уже есть другая заявка, пересекающаяся с этим периодом.")
 
     # Валидация целевого проекта при смене (Attack 4)
     if "project_id" in update_data and update_data["project_id"] is not None:
         target_project = await org_repo.get_project_by_id(session, update_data["project_id"])
         if not target_project:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Проект с ID {update_data['project_id']} не найден."
-            )
+            raise HTTPException(status_code=404, detail=f"Проект с ID {update_data['project_id']} не найден.")
         if not target_project.is_active:
-            raise HTTPException(
-                status_code=400,
-                detail="Нельзя привязать заявку к неактивному проекту."
-            )
+            raise HTTPException(status_code=400, detail="Нельзя привязать заявку к неактивному проекту.")
 
     # Выявляем факт изменения полей
     time_changed = False
@@ -651,8 +587,10 @@ async def update_overtime(
     project_changed = "project_id" in update_data and update_data["project_id"] != overtime.project_id
 
     # Убираем таймзоны для итогового словаря
-    if "start_time" in update_data: update_data["start_time"] = new_start
-    if "end_time" in update_data: update_data["end_time"] = new_end
+    if "start_time" in update_data:
+        update_data["start_time"] = new_start
+    if "end_time" in update_data:
+        update_data["end_time"] = new_end
 
     # При изменении сбрасываем согласование и статус (если не админ меняет технически)
     if current_user.role != UserRole.admin:
@@ -676,6 +614,7 @@ async def update_overtime(
 
     if time_changed:
         from app.repositories import audit as audit_repo
+
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
@@ -696,11 +635,12 @@ async def update_overtime(
                 "new_end": ensure_utc(result.end_time).isoformat() if result.end_time else None,
                 "old_hours": old_hours,
                 "new_hours": result.hours,
-            }
+            },
         )
 
     if current_user.role == UserRole.admin and (desc_changed or project_changed):
         from app.repositories import audit as audit_repo
+
         await audit_repo.create_audit_log(
             session=session,
             user_id=current_user.id,
@@ -716,8 +656,8 @@ async def update_overtime(
                 "changes": {
                     "description": {"old": old_desc, "new": result.description} if desc_changed else None,
                     "project_id": {"old": old_proj, "new": result.project_id} if project_changed else None,
-                }
-            }
+                },
+            },
         )
 
     await session.commit()
@@ -725,14 +665,16 @@ async def update_overtime(
     cache_clear()
 
     # WebSocket broadcast об изменении параметров заявки
-    await ws_manager.broadcast_to_all({
-        "type": "OVERTIME_STATUS_CHANGED",
-        "overtime_id": result.id,
-        "new_status": result.status.value,
-        "reviewer_name": current_user.full_name,
-        "action": "update",
-        "employee_name": result.user.full_name if result.user else "",
-    })
+    await ws_manager.broadcast_to_all(
+        {
+            "type": "OVERTIME_STATUS_CHANGED",
+            "overtime_id": result.id,
+            "new_status": result.status.value,
+            "reviewer_name": current_user.full_name,
+            "action": "update",
+            "employee_name": result.user.full_name if result.user else "",
+        }
+    )
 
     return result
 
@@ -746,6 +688,7 @@ async def auto_close_stale_sessions(session: AsyncSession) -> int:
     Возвращает количество закрытых сессий.
     """
     import logging
+
     logger = logging.getLogger("auto_close")
 
     from app.core.utils import split_interval_by_days
@@ -797,12 +740,15 @@ async def auto_close_stale_sessions(session: AsyncSession) -> int:
         )
         logger.warning(
             "Auto-closed stale session id=%d user_id=%d started=%s",
-            active.id, active.user_id, original_start.isoformat()
+            active.id,
+            active.user_id,
+            original_start.isoformat(),
         )
         # Уведомляем пользователя через Telegram
         if active.user and active.user.telegram_chat_id:
             try:
                 from app.services.bot_service import _notify_auto_close
+
                 await _notify_auto_close(
                     chat_id=active.user.telegram_chat_id,
                     overtime_id=active.id,

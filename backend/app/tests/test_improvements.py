@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from httpx import AsyncClient
+
 from app.models.organization import Project
 from app.services.ms_graph import MSGraphService
 
@@ -32,11 +34,7 @@ async def test_ms_graph_token_caching():
 
 
 @pytest.mark.asyncio
-async def test_overtime_presets_filtering(
-    client: AsyncClient,
-    admin_token_headers: dict,
-    test_project: Project
-):
+async def test_overtime_presets_filtering(client: AsyncClient, admin_token_headers: dict, test_project: Project):
     """Тест смарт-фильтров пресетов action_required и in_review."""
     # 1. Создаем заявку
     overtime_data = {
@@ -45,7 +43,7 @@ async def test_overtime_presets_filtering(
         "end_time": "2026-04-10T07:00:00",
         "description": "Preset Filter Test",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
     create_res = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
     assert create_res.status_code == 200
@@ -65,11 +63,7 @@ async def test_overtime_presets_filtering(
 
 
 @pytest.mark.asyncio
-async def test_calendar_summary_with_filters(
-    client: AsyncClient,
-    admin_token_headers: dict,
-    test_project: Project
-):
+async def test_calendar_summary_with_filters(client: AsyncClient, admin_token_headers: dict, test_project: Project):
     """Тест синхронизации календаря с фильтрами preset, status и department_id."""
     # Создаем заявку на целевую дату
     overtime_data = {
@@ -78,14 +72,13 @@ async def test_calendar_summary_with_filters(
         "end_time": "2026-05-15T07:00:00",
         "description": "Calendar Filter Test",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
     create_res = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
     assert create_res.status_code == 200
 
     res = await client.get(
-        "/api/v1/overtimes/calendar-summary?month=2026-05&preset=action_required",
-        headers=admin_token_headers
+        "/api/v1/overtimes/calendar-summary?month=2026-05&preset=action_required", headers=admin_token_headers
     )
     assert res.status_code == 200
     data = res.json()
@@ -95,10 +88,7 @@ async def test_calendar_summary_with_filters(
 
 
 @pytest.mark.asyncio
-async def test_analytics_summary_status_hours(
-    client: AsyncClient,
-    admin_token_headers: dict
-):
+async def test_analytics_summary_status_hours(client: AsyncClient, admin_token_headers: dict):
     """Тест двухрежимных показателей аналитики (шт. и часы по статусам)."""
     res = await client.get("/api/v1/analytics/summary", headers=admin_token_headers)
     assert res.status_code == 200
@@ -124,4 +114,3 @@ async def test_health_check_endpoint(client: AsyncClient):
     assert "telegram_bot" in data["checks"]
     assert "whisper_model" in data["checks"]
     assert "ms_graph" in data["checks"]
-

@@ -23,7 +23,7 @@ erDiagram
         string notification_level "OFF | EMAIL | TELEGRAM | BOTH"
         timestamp created_at
     }
-    
+
     departments {
         int id PK
         string name
@@ -211,7 +211,7 @@ class OvertimeReviewService:
 
         if overtime.status not in (OvertimeStatus.PENDING, OvertimeStatus.HEAD_APPROVED):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Заявка находится в несовместимом статусе для согласования"
             )
 

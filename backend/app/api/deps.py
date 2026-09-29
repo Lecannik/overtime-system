@@ -1,7 +1,7 @@
-from fastapi import Depends, HTTPException, status, Request
+import jwt
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-import jwt
 
 from app.core.config import settings
 from app.core.database import get_session
@@ -12,9 +12,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 
 
 async def get_current_user(
-    request: Request,
-    token: str | None = Depends(oauth2_scheme),
-    session: AsyncSession = Depends(get_session)
+    request: Request, token: str | None = Depends(oauth2_scheme), session: AsyncSession = Depends(get_session)
 ) -> User:
     """
     Извлекает текущего пользователя из JWT-токена.
@@ -40,20 +38,18 @@ async def get_current_user(
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Ваша учетная запись отключена. Доступ запрещен."
+            status_code=status.HTTP_403_FORBIDDEN, detail="Ваша учетная запись отключена. Доступ запрещен."
         )
 
     # Если флаг установлен, разрешаем только эндпоинты профиля (GET) и смены пароля (POST)
     if user.must_change_password:
-        is_allowed = (
-            (request.url.path == "/api/v1/auth/me" and request.method == "GET") or
-            (request.url.path == "/api/v1/auth/change-password" and request.method == "POST")
+        is_allowed = (request.url.path == "/api/v1/auth/me" and request.method == "GET") or (
+            request.url.path == "/api/v1/auth/change-password" and request.method == "POST"
         )
         if not is_allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Требуется смена пароля. Пока пароль не изменен, доступ к функциям ограничен."
+                detail="Требуется смена пароля. Пока пароль не изменен, доступ к функциям ограничен.",
             )
 
     return user

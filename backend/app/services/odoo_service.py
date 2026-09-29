@@ -20,11 +20,11 @@ Odoo предоставляет два XML-RPC эндпоинта:
 - analytic_account_id — аналитический счёт (может содержать код)
 """
 
-import xmlrpc.client
 import asyncio
 import logging
-from typing import Any
+import xmlrpc.client
 from functools import partial
+from typing import Any
 
 from app.core.config import settings
 
@@ -130,7 +130,7 @@ class OdooService:
             "id",
             "name",
             "display_name",
-            "user_id",           # [id, name] менеджера
+            "user_id",  # [id, name] менеджера
             "analytic_account_id",  # [id, name] аналитического счёта (может содержать код)
         ]
 
@@ -153,9 +153,7 @@ class OdooService:
 
         # Собираем ID менеджеров для запроса их email
         manager_user_ids = [
-            rec["user_id"][0]
-            for rec in records
-            if rec.get("user_id") and isinstance(rec["user_id"], (list, tuple))
+            rec["user_id"][0] for rec in records if rec.get("user_id") and isinstance(rec["user_id"], (list, tuple))
         ]
 
         # Получаем email менеджеров одним запросом к res.users
@@ -194,6 +192,7 @@ class OdooService:
                 analytic_name: str = analytic_raw[1]
                 # Ищем шаблон YYYY-NNNNN в начале строки
                 import re
+
                 match = re.match(r"(\d{4}-\d{5})", analytic_name)
                 if match:
                     code = match.group(1)
@@ -224,9 +223,7 @@ class OdooService:
             HTTPException: Пробрасывается выше через вызывающий код.
         """
         if not self.is_configured:
-            logger.warning(
-                "Odoo не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env"
-            )
+            logger.warning("Odoo не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env")
             return []
 
         loop = asyncio.get_event_loop()
@@ -234,9 +231,7 @@ class OdooService:
             # Шаг 1: аутентификация
             uid = await loop.run_in_executor(None, self._authenticate_sync)
             # Шаг 2: получение проектов
-            projects = await loop.run_in_executor(
-                None, partial(self._get_projects_sync, uid)
-            )
+            projects = await loop.run_in_executor(None, partial(self._get_projects_sync, uid))
             return projects
         except xmlrpc.client.Fault as e:
             logger.error(f"Odoo XML-RPC Fault: {e.faultCode} — {e.faultString}")

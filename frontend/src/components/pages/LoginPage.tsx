@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
-import { api, requestPasswordReset, confirmPasswordReset, verify2FA, setAccessToken, getAccessToken } from '../../services/api';
+import { api, requestPasswordReset, confirmPasswordReset, verify2FA, getAccessToken } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Logo from '../atoms/Logo';
 import { AxiosError } from 'axios';
 
@@ -9,6 +10,7 @@ type PageMode = 'login' | 'forgot' | 'reset-code' | '2fa';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,7 +53,7 @@ const LoginPage: React.FC = () => {
         setMode('2fa');
         setSuccess('Код подтверждения отправлен на вашу почту.');
       } else {
-        setAccessToken(res.data.access_token);
+        login(res.data.access_token);
         navigate('/dashboard');
       }
     } catch (err: unknown) {
@@ -68,7 +70,7 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await verify2FA(twoFaEmail, twoFaCode);
-      setAccessToken(res.access_token);
+      login(res.access_token);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as AxiosError<{ detail?: string }>;

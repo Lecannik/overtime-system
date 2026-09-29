@@ -1,20 +1,24 @@
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict
 import enum
+
+from pydantic import BaseModel, ConfigDict
+
 
 class OvertimeStatus(str, enum.Enum):
     PENDING = "PENDING"
+
 
 class ProjectMini(BaseModel):
     id: int
     name: str
     model_config = ConfigDict(from_attributes=True)
 
+
 class UserMini(BaseModel):
     id: int
     full_name: str | None = None
     email: str
     model_config = ConfigDict(from_attributes=True)
+
 
 class OvertimeResponse(BaseModel):
     id: int
@@ -25,8 +29,10 @@ class OvertimeResponse(BaseModel):
     user: UserMini | None = None
     model_config = ConfigDict(from_attributes=True)
 
+
 class MockObj:
     pass
+
 
 ot = MockObj()
 ot.id = 1

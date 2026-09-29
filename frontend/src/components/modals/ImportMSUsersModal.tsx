@@ -60,8 +60,8 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
     };
 
     const filteredUsers = useMemo(() => {
-        return msUsers.filter(u => 
-            u.displayName.toLowerCase().includes(search.toLowerCase()) || 
+        return msUsers.filter(u =>
+            u.displayName.toLowerCase().includes(search.toLowerCase()) ||
             u.mail?.toLowerCase().includes(search.toLowerCase()) ||
             u.userPrincipalName.toLowerCase().includes(search.toLowerCase())
         );
@@ -78,7 +78,7 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
 
     const handleImport = async () => {
         if (selectedIds.size === 0) return;
-        
+
         try {
             setImporting(true);
             const usersToImport = msUsers.filter(u => selectedIds.has(u.id));
@@ -117,9 +117,9 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                 <div style={{ padding: '16px 24px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ position: 'relative' }}>
                         <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input 
-                            type="text" 
-                            placeholder="Поиск по имени или email..." 
+                        <input
+                            type="text"
+                            placeholder="Поиск по имени или email..."
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             style={{ paddingLeft: '44px', height: '48px', borderRadius: '12px' }}
@@ -147,7 +147,7 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                                     {filteredUsers.length} пользователей найдено
                                 </span>
-                                <button 
+                                <button
                                     onClick={handleSelectAll}
                                     style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
                                 >
@@ -156,14 +156,14 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                             </div>
 
                             {filteredUsers.map(user => (
-                                <div 
-                                    key={user.id} 
+                                <div
+                                    key={user.id}
                                     onClick={() => handleToggleSelect(user.id)}
-                                    style={{ 
-                                        padding: '12px 16px', 
-                                        borderRadius: '12px', 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
+                                    style={{
+                                        padding: '12px 16px',
+                                        borderRadius: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
                                         gap: '16px',
                                         cursor: 'pointer',
                                         background: selectedIds.has(user.id) ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
@@ -172,10 +172,10 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                                         transition: 'all 0.2s ease'
                                     }}
                                 >
-                                    <div style={{ 
-                                        width: '20px', 
-                                        height: '20px', 
-                                        borderRadius: '6px', 
+                                    <div style={{
+                                        width: '20px',
+                                        height: '20px',
+                                        borderRadius: '6px',
                                         border: '2px solid',
                                         borderColor: selectedIds.has(user.id) ? 'var(--primary)' : 'var(--border)',
                                         background: selectedIds.has(user.id) ? 'var(--primary)' : 'transparent',
@@ -210,9 +210,9 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                 {/* Footer */}
                 <div style={{ padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                     <button onClick={onClose} disabled={importing} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer' }}>Отмена</button>
-                    <button 
-                        onClick={handleImport} 
-                        className="primary" 
+                    <button
+                        onClick={handleImport}
+                        className="primary"
                         disabled={selectedIds.size === 0 || importing}
                         style={{ padding: '12px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}
                     >
@@ -221,7 +221,7 @@ const ImportMSUsersModal: React.FC<ImportMSUsersModalProps> = ({ isOpen, onClose
                     </button>
                 </div>
             </div>
-            
+
             <style>{`
                 .action-button-modern {
                     width: 36px;

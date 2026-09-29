@@ -41,7 +41,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        
+
         # Увеличение таймаутов для долгих сессий websocket/обновлений
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
@@ -198,14 +198,14 @@ async def microsoft_login_redirect():
             status_code=500,
             detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
         )
-        
+
     params = urlencode({
         "client_id": settings.AUTHENTIK_CLIENT_ID,
         "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email profile",
     })
-    
+
     # Редиректим на эндпоинт авторизации Authentik
     auth_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/authorize/?{params}"
     return RedirectResponse(auth_url)
@@ -233,33 +233,33 @@ async def microsoft_callback(
                 "client_secret": settings.AUTHENTIK_CLIENT_SECRET,
             }
         )
-    
+
     if token_resp.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Не удалось получить токен от Authentik: {token_resp.text}"
         )
-    
+
     tokens = token_resp.json()
     access_token = tokens.get("access_token")
-    
+
     # Шаг 2.2: Запрос информации о пользователе (User Info) из Authentik
     async with httpx.AsyncClient() as client:
         userinfo_resp = await client.get(
             f"{settings.AUTHENTIK_BASE_URL}/application/o/userinfo/",
             headers={"Authorization": f"Bearer {access_token}"}
         )
-        
+
     if userinfo_resp.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Не удалось получить данные о пользователе от Authentik."
         )
-        
+
     user_data = userinfo_resp.json()
     email = user_data.get("email")
     full_name = user_data.get("name") or user_data.get("preferred_username") or email
-    
+
     if not email:
         raise HTTPException(
             status_code=400,
@@ -268,7 +268,7 @@ async def microsoft_callback(
 
     # Шаг 2.3: Поиск пользователя в локальной базе данных
     user = await get_user_by_email(session, email)
-    
+
     # Авто-создание (Provisioning), если пользователь заходит впервые
     if not user:
         # Пароль для SSO-пользователей оставляем пустым, войти по паролю они не смогут
@@ -304,7 +304,7 @@ async def microsoft_callback(
     from app.services.refresh_token import create_refresh_token
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
-    
+
     # Установка сессионного токена в HTTPOnly Cookie
     response.set_cookie(
         key="refresh_token",
@@ -314,9 +314,9 @@ async def microsoft_callback(
         samesite="strict",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
     )
-    
+
     local_access_token = create_access_token(data={"sub": str(user.id)})
-    
+
     # Перенаправляем пользователя на фронтенд-страницу успешного входа
     return RedirectResponse(
         url=f"https://overtime.polymedia.kz/auth/success?token={local_access_token}"

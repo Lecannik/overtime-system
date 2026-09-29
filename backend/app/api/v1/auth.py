@@ -1,49 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_session
-from app.core.security import hash_password, verify_password
+from app.core.rate_limit import login_limiter
+from app.core.security import create_access_token, hash_password, verify_password
+from app.models.user import OTPType, User
 from app.repositories import audit as audit_repo
+from app.repositories.user import get_user_by_email, update_user
+from app.schemas.otp import OTPVerify, PasswordResetConfirm, PasswordResetRequest
+from app.schemas.user import LoginResponse, UserChangePassword, UserResponse, UserUpdatePreferences
+from app.services.auth import authenticate_user
 from app.services.ms_graph import ms_graph
 from app.services.otp import create_otp, verify_otp
-from app.schemas.otp import OTPVerify, PasswordResetRequest, PasswordResetConfirm
-from app.schemas.user import UserResponse, Token, UserUpdatePreferences, UserChangePassword, LoginResponse
-from app.services.auth import authenticate_user
-from app.core.security import create_access_token
-from app.api.deps import get_current_user
-from app.models.user import User, OTPType
-from app.repositories.user import update_user, get_user_by_email
-from app.core.config import settings
 from app.services.refresh_token import (
     create_refresh_token,
-    verify_and_rotate_refresh_token,
-    revoke_refresh_token,
     revoke_all_user_refresh_tokens,
+    revoke_refresh_token,
+    verify_and_rotate_refresh_token,
 )
-from app.core.rate_limit import login_limiter
-
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
-    response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    session: AsyncSession = Depends(get_session)
+    response: Response, form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)
 ):
     """
     Аутентификация пользователя и получение JWT токена.
     """
     login_limiter.check_limit(form_data.username)
     user = await authenticate_user(session, form_data.username, form_data.password)
-    
+
     # ПРОВЕРКА 2FA
     if user.is_2fa_enabled:
         code = await create_otp(session, user.id, OTPType.login)
         await session.commit()
-        
+
         # Отправляем код на почту
         await ms_graph.send_email(
             recipient=user.email,
@@ -56,23 +52,18 @@ async def login(
                 </p>
                 <p style="color: #64748b; margin-top: 20px;">Срок действия кода: 10 минут.</p>
             </div>
-            """
+            """,
         )
-        
+
         return {"status": "2fa_required", "email": user.email}
 
     # Логируем вход в систему
-    await audit_repo.create_audit_log(
-        session=session,
-        user_id=user.id,
-        action="LOGIN",
-        details={"email": user.email}
-    )
-    
+    await audit_repo.create_audit_log(session=session, user_id=user.id, action="LOGIN", details={"email": user.email})
+
     # Создаем Refresh Token
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
-    
+
     # Устанавливаем куку
     response.set_cookie(
         key="refresh_token",
@@ -80,43 +71,34 @@ async def login(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
-    
+
     token = create_access_token(data={"sub": str(user.id)})
     return {"status": "success", "access_token": token, "token_type": "bearer", "user": user}
 
 
 @router.post("/verify-2fa", response_model=LoginResponse)
-async def verify_login_2fa(
-    response: Response,
-    verify_in: OTPVerify,
-    db: AsyncSession = Depends(get_session)
-):
+async def verify_login_2fa(response: Response, verify_in: OTPVerify, db: AsyncSession = Depends(get_session)):
     """Верификация 2FA кода при входе."""
     login_limiter.check_limit(verify_in.email)
     user = await get_user_by_email(db, verify_in.email)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-        
+
     is_valid = await verify_otp(db, user.id, verify_in.code, OTPType.login)
-    
+
     if not is_valid:
         raise HTTPException(status_code=400, detail="Неверный или просроченный код")
-        
+
     # Логируем успешный вход
-    await audit_repo.create_audit_log(
-        session=db,
-        user_id=user.id,
-        action="LOGIN_2FA",
-        details={"email": user.email}
-    )
-    
+    await audit_repo.create_audit_log(session=db, user_id=user.id, action="LOGIN_2FA", details={"email": user.email})
+
     # Создаем Refresh Token
     refresh_token = await create_refresh_token(db, user.id)
     await db.commit()
-    
+
     # Устанавливаем куку
     response.set_cookie(
         key="refresh_token",
@@ -124,31 +106,24 @@ async def verify_login_2fa(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
-    
+
     token = create_access_token(data={"sub": str(user.id)})
     return {"status": "success", "access_token": token, "token_type": "bearer", "user": user}
 
 
 @router.post("/refresh", response_model=LoginResponse)
-async def refresh_session(
-    request: Request,
-    response: Response,
-    session: AsyncSession = Depends(get_session)
-):
+async def refresh_session(request: Request, response: Response, session: AsyncSession = Depends(get_session)):
     """
     Обновление Access Token с использованием Refresh Token в Cookie.
     """
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Отсутствует сессионный токен"
-        )
-        
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Отсутствует сессионный токен")
+
     new_refresh_token, user = await verify_and_rotate_refresh_token(session, refresh_token)
-    
+
     # Устанавливаем новую куку (ротация)
     response.set_cookie(
         key="refresh_token",
@@ -156,40 +131,31 @@ async def refresh_session(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
-    
+
     new_access_token = create_access_token(data={"sub": str(user.id)})
     return {"status": "success", "access_token": new_access_token, "token_type": "bearer", "user": user}
 
 
 @router.post("/logout")
-async def logout(
-    request: Request,
-    response: Response,
-    session: AsyncSession = Depends(get_session)
-):
+async def logout(request: Request, response: Response, session: AsyncSession = Depends(get_session)):
     """
     Выход из системы, отзыв Refresh Token и генерация URL для выхода из SSO Authentik.
     """
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
         await revoke_refresh_token(session, refresh_token)
-        
+
     response.delete_cookie(key="refresh_token")
-    
+
     sso_logout_url = None
-        
-    return {
-        "detail": "Успешный выход из системы",
-        "sso_logout_url": sso_logout_url
-    }
+
+    return {"detail": "Успешный выход из системы", "sso_logout_url": sso_logout_url}
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(
-    current_user: User = Depends(get_current_user)
-):
+async def get_me(current_user: User = Depends(get_current_user)):
     """
     Получить информацию о текущем авторизованном пользователе.
     """
@@ -200,7 +166,7 @@ async def get_me(
 async def update_my_preferences(
     pref_in: UserUpdatePreferences,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Обновить настройки уведомлений текущего пользователя."""
     updated_user = await update_user(db, current_user, pref_in.model_dump(exclude_unset=True))
@@ -210,48 +176,35 @@ async def update_my_preferences(
 
 @router.post("/change-password")
 async def change_password(
-    pass_in: UserChangePassword,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    pass_in: UserChangePassword, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Смена пароля текущего пользователя."""
     if not verify_password(pass_in.old_password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный старый пароль"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный старый пароль")
 
-    await update_user(db, current_user, {
-        "hashed_password": hash_password(pass_in.new_password),
-        "must_change_password": False
-    })
-    
+    await update_user(
+        db, current_user, {"hashed_password": hash_password(pass_in.new_password), "must_change_password": False}
+    )
+
     # Отзываем все активные Refresh-токены пользователя для аннулирования украденных сессий (CWE-613)
     await revoke_all_user_refresh_tokens(db, current_user.id)
-    
+
     # Логируем смену пароля
-    await audit_repo.create_audit_log(
-        session=db,
-        user_id=current_user.id,
-        action="CHANGE_PASSWORD"
-    )
+    await audit_repo.create_audit_log(session=db, user_id=current_user.id, action="CHANGE_PASSWORD")
     await db.commit()
 
     return {"detail": "Пароль успешно изменен"}
 
 
 @router.post("/password-reset/request")
-async def request_password_reset(
-    req: PasswordResetRequest,
-    db: AsyncSession = Depends(get_session)
-):
+async def request_password_reset(req: PasswordResetRequest, db: AsyncSession = Depends(get_session)):
     login_limiter.check_limit(req.email)
     user = await get_user_by_email(db, req.email)
-    
+
     if user:
         code = await create_otp(db, user.id, OTPType.password_reset)
         await db.commit()
-        
+
         await ms_graph.send_email(
             recipient=user.email,
             subject="Восстановление пароля Overtime Pro",
@@ -266,42 +219,32 @@ async def request_password_reset(
                 </div>
                 <p style="color: #64748b; margin-top: 20px; font-size: 0.9rem;">Срок действия кода: 10 минут. Если вы не запрашивали сброс, просто проигнорируйте это письмо.</p>
             </div>
-            """
+            """,
         )
-    
+
     return {"detail": "Код восстановления отправлен на вашу почту, если она зарегистрирована в системе."}
 
 
 @router.post("/password-reset/confirm")
-async def confirm_password_reset(
-    req: PasswordResetConfirm,
-    db: AsyncSession = Depends(get_session)
-):
+async def confirm_password_reset(req: PasswordResetConfirm, db: AsyncSession = Depends(get_session)):
     user = await get_user_by_email(db, req.email)
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-        
+
     is_valid = await verify_otp(db, user.id, req.code, OTPType.password_reset)
-    
+
     if not is_valid:
         raise HTTPException(status_code=400, detail="Неверный или просроченный код")
-        
-    await update_user(db, user, {
-        "hashed_password": hash_password(req.new_password),
-        "must_change_password": False
-    })
-    
+
+    await update_user(db, user, {"hashed_password": hash_password(req.new_password), "must_change_password": False})
+
     # Отзываем все активные Refresh-токены пользователя для аннулирования украденных сессий (CWE-613)
     await revoke_all_user_refresh_tokens(db, user.id)
-    
-    await audit_repo.create_audit_log(
-        session=db,
-        user_id=user.id,
-        action="PASSWORD_RESET"
-    )
+
+    await audit_repo.create_audit_log(session=db, user_id=user.id, action="PASSWORD_RESET")
     await db.commit()
-    
+
     return {"detail": "Пароль успешно сброшен. Теперь вы можете войти с новым паролем."}
 
 
@@ -309,9 +252,12 @@ async def confirm_password_reset(
 
 import secrets
 from urllib.parse import urlencode
+
 import httpx
 from fastapi.responses import RedirectResponse
-from app.models.user import UserRole, UserCompany
+
+from app.models.user import UserCompany, UserRole
+
 
 @router.get("/microsoft/login")
 async def microsoft_login_redirect(response: Response):
@@ -319,25 +265,24 @@ async def microsoft_login_redirect(response: Response):
     1. Генерация CSRF state токена и перенаправление пользователя на авторизацию в Authentik
     """
     if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_REDIRECT_URI]):
-        raise HTTPException(
-            status_code=500,
-            detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
-        )
-        
+        raise HTTPException(status_code=500, detail="Настройки Authentik SSO не заданы в конфигурации бэкенда.")
+
     state_token = secrets.token_urlsafe(32)
 
-    params = urlencode({
-        "client_id": settings.AUTHENTIK_CLIENT_ID,
-        "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "prompt": "select_account",
-        "state": state_token,
-    })
-    
+    params = urlencode(
+        {
+            "client_id": settings.AUTHENTIK_CLIENT_ID,
+            "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "prompt": "select_account",
+            "state": state_token,
+        }
+    )
+
     auth_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/authorize/?{params}"
     redirect_resp = RedirectResponse(auth_url)
-    
+
     # Сохраняем state в защищенную куку для проверки на этапе callback (CSRF Protection)
     redirect_resp.set_cookie(
         key="oauth_state",
@@ -345,35 +290,36 @@ async def microsoft_login_redirect(response: Response):
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite="lax",
-        max_age=900  # 15 минут
+        max_age=900,  # 15 минут
     )
     return redirect_resp
 
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(
-    request: Request,
-    code: str,
-    state: str | None = None,
-    session: AsyncSession = Depends(get_session)
+    request: Request, code: str, state: str | None = None, session: AsyncSession = Depends(get_session)
 ):
     """
     2. Callback-обработчик OIDC от Authentik.
     Принимает code и state, валидирует CSRF state, обменивает code на токен,
     авторизует или создает пользователя в локальной БД, выдает HTTPOnly Cookie.
     """
-    if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_CLIENT_SECRET, settings.AUTHENTIK_REDIRECT_URI]):
-         raise HTTPException(
-            status_code=500,
-            detail="Настройки Authentik SSO не заданы в конфигурации бэкенда."
-        )
+    if not all(
+        [
+            settings.AUTHENTIK_BASE_URL,
+            settings.AUTHENTIK_CLIENT_ID,
+            settings.AUTHENTIK_CLIENT_SECRET,
+            settings.AUTHENTIK_REDIRECT_URI,
+        ]
+    ):
+        raise HTTPException(status_code=500, detail="Настройки Authentik SSO не заданы в конфигурации бэкенда.")
 
     # Шаг 2.0: Валидация CSRF state токена
     saved_state = request.cookies.get("oauth_state")
     if not saved_state or not state or saved_state != state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недействительный или отсутствующий CSRF state токен авторизации."
+            detail="Недействительный или отсутствующий CSRF state токен авторизации.",
         )
 
     # Шаг 2.1: Обмен authorization code на JWT токены Authentik
@@ -386,57 +332,56 @@ async def microsoft_callback(
                 "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
                 "client_id": settings.AUTHENTIK_CLIENT_ID,
                 "client_secret": settings.AUTHENTIK_CLIENT_SECRET,
-            }
+            },
         )
-    
+
     if token_resp.status_code != 200:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Не удалось получить токен от Authentik: {token_resp.text}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Не удалось получить токен от Authentik: {token_resp.text}"
         )
-    
+
     tokens = token_resp.json()
     access_token = tokens.get("access_token")
-    
+
     # Шаг 2.2: Запрос информации о пользователе (User Info) из Authentik
     async with httpx.AsyncClient() as client:
         userinfo_resp = await client.get(
             f"{settings.AUTHENTIK_BASE_URL}/application/o/userinfo/",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {access_token}"},
         )
-        
+
     if userinfo_resp.status_code != 200:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Не удалось получить данные о пользователе от Authentik."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось получить данные о пользователе от Authentik."
         )
-        
+
     user_data = userinfo_resp.json()
     email = user_data.get("email")
     full_name = user_data.get("name") or user_data.get("preferred_username") or email
-    
+
     if not email:
-        raise HTTPException(
-            status_code=400,
-            detail="Адрес электронной почты (email) не передан провайдером Authentik."
-        )
+        raise HTTPException(status_code=400, detail="Адрес электронной почты (email) не передан провайдером Authentik.")
 
     # Шаг 2.3: Поиск пользователя в локальной базе данных
     user = await get_user_by_email(session, email)
-    
+
     # Авто-создание (Provisioning), если пользователь заходит впервые
     if not user:
         # Пароль для SSO-пользователей оставляем пустым, войти по паролю они не смогут
-        company_val = UserCompany.AJ_techCom if ("aj-tech" in email.lower() or "ajtech" in email.lower()) else UserCompany.Polymedia
+        company_val = (
+            UserCompany.AJ_techCom
+            if ("aj-tech" in email.lower() or "ajtech" in email.lower())
+            else UserCompany.Polymedia
+        )
         user = User(
             email=email,
             full_name=full_name,
             hashed_password="",
-            role=UserRole.employee, # Дефолтная роль
+            role=UserRole.employee,  # Дефолтная роль
             company=company_val,
             is_active=True,
             must_change_password=False,
-            is_2fa_enabled=False
+            is_2fa_enabled=False,
         )
         session.add(user)
         await session.commit()
@@ -452,8 +397,7 @@ async def microsoft_callback(
 
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Ваша учетная запись заблокирована в локальной системе."
+            status_code=status.HTTP_403_FORBIDDEN, detail="Ваша учетная запись заблокирована в локальной системе."
         )
 
     # Шаг 2.4: Логирование успешного входа
@@ -461,23 +405,21 @@ async def microsoft_callback(
         session=session,
         user_id=user.id,
         action="LOGIN_SSO",
-        details={"email": user.email, "provider": "Authentik/Microsoft"}
+        details={"email": user.email, "provider": "Authentik/Microsoft"},
     )
 
     # Шаг 2.5: Генерация сессионной куки (Refresh Token)
     refresh_token = await create_refresh_token(session, user.id)
     await session.commit()
-    
+
     # Перенаправляем пользователя на фронтенд без sensitive данные в URL query
     frontend_url = settings.FRONTEND_BASE_URL
 
-    redirect_response = RedirectResponse(
-        url=f"{frontend_url}/auth/success"
-    )
-    
+    redirect_response = RedirectResponse(url=f"{frontend_url}/auth/success")
+
     # Очищаем одноразовую куку oauth_state
     redirect_response.delete_cookie(key="oauth_state")
-    
+
     # Установка сессионного токена в HTTPOnly Cookie на объекте RedirectResponse
     redirect_response.set_cookie(
         key="refresh_token",
@@ -485,8 +427,7 @@ async def microsoft_callback(
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite="lax",
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
 
     return redirect_response
-

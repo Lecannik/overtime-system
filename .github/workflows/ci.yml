@@ -50,6 +50,10 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio aiosqlite
 
+      - name: Run Python Linter (Ruff)
+        run: |
+          ruff check app
+
       - name: Run Pytest
         env:
           POSTGRES_USER: overtime_user

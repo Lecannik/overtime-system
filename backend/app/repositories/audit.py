@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import Optional, Any
-from sqlalchemy import select, func, or_, cast, String
+from typing import Any, Optional
+
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.audit import AuditLog
 from app.models.user import User
-
 
 # Словарь сопоставления категорий действий для фильтрации
 CATEGORY_ACTION_MAP: dict[str, list[str]] = {
@@ -71,14 +72,13 @@ CATEGORY_ACTION_MAP: dict[str, list[str]] = {
 }
 
 
-
 async def create_audit_log(
-    session: AsyncSession, 
-    user_id: int | None, 
-    action: str, 
-    target_type: str | None = None, 
-    target_id: int | None = None, 
-    details: dict | None = None
+    session: AsyncSession,
+    user_id: int | None,
+    action: str,
+    target_type: str | None = None,
+    target_id: int | None = None,
+    details: dict | None = None,
 ) -> AuditLog:
     """
     Создает новую запись в журнале аудита действий системы.
@@ -91,13 +91,7 @@ async def create_audit_log(
     :param details: Дополнительные структурированные данные и изменения в формате JSON.
     :return: Созданный объект модели AuditLog.
     """
-    log = AuditLog(
-        user_id=user_id,
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        details=details
-    )
+    log = AuditLog(user_id=user_id, action=action, target_type=target_type, target_id=target_id, details=details)
     session.add(log)
     await session.flush()
     return log
@@ -107,7 +101,7 @@ def _build_audit_filters(
     search: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
 ) -> list:
     """
     Формирует список условий WHERE для фильтрации журнала аудита.
@@ -190,6 +184,7 @@ async def _enrich_audit_details(session: AsyncSession, rows: list) -> dict[int, 
 
     if ot_ids:
         from app.models.overtime import Overtime
+
         ot_query = (
             select(Overtime.id, Overtime.user_id, User.full_name, User.email)
             .join(User, Overtime.user_id == User.id)
@@ -251,7 +246,7 @@ async def get_audit_logs(
     search: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
 ) -> dict:
     """
     Получает пагинированный список записей аудита с расширенной фильтрацией.
@@ -284,7 +279,7 @@ async def get_audit_logs(
         AuditLog.target_type,
         AuditLog.target_id,
         AuditLog.details,
-        AuditLog.created_at
+        AuditLog.created_at,
     ).outerjoin(User, AuditLog.user_id == User.id)
 
     if filters:
@@ -300,23 +295,22 @@ async def get_audit_logs(
     for row in rows:
         user_dict = None
         if row.user_full_name or row.user_email:
-            user_dict = {
-                "full_name": row.user_full_name or "Пользователь",
-                "email": row.user_email
-            }
+            user_dict = {"full_name": row.user_full_name or "Пользователь", "email": row.user_email}
 
         details = enriched_details.get(row.id, row.details)
 
-        items.append({
-            "id": row.id,
-            "user_id": row.user_id,
-            "user": user_dict,
-            "action": row.action,
-            "target_type": row.target_type,
-            "target_id": row.target_id,
-            "details": details,
-            "timestamp": row.created_at
-        })
+        items.append(
+            {
+                "id": row.id,
+                "user_id": row.user_id,
+                "user": user_dict,
+                "action": row.action,
+                "target_type": row.target_type,
+                "target_id": row.target_id,
+                "details": details,
+                "timestamp": row.created_at,
+            }
+        )
 
     return {"items": items, "total": total}
 
@@ -326,7 +320,7 @@ async def get_audit_logs_for_export(
     search: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
 ) -> list[dict]:
     """
     Получает полный список записей аудита для выгрузки в Excel отчет.
@@ -349,7 +343,7 @@ async def get_audit_logs_for_export(
         AuditLog.target_type,
         AuditLog.target_id,
         AuditLog.details,
-        AuditLog.created_at
+        AuditLog.created_at,
     ).outerjoin(User, AuditLog.user_id == User.id)
 
     if filters:
@@ -364,18 +358,20 @@ async def get_audit_logs_for_export(
     items = []
     for row in rows:
         details = enriched_details.get(row.id, row.details)
-        items.append({
-            "id": row.id,
-            "user_id": row.user_id,
-            "user": {
-                "full_name": row.user_full_name or ("Система" if not row.user_id else f"ID: {row.user_id}"),
-                "email": row.user_email
-            },
-            "action": row.action,
-            "target_type": row.target_type,
-            "target_id": row.target_id,
-            "details": details,
-            "timestamp": row.created_at
-        })
+        items.append(
+            {
+                "id": row.id,
+                "user_id": row.user_id,
+                "user": {
+                    "full_name": row.user_full_name or ("Система" if not row.user_id else f"ID: {row.user_id}"),
+                    "email": row.user_email,
+                },
+                "action": row.action,
+                "target_type": row.target_type,
+                "target_id": row.target_id,
+                "details": details,
+                "timestamp": row.created_at,
+            }
+        )
 
     return items

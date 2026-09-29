@@ -45,12 +45,12 @@ const AuthSuccessPage: React.FC = () => {
     }}>
       <h2 style={{ marginBottom: '16px', fontWeight: 800 }}>Авторизация успешна</h2>
       <p style={{ color: 'var(--text-secondary)' }}>Перенаправление в систему...</p>
-      <div style={{ 
-        marginTop: '24px', 
-        width: '40px', 
-        height: '40px', 
-        border: '3px solid var(--border)', 
-        borderTop: '3px solid var(--primary)', 
+      <div style={{
+        marginTop: '24px',
+        width: '40px',
+        height: '40px',
+        border: '3px solid var(--border)',
+        borderTop: '3px solid var(--primary)',
         borderRadius: '50%',
         animation: 'spin 1s linear infinite'
       }}></div>
@@ -65,4 +65,3 @@ const AuthSuccessPage: React.FC = () => {
 };
 
 export default AuthSuccessPage;
-

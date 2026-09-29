@@ -1,12 +1,13 @@
-from sqlalchemy import select, func, and_, desc, case, literal
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.overtime import Overtime, OvertimeStatus
-from app.models.organization import Project, Department
-from app.models.user import User, UserCompany
-from typing import List, Dict, Any, Optional
-import math
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import and_, case, desc, func, literal, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.utils import calculate_overtime_hours, strip_timezone
+from app.models.organization import Department, Project
+from app.models.overtime import Overtime, OvertimeStatus
+from app.models.user import User, UserCompany
 
 # SQL-выражение для расчета длительности переработки.
 # Учитывает исключительно согласованные заявки (OvertimeStatus.APPROVED), исключая отклонённые и отменённые (CWE-840).
@@ -17,10 +18,12 @@ DURATION_EXPR = func.sum(
             Overtime.status == OvertimeStatus.APPROVED,
             func.coalesce(
                 Overtime.approved_hours,
-                func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
-            )
+                func.ceil(
+                    (func.extract("epoch", Overtime.end_time) - func.extract("epoch", Overtime.start_time)) / 3600
+                ),
+            ),
         ),
-        else_=0
+        else_=0,
     )
 )
 
@@ -29,10 +32,12 @@ APPROVED_HOURS_EXPR = DURATION_EXPR
 PENDING_HOURS_EXPR = func.sum(
     case(
         (
-            Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED]),
-            func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
+            Overtime.status.in_(
+                [OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED]
+            ),
+            func.ceil((func.extract("epoch", Overtime.end_time) - func.extract("epoch", Overtime.start_time)) / 3600),
         ),
-        else_=0
+        else_=0,
     )
 )
 
@@ -40,9 +45,9 @@ REJECTED_HOURS_EXPR = func.sum(
     case(
         (
             Overtime.status == OvertimeStatus.REJECTED,
-            func.ceil((func.extract('epoch', Overtime.end_time) - func.extract('epoch', Overtime.start_time)) / 3600)
+            func.ceil((func.extract("epoch", Overtime.end_time) - func.extract("epoch", Overtime.start_time)) / 3600),
         ),
-        else_=0
+        else_=0,
     )
 )
 
@@ -72,44 +77,44 @@ async def get_user_weekly_stats(session: AsyncSession, user_id: int) -> List[Dic
     """
     today = datetime.now(timezone.utc).date()
     seven_days_ago = today - timedelta(days=7)
-    
+
     # Группируем по дням
-    query = select(
-        func.date(Overtime.start_time).label("day"),
-        DURATION_EXPR.label("hours")
-    ).where(
-        and_(
-            Overtime.user_id == user_id,
-            Overtime.status == OvertimeStatus.APPROVED,
-            func.date(Overtime.start_time) >= seven_days_ago
+    query = (
+        select(func.date(Overtime.start_time).label("day"), DURATION_EXPR.label("hours"))
+        .where(
+            and_(
+                Overtime.user_id == user_id,
+                Overtime.status == OvertimeStatus.APPROVED,
+                func.date(Overtime.start_time) >= seven_days_ago,
+            )
         )
-    ).group_by(func.date(Overtime.start_time)).order_by(func.date(Overtime.start_time))
-    
+        .group_by(func.date(Overtime.start_time))
+        .order_by(func.date(Overtime.start_time))
+    )
+
     result = await session.execute(query)
     rows = result.all()
-    
+
     # Подготавливаем данные для всех 7 дней (даже если там 0 часов)
     stats = []
     days_map = {row.day: row.hours for row in rows}
-    
+
     for i in range(7, -1, -1):
         d = today - timedelta(days=i)
-        stats.append({
-            "name": d.strftime("%d.%m"),
-            "hours": float(days_map.get(d, 0))
-        })
-        
+        stats.append({"name": d.strftime("%d.%m"), "hours": float(days_map.get(d, 0))})
+
     return stats
 
+
 async def get_analytics_summary(
-    session: AsyncSession, 
+    session: AsyncSession,
     manager_id: int | None = None,
     department_id: int | None = None,
     department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> Dict[str, Any]:
     """
     Получает сводную аналитику по переработкам с фильтрацией по датам и компаниям.
@@ -120,7 +125,11 @@ async def get_analytics_summary(
     query = select(
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
         func.count(Overtime.id).label("total_requests"),
-        func.count(Overtime.id).filter(Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED])).label("pending"),
+        func.count(Overtime.id)
+        .filter(
+            Overtime.status.in_([OvertimeStatus.PENDING, OvertimeStatus.MANAGER_APPROVED, OvertimeStatus.HEAD_APPROVED])
+        )
+        .label("pending"),
         func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.APPROVED).label("approved"),
         func.count(Overtime.id).filter(Overtime.status == OvertimeStatus.REJECTED).label("rejected"),
         func.coalesce(APPROVED_HOURS_EXPR, 0).label("approved_hours"),
@@ -134,15 +143,15 @@ async def get_analytics_summary(
         query = query.join(User).where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.join(User).where(User.department_id == department_id)
-    
+
     if project_id:
         if not manager_id:
             query = query.join(Project, Project.id == Overtime.project_id)
         query = query.where(Overtime.project_id == project_id)
 
     if company:
-        if not (department_id or department_ids is not None or manager_id or project_id): 
-             query = query.join(User)
+        if not (department_id or department_ids is not None or manager_id or project_id):
+            query = query.join(User)
         elif manager_id or project_id:
             query = query.join(User)
         query = query.where(User.company == company)
@@ -151,7 +160,7 @@ async def get_analytics_summary(
 
     result = await session.execute(query)
     row = result.fetchone()
-    
+
     return {
         "total_hours": float(row.total_hours),
         "total_requests": row.total_requests,
@@ -163,15 +172,16 @@ async def get_analytics_summary(
         "rejected_hours": float(row.rejected_hours),
     }
 
+
 async def get_project_analytics(
-    session: AsyncSession, 
+    session: AsyncSession,
     manager_id: int | None = None,
     department_id: int | None = None,
     department_ids: List[int] | None = None,
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Получает аналитику по проектам с фильтрацией по датам.
@@ -179,12 +189,16 @@ async def get_project_analytics(
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
 
-    query = select(
-        Project.id,
-        Project.name,
-        func.coalesce(DURATION_EXPR, 0).label("total_hours"),
-        func.count(Overtime.id).label("request_count")
-    ).join(Overtime, Project.id == Overtime.project_id).group_by(Project.id, Project.name)
+    query = (
+        select(
+            Project.id,
+            Project.name,
+            func.coalesce(DURATION_EXPR, 0).label("total_hours"),
+            func.count(Overtime.id).label("request_count"),
+        )
+        .join(Overtime, Project.id == Overtime.project_id)
+        .group_by(Project.id, Project.name)
+    )
 
     user_joined = False
     if department_ids is not None:
@@ -198,7 +212,7 @@ async def get_project_analytics(
 
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
-    
+
     if project_id:
         query = query.where(Project.id == project_id)
 
@@ -206,7 +220,7 @@ async def get_project_analytics(
         if not user_joined:
             query = query.join(User, User.id == Overtime.user_id)
         query = query.where(User.company == company)
-    
+
     query = apply_date_filters(query, start_date, end_date)
 
     result = await session.execute(query)
@@ -215,9 +229,11 @@ async def get_project_analytics(
             "project_id": row.id,
             "project_name": row.name,
             "total_hours": float(row.total_hours),
-            "request_count": row.request_count
-        } for row in result.all()
+            "request_count": row.request_count,
+        }
+        for row in result.all()
     ]
+
 
 async def get_department_analytics(
     session: AsyncSession,
@@ -227,7 +243,7 @@ async def get_department_analytics(
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Получает аналитику по отделам с фильтрацией по датам.
@@ -235,14 +251,17 @@ async def get_department_analytics(
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
 
-    query = select(
-        Department.id,
-        Department.name,
-        func.coalesce(DURATION_EXPR, 0).label("total_hours"),
-        func.count(Overtime.id).label("request_count")
-    ).join(User, Department.id == User.department_id)\
-     .join(Overtime, User.id == Overtime.user_id)\
-     .group_by(Department.id, Department.name)
+    query = (
+        select(
+            Department.id,
+            Department.name,
+            func.coalesce(DURATION_EXPR, 0).label("total_hours"),
+            func.count(Overtime.id).label("request_count"),
+        )
+        .join(User, Department.id == User.department_id)
+        .join(Overtime, User.id == Overtime.user_id)
+        .group_by(Department.id, Department.name)
+    )
 
     if manager_id:
         query = query.join(Project, Overtime.project_id == Project.id).where(Project.manager_id == manager_id)
@@ -254,7 +273,7 @@ async def get_department_analytics(
 
     if project_id:
         query = query.where(Overtime.project_id == project_id)
-    
+
     if company:
         query = query.where(User.company == company)
 
@@ -266,9 +285,11 @@ async def get_department_analytics(
             "department_id": row.id,
             "department_name": row.name,
             "total_hours": float(row.total_hours),
-            "request_count": row.request_count
-        } for row in result.all()
+            "request_count": row.request_count,
+        }
+        for row in result.all()
     ]
+
 
 async def get_user_analytics(
     session: AsyncSession,
@@ -278,7 +299,7 @@ async def get_user_analytics(
     department_ids: List[int] | None = None,
     manager_id: int | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Получает аналитику по пользователям.
@@ -286,28 +307,27 @@ async def get_user_analytics(
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
 
-
     query = select(
         User.id.label("user_id"),
         User.full_name,
         func.coalesce(DURATION_EXPR, 0).label("total_hours"),
         func.count(Overtime.id).label("request_count"),
-        Project.name.label("project_name") if project_id else literal(None).label("project_name")
+        Project.name.label("project_name") if project_id else literal(None).label("project_name"),
     ).join(Overtime, User.id == Overtime.user_id)
 
     if project_id or manager_id:
         # Присоединяем проекты только один раз
         query = query.join(Project, Overtime.project_id == Project.id)
-    
+
     query = query.group_by(User.id, User.full_name)
 
     if project_id:
         query = query.where(Overtime.project_id == project_id)
         query = query.group_by(Project.name)
-    
+
     if company:
         query = query.where(User.company == company)
-    
+
     if manager_id:
         query = query.where(Project.manager_id == manager_id)
     elif department_ids is not None:
@@ -326,9 +346,11 @@ async def get_user_analytics(
             "full_name": row.full_name,
             "total_hours": float(row.total_hours),
             "request_count": row.request_count,
-            "project_name": row.project_name
-        } for row in result.all()
+            "project_name": row.project_name,
+        }
+        for row in result.all()
     ]
+
 
 async def get_export_data(
     session: AsyncSession,
@@ -339,34 +361,37 @@ async def get_export_data(
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> List[Dict[str, Any]]:
     """Получить детальные данные для экспорта с фильтрацией."""
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
 
-    query = select(
-        Overtime.id,
-        User.full_name.label("employee"),
-        User.full_name.label("author"),
-        User.company.label("employee_company"),
-        Department.name.label("department"),
-        Project.name.label("project"),
-        Overtime.start_time,
-        Overtime.end_time,
-        Overtime.description,
-        Overtime.status,
-        Overtime.approved_hours
-    ).join(User, Overtime.user_id == User.id)\
-     .outerjoin(Department, User.department_id == Department.id)\
-     .join(Project, Overtime.project_id == Project.id)
+    query = (
+        select(
+            Overtime.id,
+            User.full_name.label("employee"),
+            User.full_name.label("author"),
+            User.company.label("employee_company"),
+            Department.name.label("department"),
+            Project.name.label("project"),
+            Overtime.start_time,
+            Overtime.end_time,
+            Overtime.description,
+            Overtime.status,
+            Overtime.approved_hours,
+        )
+        .join(User, Overtime.user_id == User.id)
+        .outerjoin(Department, User.department_id == Department.id)
+        .join(Project, Overtime.project_id == Project.id)
+    )
 
     if user_id:
         query = query.where(Overtime.user_id == user_id)
-    
+
     if project_id:
         query = query.where(Overtime.project_id == project_id)
-    
+
     if company:
         query = query.where(User.company == company)
 
@@ -376,7 +401,7 @@ async def get_export_data(
         query = query.where(User.department_id.in_(department_ids))
     elif department_id:
         query = query.where(User.department_id == department_id)
-    
+
     query = apply_date_filters(query, start_date, end_date)
     MAX_EXPORT_ROWS = 50_000
     query = query.order_by(Overtime.start_time.desc()).limit(MAX_EXPORT_ROWS + 1)
@@ -386,6 +411,7 @@ async def get_export_data(
 
     if len(rows) > MAX_EXPORT_ROWS:
         from fastapi import HTTPException
+
         raise HTTPException(
             status_code=400,
             detail=f"Слишком много данных для экспорта (более {MAX_EXPORT_ROWS:,} строк). Сузьте период или добавьте фильтры.",
@@ -394,36 +420,37 @@ async def get_export_data(
     data = []
     for row in rows:
         d = dict(row._asdict())
-        status_val = d['status']
+        status_val = d["status"]
         is_active = False
         if isinstance(status_val, OvertimeStatus):
-            is_active = (status_val == OvertimeStatus.IN_PROGRESS)
+            is_active = status_val == OvertimeStatus.IN_PROGRESS
         else:
             try:
-                is_active = (OvertimeStatus(status_val) == OvertimeStatus.IN_PROGRESS)
+                is_active = OvertimeStatus(status_val) == OvertimeStatus.IN_PROGRESS
             except ValueError:
                 pass
 
         if is_active:
-            d['hours'] = calculate_overtime_hours(d['start_time'], datetime.now(timezone.utc))
+            d["hours"] = calculate_overtime_hours(d["start_time"], datetime.now(timezone.utc))
         else:
-            d['hours'] = calculate_overtime_hours(d['start_time'], d['end_time'])
+            d["hours"] = calculate_overtime_hours(d["start_time"], d["end_time"])
 
-        if d.get('employee_company') is not None:
-            if hasattr(d['employee_company'], 'value'):
-                d['employee_company'] = d['employee_company'].value
+        if d.get("employee_company") is not None:
+            if hasattr(d["employee_company"], "value"):
+                d["employee_company"] = d["employee_company"].value
             else:
-                d['employee_company'] = str(d['employee_company'])
-        status_obj = d['status']
+                d["employee_company"] = str(d["employee_company"])
+        status_obj = d["status"]
         if isinstance(status_obj, OvertimeStatus):
-            d['status'] = status_obj.russian_label
+            d["status"] = status_obj.russian_label
         else:
             try:
-                d['status'] = OvertimeStatus(status_obj).russian_label
+                d["status"] = OvertimeStatus(status_obj).russian_label
             except ValueError:
-                d['status'] = str(status_obj)
+                d["status"] = str(status_obj)
         data.append(d)
     return data
+
 
 async def get_review_analytics(
     session: AsyncSession,
@@ -433,33 +460,27 @@ async def get_review_analytics(
     project_id: int | None = None,
     company: UserCompany | None = None,
     start_date: datetime | None = None,
-    end_date: datetime | None = None
+    end_date: datetime | None = None,
 ) -> Dict[str, Any]:
     """
     Получает аналитику по 'качеству' согласования.
     """
     start_date = strip_timezone(start_date)
     end_date = strip_timezone(end_date)
-    
+
     # Выражение для запрошенных часов (округление вверх — бизнес-правило)
-    duration_expr = func.ceil(
-        func.extract('epoch', Overtime.end_time - Overtime.start_time) / 3600
-    )
+    duration_expr = func.ceil(func.extract("epoch", Overtime.end_time - Overtime.start_time) / 3600)
     approved_approved = Overtime.status == OvertimeStatus.APPROVED
 
     query = select(
         func.count(Overtime.id).label("total"),
         func.coalesce(func.sum(duration_expr), 0).label("total_requested"),
         func.coalesce(func.sum(Overtime.approved_hours), 0).label("total_approved"),
-        func.count(Overtime.id).filter(
-            approved_approved, Overtime.approved_hours > duration_expr
-        ).label("more_count"),
-        func.count(Overtime.id).filter(
-            approved_approved, Overtime.approved_hours < duration_expr
-        ).label("less_count"),
-        func.count(Overtime.id).filter(
-            approved_approved, Overtime.approved_hours == duration_expr
-        ).label("exact_count"),
+        func.count(Overtime.id).filter(approved_approved, Overtime.approved_hours > duration_expr).label("more_count"),
+        func.count(Overtime.id).filter(approved_approved, Overtime.approved_hours < duration_expr).label("less_count"),
+        func.count(Overtime.id)
+        .filter(approved_approved, Overtime.approved_hours == duration_expr)
+        .label("exact_count"),
     ).where(Overtime.status.in_([OvertimeStatus.APPROVED, OvertimeStatus.REJECTED]))
 
     if manager_id:
@@ -497,28 +518,17 @@ async def get_review_analytics(
 
 
 async def get_company_comparison(
-    session: AsyncSession,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None
+    session: AsyncSession, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
 ) -> List[Dict[str, Any]]:
     """
     Сравнительный отчет по всем компаниям.
     """
     query = select(
-        User.company,
-        func.coalesce(DURATION_EXPR, 0).label("hours"),
-        func.count(Overtime.id).label("requests")
+        User.company, func.coalesce(DURATION_EXPR, 0).label("hours"), func.count(Overtime.id).label("requests")
     ).join(Overtime, User.id == Overtime.user_id)
-    
+
     query = apply_date_filters(query, start_date, end_date)
     query = query.group_by(User.company)
     result = await session.execute(query)
     rows = result.all()
-    return [
-        {
-            "company": row.company.value,
-            "hours": float(row.hours),
-            "requests": row.requests
-        }
-        for row in rows
-    ]
+    return [{"company": row.company.value, "hours": float(row.hours), "requests": row.requests} for row in rows]

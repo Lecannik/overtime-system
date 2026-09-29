@@ -12,16 +12,17 @@
 
 import os
 from datetime import datetime
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import admin_limiter, overtime_create_limiter
+from app.core.security import create_access_token, hash_password
 from app.models.organization import Department, Project
-from app.models.user import User, UserRole, UserCompany
 from app.models.overtime import Overtime, OvertimeStatus
-from app.core.security import hash_password, create_access_token
-from app.core.rate_limit import overtime_create_limiter, admin_limiter
+from app.models.user import User, UserCompany, UserRole
 
 
 @pytest.fixture(autouse=True)
@@ -40,6 +41,7 @@ def reset_rate_limiters():
 # =====================================================================
 # АТАКА 1: Защита конечного автомата (State Machine) от воскрешения
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_1_rejection_resurrection_state_machine_bypass(
@@ -133,6 +135,7 @@ async def test_attack_1_rejection_resurrection_state_machine_bypass(
 # =====================================================================
 # АТАКА 2: Защита BOLA / IDOR в хранилище приватных файлов
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_2_bola_idor_unauthorized_download_of_foreign_voice_recording(
@@ -231,6 +234,7 @@ async def test_attack_2_bola_idor_unauthorized_download_of_foreign_voice_recordi
 # АТАКА 3: Защита от некорректного времени (время окончания раньше начала) через PATCH
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_3_bypass_invalid_end_time_via_patch(
     client: AsyncClient,
@@ -293,6 +297,7 @@ async def test_attack_3_bypass_invalid_end_time_via_patch(
 # АТАКА 4: Защита от привязки заявки к неактивному проекту через PATCH
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_4_bypass_inactive_project_restriction_via_patch(
     client: AsyncClient,
@@ -353,6 +358,7 @@ async def test_attack_4_bypass_inactive_project_restriction_via_patch(
 # АТАКА 5: Безопасная валидация создания отдела (head_id и IntegrityError)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_5_server_crash_500_create_department_invalid_head_id(
     client: AsyncClient,
@@ -406,6 +412,7 @@ async def test_attack_5_server_crash_500_create_department_invalid_head_id(
 # =====================================================================
 # АТАКА 6: Защита корпоративного лимита weekly_limit от модификации менеджером
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_6_unauthorized_weekly_limit_escalation_by_manager(

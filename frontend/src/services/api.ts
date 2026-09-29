@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { 
-    LoginResponse, User, Project, Department, Overtime, 
+import type {
+    LoginResponse, User, Project, Department, Overtime,
     PaginatedResponse, UserStats, AuditLog, Notification,
     AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics,
     AnalyticsParams, OdooProjectPreview, OdooIntegrationProject
@@ -22,7 +22,7 @@ let refreshPromise: Promise<string | null> | null = null;
  * Обновляет локальный Access Token, выполняя запрос к эндпоинту /auth/refresh.
  * Использует паттерн Singleton для Promise, предотвращая одновременную отправку
  * нескольких параллельных запросов на обновление токена (например, в React Strict Mode).
- * 
+ *
  * @returns {Promise<string | null>} Промис, возвращающий Access Token или null.
  */
 export const refreshAccessToken = (): Promise<string | null> => {
@@ -113,9 +113,9 @@ api.interceptors.response.use(
 
             try {
                 const token = await refreshAccessToken();
-                
+
                 processQueue(null, token);
-                
+
                 originalRequest.headers.Authorization = 'Bearer ' + token;
                 return api(originalRequest);
             } catch (err) {
@@ -159,17 +159,17 @@ api.interceptors.response.use(
 // --- AUTH ---
 export const login = (data: FormData) => api.post<LoginResponse>('/auth/login', data);
 export const logout = () => api.post('/auth/logout');
-export const verify2FA = (email: string, code: string) => 
+export const verify2FA = (email: string, code: string) =>
     api.post<LoginResponse>('/auth/verify-2fa', { email, code }).then(r => r.data);
-export const requestPasswordReset = (email: string) => 
+export const requestPasswordReset = (email: string) =>
     api.post<{ detail: string }>('/auth/password-reset/request', { email }).then(r => r.data);
-export const confirmPasswordReset = (data: Record<string, unknown>) => 
+export const confirmPasswordReset = (data: Record<string, unknown>) =>
     api.post<{ detail: string }>('/auth/password-reset/confirm', data).then(r => r.data);
-export const changePassword = (data: Record<string, unknown>) => 
+export const changePassword = (data: Record<string, unknown>) =>
     api.post<{ detail: string }>('/auth/change-password', data).then(r => r.data);
 
 // --- USERS ---
-export const getUsers = (params?: Record<string, unknown>) => 
+export const getUsers = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<User>>('/admin/users', { params }).then(r => r.data);
 export const createUser = (data: Partial<User> & { password?: string }) => api.post<User>('/admin/users', data).then(r => r.data);
 export const updateUser = (id: number, data: Partial<User>) => api.patch<User>(`/admin/users/${id}`, data).then(r => r.data);
@@ -209,20 +209,20 @@ export const getOdooIntegrationProjects = (fields?: string[], name?: string, cod
     }
     return api.get<OdooIntegrationProject[]>('/admin/odoo-integration/projects', { params }).then(r => r.data);
 };
-export const importOdooIntegrationProjects = (projects: { id: number; name?: string; code?: string | null; status?: string | null }[]) => 
+export const importOdooIntegrationProjects = (projects: { id: number; name?: string; code?: string | null; status?: string | null }[]) =>
     api.post('/admin/odoo-integration/import', projects).then(r => r.data);
 
 // --- OVERTIMES ---
-export const getMyOvertimes = (params?: Record<string, unknown>) => 
+export const getMyOvertimes = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
 export const getMyStats = () => api.get<UserStats>('/overtimes/stats/me').then(r => r.data);
 export const createOvertime = (data: Partial<Overtime>) => api.post<Overtime>('/overtimes/', data).then(r => r.data);
 export const updateOvertime = (id: number, data: Partial<Overtime>) => api.patch<Overtime>(`/overtimes/${id}`, data).then(r => r.data);
 export const cancelOvertime = (id: number) => api.post(`/overtimes/${id}/cancel`).then(r => r.data);
 export const restoreOvertime = (id: number) => api.post(`/overtimes/${id}/restore`).then(r => r.data);
-export const getOvertimes = (params?: Record<string, unknown>) => 
+export const getOvertimes = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
-export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) => 
+export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) =>
     api.post(`/overtimes/${id}/review`, { approved, comment, as_role, approved_hours }).then(r => r.data);
 
 /** Модель записи-дня для календарной сводки. */
@@ -271,19 +271,19 @@ export const getCalendarSummary = (
 };
 
 // --- ANALYTICS ---
-export const getAnalyticsSummary = (params?: AnalyticsParams) => 
+export const getAnalyticsSummary = (params?: AnalyticsParams) =>
     api.get<AnalyticsSummary>('/analytics/summary', { params }).then(r => r.data);
-export const getProjectAnalytics = (params?: AnalyticsParams) => 
+export const getProjectAnalytics = (params?: AnalyticsParams) =>
     api.get<ProjectAnalytics[]>('/analytics/projects', { params }).then(r => r.data);
-export const getDepartmentAnalytics = (params?: AnalyticsParams) => 
+export const getDepartmentAnalytics = (params?: AnalyticsParams) =>
     api.get<DepartmentAnalytics[]>('/analytics/departments', { params }).then(r => r.data);
-export const getUserAnalytics = (params?: AnalyticsParams) => 
+export const getUserAnalytics = (params?: AnalyticsParams) =>
     api.get<UserAnalytics[]>('/analytics/users', { params }).then(r => r.data);
-export const getReviewAnalytics = (params?: AnalyticsParams) => 
+export const getReviewAnalytics = (params?: AnalyticsParams) =>
     api.get<ReviewAnalytics>('/analytics/reviews', { params }).then(r => r.data);
-export const exportAnalytics = (params?: AnalyticsParams) => 
+export const exportAnalytics = (params?: AnalyticsParams) =>
     api.get('/analytics/export', { params, responseType: 'blob' }).then(r => r.data);
-export const exportMyAnalytics = (params?: { start_date?: string; end_date?: string }) => 
+export const exportMyAnalytics = (params?: { start_date?: string; end_date?: string }) =>
     api.get('/analytics/export-my', { params, responseType: 'blob' }).then(r => r.data);
 
 // --- AUDIT ---
@@ -309,7 +309,7 @@ export const getAuditLogs = (params?: AuditLogParams | number, offset = 0, searc
 };
 
 
-export const exportAuditLogs = (params?: { search?: string; start_date?: string; end_date?: string; category?: string }) => 
+export const exportAuditLogs = (params?: { search?: string; start_date?: string; end_date?: string; category?: string }) =>
     api.get('/audit/export', { params, responseType: 'blob' }).then(r => r.data);
 
 

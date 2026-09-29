@@ -1,7 +1,9 @@
-from sqlalchemy import select, or_, func, asc, desc
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.user import User, UserCompany
 from typing import Optional
+
+from sqlalchemy import asc, desc, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.user import User, UserCompany
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
@@ -13,10 +15,9 @@ async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
 
 async def get_user_by_chat_id(session: AsyncSession, chat_id: str) -> User | None:
     """Получить пользователя по Telegram Chat ID (только активные)"""
-    result = await session.execute(
-        select(User).where(User.telegram_chat_id == str(chat_id), User.is_active == True)
-    )
+    result = await session.execute(select(User).where(User.telegram_chat_id == str(chat_id), User.is_active == True))
     return result.scalars().first()
+
 
 async def create_user(session: AsyncSession, user: User) -> User:
     """Создать пользователя"""
@@ -38,6 +39,7 @@ async def get_user_by_company(session: AsyncSession, company: UserCompany) -> li
     result = await session.execute(select(User).where(User.company == company))
     return result.scalars().all()
 
+
 async def update_user(session: AsyncSession, user: User, update_data: dict) -> User:
     """Обновить пользователя"""
     for key, value in update_data.items():
@@ -45,6 +47,7 @@ async def update_user(session: AsyncSession, user: User, update_data: dict) -> U
     await session.commit()
     await session.refresh(user)
     return user
+
 
 async def get_all_users(
     session: AsyncSession,
@@ -55,7 +58,7 @@ async def get_all_users(
     page_size: int = 15,
     role: Optional[str] = None,
     department_id: Optional[int] = None,
-    company: Optional[str] = None
+    company: Optional[str] = None,
 ) -> dict:
     """
     Получить пользователей с пагинацией, поиском и сортировкой.
@@ -72,12 +75,7 @@ async def get_all_users(
     # Поиск по имени и email
     if search:
         search_pattern = f"%{search}%"
-        query = query.where(
-            or_(
-                User.full_name.ilike(search_pattern),
-                User.email.ilike(search_pattern)
-            )
-        )
+        query = query.where(or_(User.full_name.ilike(search_pattern), User.email.ilike(search_pattern)))
 
     # Подсчет общего количества (до пагинации)
     count_query = select(func.count()).select_from(query.subquery())
@@ -103,8 +101,9 @@ async def get_all_users(
         "total": total,
         "page": page,
         "page_size": page_size if page_size > 0 else total,
-        "pages": pages
+        "pages": pages,
     }
+
 
 async def delete_user(session: AsyncSession, user: User):
     """Удалить пользователя"""

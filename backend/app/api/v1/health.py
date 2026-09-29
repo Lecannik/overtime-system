@@ -1,8 +1,10 @@
-import os
 import logging
+import os
+
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_session
 
 logger = logging.getLogger(__name__)
@@ -11,10 +13,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check(
-    request: Request,
-    session: AsyncSession = Depends(get_session)
-):
+async def health_check(request: Request, session: AsyncSession = Depends(get_session)):
     """
     Расширенный health-check системы.
 
@@ -50,6 +49,7 @@ async def health_check(
     # 4. Проверка MS Graph (MSAL-клиент инициализирован)
     try:
         from app.services.ms_graph import ms_graph
+
         checks["ms_graph"] = "configured" if ms_graph._app is not None else "not_configured"
     except Exception:
         checks["ms_graph"] = "not_configured"
@@ -58,4 +58,3 @@ async def health_check(
     overall = "ok" if checks["database"] == "ok" else "degraded"
 
     return {"status": overall, "checks": checks}
-

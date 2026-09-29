@@ -1,5 +1,7 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from app.models.overtime import OvertimeStatus
 from app.models.user import UserRole
 
@@ -9,6 +11,7 @@ class OvertimeBase(BaseModel):
     Базовая схема переработки.
     Содержит общие поля для всех операций с заявками.
     """
+
     project_id: int
     start_time: datetime
     end_time: datetime | None = None
@@ -25,6 +28,7 @@ class OvertimeCreate(OvertimeBase):
     Схема для СОЗДАНИЯ новой заявки.
     Сюда попадают данные прямиком из фронтенда.
     """
+
     @model_validator(mode="after")
     def validate_duration(self) -> "OvertimeCreate":
         """
@@ -40,6 +44,7 @@ class OvertimeUpdate(BaseModel):
     Схема для ОБНОВЛЕНИЯ существующей заявки.
     Все поля не обязательны (Optional), так как мы можем менять только часть данных.
     """
+
     project_id: int | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -61,6 +66,7 @@ class OvertimeResponse(OvertimeBase):
     Схема ОТВЕТА сервера.
     То, как заявка выглядит для фронтенда. Здесь добавляются системные поля (id, status).
     """
+
     id: int
     user_id: int
     status: OvertimeStatus
@@ -80,7 +86,7 @@ class OvertimeResponse(OvertimeBase):
     # Вложенные объекты (для отображения имен вместо ID)
     project: "ProjectMini | None" = None
     user: "UserMini | None" = None
-    
+
     # Вычисляемые поля (рассчитываются на бэкенде перед отправкой)
     hours: float
     raw_hours: float
@@ -93,10 +99,13 @@ class OvertimeReview(BaseModel):
     """
     Схема для принятия РЕШЕНИЯ по заявке руководителем или админом.
     """
+
     approved: bool
     comment: str | None = None
     as_role: UserRole | None = None
-    approved_hours: float | None = Field(default=None, gt=0, le=24.0, description="Количество согласованных часов (0 < hours <= 24.0)")
+    approved_hours: float | None = Field(
+        default=None, gt=0, le=24.0, description="Количество согласованных часов (0 < hours <= 24.0)"
+    )
 
 
 # Вспомогательные схемы для уменьшения объема данных в ответах

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     Все поля без значения по умолчанию обязательны.
     Приложение не запустится, если они не заданы в .env.
     """
+
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
@@ -50,9 +51,9 @@ class Settings(BaseSettings):
 
     # Odoo CRM Integration Settings
     # Документация: https://www.odoo.com/documentation/16.0/developer/api/external_api.html
-    ODOO_URL: str | None = None       # Например: https://crm.company.kz
-    ODOO_DB: str | None = None        # Название базы данных Odoo
-    ODOO_USER: str | None = None      # Email пользователя Odoo
+    ODOO_URL: str | None = None  # Например: https://crm.company.kz
+    ODOO_DB: str | None = None  # Название базы данных Odoo
+    ODOO_USER: str | None = None  # Email пользователя Odoo
     ODOO_PASSWORD: str | None = None  # Пароль пользователя Odoo
 
     # Odoo CRM Integration Microservice (API)
@@ -66,10 +67,7 @@ class Settings(BaseSettings):
     AUTHENTIK_REDIRECT_URI: str | None = None
     AUTHENTIK_APPLICATION_SLUG: str = "overtime"
 
-    model_config = {
-        "env_file": ".env",
-        "extra": "ignore"
-    }
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property
     def allowed_origins_list(self) -> list[str]:
@@ -80,8 +78,8 @@ class Settings(BaseSettings):
     def tz_info(self):
         """Возвращает объект временной зоны на основе DEFAULT_TIMEZONE."""
         from zoneinfo import ZoneInfo
+
         return ZoneInfo(self.DEFAULT_TIMEZONE)
 
 
 settings = Settings()
-

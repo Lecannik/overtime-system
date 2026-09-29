@@ -91,7 +91,7 @@ const DATE_LOCALE = 'ru-RU';
 export const parseBackendDate = (date: string | Date | null | undefined): Date | null => {
     if (!date) return null;
     if (date instanceof Date) return isNaN(date.getTime()) ? null : date;
-    
+
     if (typeof date === 'string') {
         let clean = date.trim();
         // Если это дата без Z и без смещения, добавляем 'Z'
@@ -172,4 +172,3 @@ export const REVIEW_FILTER_PRESETS: ReviewFilterPreset[] = [
         description: 'Все заявки за период, включая завершенные',
     },
 ];
-

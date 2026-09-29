@@ -128,7 +128,7 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
                 const dayOfWeek = startOfWeek.getDay();
                 const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
                 startOfWeek.setDate(currentDate.getDate() - distanceToMonday);
-                
+
                 const endOfWeek = new Date(startOfWeek);
                 endOfWeek.setDate(startOfWeek.getDate() + 6);
 
@@ -289,7 +289,7 @@ const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
                                     <span>более 20 ч</span>
                                 </div>
                             </div>
-                            
+
                             {/* Статусы (маркеры) */}
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginRight: '4px' }}>

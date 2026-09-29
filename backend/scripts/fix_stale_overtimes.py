@@ -5,15 +5,17 @@
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Добавляем путь к бэкенду для корректного импорта модулей приложения
 sys.path.append(os.path.abspath("."))
 
-from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
+
+from app.core.database import AsyncSessionLocal
 from app.models.overtime import Overtime, OvertimeStatus
+
 
 async def fix_stale_records():
     """
@@ -23,26 +25,24 @@ async def fix_stale_records():
     """
     async with AsyncSessionLocal() as session:
         # Находим все записи, у которых нет end_time, но статус не IN_PROGRESS
-        query = select(Overtime).where(
-            Overtime.end_time.is_(None),
-            Overtime.status != OvertimeStatus.IN_PROGRESS
-        )
+        query = select(Overtime).where(Overtime.end_time.is_(None), Overtime.status != OvertimeStatus.IN_PROGRESS)
         res = await session.execute(query)
         stale_records = res.scalars().all()
-        
+
         if not stale_records:
             print("Некорректных записей без времени окончания в базе данных не обнаружено.")
             return
-            
+
         print(f"Найдено некорректных записей: {len(stale_records)}")
         for ot in stale_records:
             print(f"  Исправление: ID={ot.id}, UserID={ot.user_id}, Start={ot.start_time}, Status={ot.status}")
             # Приравниваем end_time к start_time, чтобы закрыть сессию на 0 часов
             ot.end_time = ot.start_time
             session.add(ot)
-            
+
         await session.commit()
         print("База данных успешно исправлена и очищена!")
+
 
 if __name__ == "__main__":
     asyncio.run(fix_stale_records())

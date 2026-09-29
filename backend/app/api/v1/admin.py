@@ -1,43 +1,39 @@
 """
 Admin API
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+
+import secrets
 from typing import List
+
 import httpx
-from app.core.config import settings
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-import secrets
-from app.services.auth import register_user
-from app.services.ms_graph import ms_graph
-from app.services.refresh_token import revoke_all_user_refresh_tokens
-
-from app.core.database import get_session
-from app.core.security import hash_password
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.models.user import User, UserRole, UserCompany
-from app.repositories import user as user_repo
-from app.schemas.user import UserAdminUpdate, UserResponse, UserCreateByAdmin, PaginatedUsersResponse
-from app.repositories.user import get_user_by_id, update_user, get_all_users
-
-from app.models.organization import Department, Project
-from app.schemas.organization import (
-    DepartmentCreate, DepartmentUpdate, DepartmentResponse,
-    ProjectCreate, ProjectUpdate, ProjectResponse,
-)
-
-from app.repositories import organization as org_repo
-
-from app.schemas.settings import SystemSettingSchema, SystemSettingUpdate
-from app.repositories import settings as settings_repo
-from app.repositories import audit as audit_repo
+from app.core.config import settings
+from app.core.database import get_session
 from app.core.rate_limit import admin_limiter
-from app.services.ms_graph import ms_graph
+from app.core.security import hash_password
+from app.models.organization import Department, Project
+from app.models.user import User, UserCompany, UserRole
+from app.repositories import audit as audit_repo, organization as org_repo, settings as settings_repo, user as user_repo
 from app.repositories.user import get_user_by_email
+from app.schemas.organization import (
+    DepartmentCreate,
+    DepartmentResponse,
+    DepartmentUpdate,
+    ProjectCreate,
+    ProjectResponse,
+    ProjectUpdate,
+)
+from app.schemas.settings import SystemSettingSchema, SystemSettingUpdate
+from app.schemas.user import PaginatedUsersResponse, UserAdminUpdate, UserCreateByAdmin, UserResponse
+from app.services.auth import register_user
+from app.services.ms_graph import ms_graph
 from app.services.odoo_service import odoo_service
-
+from app.services.refresh_token import revoke_all_user_refresh_tokens
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -46,18 +42,16 @@ def require_admin(current_user: User):
     """Проверяет, что текущий пользователь — администратор."""
     if current_user.role != UserRole.admin:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещен. Требуется роль администратора."
+            status_code=status.HTTP_403_FORBIDDEN, detail="Доступ запрещен. Требуется роль администратора."
         )
 
 
 # ==================== DEPARTMENTS ====================
 
+
 @router.post("/departments", response_model=DepartmentResponse, status_code=201)
 async def create_department(
-    dept_in: DepartmentCreate,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    dept_in: DepartmentCreate, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Создать новый отдел.
@@ -70,7 +64,7 @@ async def create_department(
         if not head_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Пользователь с ID {dept_in.head_id} для назначения руководителем отдела не найден."
+                detail=f"Пользователь с ID {dept_in.head_id} для назначения руководителем отдела не найден.",
             )
 
     department = Department(**dept_in.model_dump())
@@ -84,16 +78,13 @@ async def create_department(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Отдел с названием '{dept_in.name}' уже существует или нарушена целостность данных."
+            detail=f"Отдел с названием '{dept_in.name}' уже существует или нарушена целостность данных.",
         )
     return new_dept
 
 
 @router.get("/departments", response_model=List[DepartmentResponse])
-async def list_departments(
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+async def list_departments(db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """
     Получить список всех отделов.
 
@@ -105,9 +96,7 @@ async def list_departments(
 
 @router.get("/departments/{dept_id}", response_model=DepartmentResponse)
 async def get_department(
-    dept_id: int,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    dept_id: int, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Получить отдел по ID.
@@ -124,7 +113,7 @@ async def update_department(
     dept_id: int,
     dept_in: DepartmentUpdate,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Обновить отдел (название, начальник).
@@ -135,36 +124,32 @@ async def update_department(
     dept = await org_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Отдел не найден")
-    
+
     update_data = dept_in.model_dump(exclude_unset=True)
     if "head_id" in update_data and update_data["head_id"] is not None:
         head_user = await user_repo.get_user_by_id(db, update_data["head_id"])
         if not head_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Пользователь с ID {update_data['head_id']} для назначения руководителем отдела не найден."
+                detail=f"Пользователь с ID {update_data['head_id']} для назначения руководителем отдела не найден.",
             )
 
     try:
         updated_dept = await org_repo.update_department(db, dept, update_data)
-        await audit_repo.create_audit_log(
-            db, current_user.id, "UPDATE_DEPT", "department", dept_id, update_data
-        )
+        await audit_repo.create_audit_log(db, current_user.id, "UPDATE_DEPT", "department", dept_id, update_data)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Отдел с таким названием уже существует или нарушена целостность данных."
+            detail="Отдел с таким названием уже существует или нарушена целостность данных.",
         )
     return updated_dept
 
 
 @router.delete("/departments/{dept_id}", status_code=204)
 async def delete_department(
-    dept_id: int,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    dept_id: int, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Удалить отдел.
@@ -179,18 +164,16 @@ async def delete_department(
         await org_repo.delete_department(db, dept)
     except IntegrityError:
         raise HTTPException(
-            status_code=409,
-            detail="Невозможно удалить отдел, так как с ним связаны сотрудники или другие записи."
+            status_code=409, detail="Невозможно удалить отдел, так как с ним связаны сотрудники или другие записи."
         )
 
 
 # ==================== PROJECTS ====================
 
+
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
 async def create_project(
-    project_in: ProjectCreate,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    project_in: ProjectCreate, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Создать новый проект.
@@ -204,10 +187,9 @@ async def create_project(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Проект с кодом '{project_in.code}' уже существует."
+            status_code=status.HTTP_409_CONFLICT, detail=f"Проект с кодом '{project_in.code}' уже существует."
         )
-    
+
     await audit_repo.create_audit_log(
         db, current_user.id, "CREATE_PROJECT", "project", new_project.id, {"name": new_project.name}
     )
@@ -216,10 +198,7 @@ async def create_project(
 
 
 @router.get("/projects", response_model=List[ProjectResponse])
-async def list_projects(
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+async def list_projects(db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """
     Получить список всех проектов.
 
@@ -227,20 +206,18 @@ async def list_projects(
     """
     if current_user.role == UserRole.admin:
         return await org_repo.get_projects(db)
-    
+
     if current_user.role == UserRole.manager:
         # Менеджер видит только свои проекты
         return await org_repo.get_projects_by_manager(db, current_user.id)
-    
+
     # Для остальных ролей (employee) в админ-панели ничего не показываем
     return []
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: int,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    project_id: int, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Получить проект по ID.
@@ -257,7 +234,7 @@ async def update_project(
     project_id: int,
     project_in: ProjectUpdate,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Обновить проект (название, менеджер).
@@ -268,10 +245,12 @@ async def update_project(
     project = await org_repo.get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Проект не найден")
-    
+
     # ПРАВА: Админ или менеджер ЭТОГО проекта
     if current_user.role != UserRole.admin and project.manager_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Только менеджер этого проекта или администратор могут вносить изменения.")
+        raise HTTPException(
+            status_code=403, detail="Только менеджер этого проекта или администратор могут вносить изменения."
+        )
 
     update_data = project_in.model_dump(exclude_unset=True)
     # Номер проекта (code) иммутабелен после создания — исключаем на уровне API
@@ -283,18 +262,14 @@ async def update_project(
         update_data.pop("weekly_limit", None)
 
     updated_project = await org_repo.update_project(db, project, update_data)
-    await audit_repo.create_audit_log(
-        db, current_user.id, "UPDATE_PROJECT", "project", project_id, update_data
-    )
+    await audit_repo.create_audit_log(db, current_user.id, "UPDATE_PROJECT", "project", project_id, update_data)
     await db.commit()
     return updated_project
 
 
 @router.delete("/projects/{project_id}", status_code=204)
 async def delete_project(
-    project_id: int,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    project_id: int, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Удалить проект.
@@ -310,17 +285,19 @@ async def delete_project(
     except IntegrityError:
         raise HTTPException(
             status_code=409,
-            detail="Невозможно удалить проект, так как с ним связаны заявки на переработки или другие записи."
+            detail="Невозможно удалить проект, так как с ним связаны заявки на переработки или другие записи.",
         )
 
+
 # ==================== USERS ====================
+
 
 @router.post("/users", response_model=UserResponse, status_code=201)
 async def create_user(
     request: Request,
     user_in: UserCreateByAdmin,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Создать нового пользователя.
@@ -328,13 +305,13 @@ async def create_user(
     """
     admin_limiter.check_limit(request)
     require_admin(current_user)
-    
+
     try:
         new_user = await register_user(db, user_in)
-        
+
         # Сразу ставим флаг смены пароля, так как пароль задал админ
         await user_repo.update_user(db, new_user, {"must_change_password": True})
-        
+
         await audit_repo.create_audit_log(
             db, current_user.id, "CREATE_USER", "user", new_user.id, {"email": new_user.email, "role": new_user.role}
         )
@@ -342,8 +319,7 @@ async def create_user(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=409,
-            detail="Пользователь с таким email уже существует или нарушена целостность данных."
+            status_code=409, detail="Пользователь с таким email уже существует или нарушена целостность данных."
         )
     return new_user
 
@@ -359,7 +335,7 @@ async def list_users(
     department_id: int | None = None,
     company: UserCompany | None = None,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить список пользователей с поиском, сортировкой и пагинацией (с фильтрами).
@@ -374,15 +350,13 @@ async def list_users(
         page_size=page_size,
         role=role,
         department_id=department_id,
-        company=company
+        company=company,
     )
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
 async def get_user(
-    user_id: int,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    user_id: int, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """
     Получить пользователя по ID.
@@ -398,9 +372,9 @@ async def get_user(
 async def admin_update_user(
     request: Request,
     user_id: int,
-    user_in: UserAdminUpdate,      # <-- не DepartmentUpdate!
+    user_in: UserAdminUpdate,  # <-- не DepartmentUpdate!
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Обновить пользователя (роль, отдел, активность)."""
     admin_limiter.check_limit(request)
@@ -416,12 +390,11 @@ async def admin_update_user(
         if "is_active" in update_data and not update_data["is_active"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Вы не можете деактивировать свою собственную учетную запись администратора."
+                detail="Вы не можете деактивировать свою собственную учетную запись администратора.",
             )
         if "role" in update_data and update_data["role"] != UserRole.admin:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Вы не можете снять с себя роль администратора."
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Вы не можете снять с себя роль администратора."
             )
 
     # 2. Защита от деактивации или понижения последнего активного администратора системы (CWE-284)
@@ -430,16 +403,15 @@ async def admin_update_user(
         is_demoting = "role" in update_data and update_data["role"] != UserRole.admin
         if is_deactivating or is_demoting:
             from sqlalchemy import func
+
             active_admins_stmt = select(func.count(User.id)).where(
-                User.role == UserRole.admin,
-                User.is_active == True,
-                User.id != user.id
+                User.role == UserRole.admin, User.is_active == True, User.id != user.id
             )
             active_admins_count = await db.scalar(active_admins_stmt)
             if (active_admins_count or 0) < 1:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Нельзя деактивировать или понизить последнего активного администратора системы."
+                    detail="Нельзя деактивировать или понизить последнего активного администратора системы.",
                 )
 
     # 3. Валидация существования отдела при его изменении
@@ -447,21 +419,17 @@ async def admin_update_user(
         dept = await org_repo.get_department_by_id(db, update_data["department_id"])
         if not dept:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Отдел с ID {update_data['department_id']} не найден."
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Отдел с ID {update_data['department_id']} не найден."
             )
 
     try:
         updated_user = await user_repo.update_user(db, user, update_data)
-        await audit_repo.create_audit_log(
-            db, current_user.id, "UPDATE_USER", "user", user_id, update_data
-        )
+        await audit_repo.create_audit_log(db, current_user.id, "UPDATE_USER", "user", user_id, update_data)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=409,
-            detail="Пользователь с таким email уже существует или нарушена целостность данных."
+            status_code=409, detail="Пользователь с таким email уже существует или нарушена целостность данных."
         )
     return updated_user
 
@@ -471,7 +439,7 @@ async def reset_user_password(
     request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Сбросить пароль пользователя (только для админов)."""
     admin_limiter.check_limit(request)
@@ -480,10 +448,9 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     new_password = secrets.token_urlsafe(12)
-    await user_repo.update_user(db, user, {
-        "hashed_password": hash_password(new_password),
-        "must_change_password": True
-    })
+    await user_repo.update_user(
+        db, user, {"hashed_password": hash_password(new_password), "must_change_password": True}
+    )
     # Отзываем все активные сессии пользователя для защиты учетной записи (CWE-613)
     await revoke_all_user_refresh_tokens(db, user.id)
     # Отправляем новый пароль по почте через MS Graph
@@ -491,7 +458,7 @@ async def reset_user_password(
         success = await ms_graph.send_email(
             recipient=user.email,
             subject="Сброс пароля в системе Overtime Pro",
-            body_content=f"<h1>Ваш пароль был сброшен</h1><p>Ваш новый временный пароль: <b>{new_password}</b></p><p>При следующем входе система попросит вас его изменить.</p>"
+            body_content=f"<h1>Ваш пароль был сброшен</h1><p>Ваш новый временный пароль: <b>{new_password}</b></p><p>При следующем входе система попросит вас его изменить.</p>",
         )
         if success:
             print(f"DEBUG: Email success sent to {user.email}")
@@ -500,19 +467,17 @@ async def reset_user_password(
     except Exception as e:
         print(f"DEBUG: Email Exception to {user.email}: {e}")
 
-    await audit_repo.create_audit_log(
-        db, current_user.id, "RESET_PASSWORD", "user", user_id
-    )
+    await audit_repo.create_audit_log(db, current_user.id, "RESET_PASSWORD", "user", user_id)
     await db.commit()
     return {"detail": f"Пароль пользователя {user.full_name} успешно сброшен и отправлен на email."}
- 
- 
+
+
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(
     request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Удалить пользователя.
@@ -524,28 +489,26 @@ async def delete_user(
     user = await user_repo.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
+
     # Не даем админу удалить самого себя
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Вы не можете удалить свою собственную учетную запись")
-        
+
     try:
         await user_repo.delete_user(db, user)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=409,
-            detail="Невозможно удалить пользователя, так как с ним связаны заявки или другие записи."
+            status_code=409, detail="Невозможно удалить пользователя, так как с ним связаны заявки или другие записи."
         )
 
 
 # ==================== SYSTEM SETTINGS ====================
 
+
 @router.get("/settings/{key}", response_model=SystemSettingSchema)
 async def get_admin_setting(
-    key: str,
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    key: str, db: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)
 ):
     """Получить значение системной настройки (только для админов)."""
     require_admin(current_user)
@@ -554,23 +517,24 @@ async def get_admin_setting(
         raise HTTPException(status_code=404, detail="Настройка не найдена")
     return {"key": key, "value": value}
 
+
 @router.post("/settings/{key}", response_model=SystemSettingSchema)
 async def set_admin_setting(
     key: str,
     setting_in: SystemSettingUpdate,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Установить значение системной настройки (только для админов)."""
     require_admin(current_user)
     return await settings_repo.set_setting(db, key, setting_in.value)
 
+
 # ==================== MICROSOFT INTEGRATION ====================
 
+
 @router.get("/ms-users")
-async def get_microsoft_users(
-    current_user: User = Depends(get_current_user)
-):
+async def get_microsoft_users(current_user: User = Depends(get_current_user)):
     """
     Получить список пользователей из Microsoft Graph.
     Доступно только администраторам.
@@ -578,7 +542,9 @@ async def get_microsoft_users(
     require_admin(current_user)
     return await ms_graph.get_users()
 
+
 from pydantic import BaseModel as PydanticBaseModel
+
 
 class MSUserImportItem(PydanticBaseModel):
     id: str
@@ -587,14 +553,16 @@ class MSUserImportItem(PydanticBaseModel):
     userPrincipalName: str
     jobTitle: str | None = None
 
+
 class MSUsersImportRequest(PydanticBaseModel):
     users: List[MSUserImportItem]
+
 
 @router.post("/import-ms-users")
 async def import_microsoft_users(
     payload: MSUsersImportRequest,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Импортировать выбранных пользователей из MS в локальную БД.
@@ -602,19 +570,23 @@ async def import_microsoft_users(
     """
     require_admin(current_user)
     imported_count = 0
-    
+
     for user_data in payload.users:
         email = user_data.mail or user_data.userPrincipalName
         if not email:
             continue
-            
+
         # Проверяем, нет ли уже такого пользователя
         existing = await get_user_by_email(db, email)
         if existing:
             continue
-            
+
         # Создаем нового пользователя с временным случайным паролем
-        company_val = UserCompany.AJ_techCom if ("aj-tech" in email.lower() or "ajtech" in email.lower()) else UserCompany.Polymedia
+        company_val = (
+            UserCompany.AJ_techCom
+            if ("aj-tech" in email.lower() or "ajtech" in email.lower())
+            else UserCompany.Polymedia
+        )
         new_user = User(
             email=email,
             full_name=user_data.displayName or "Сотрудник MS",
@@ -622,29 +594,26 @@ async def import_microsoft_users(
             role=UserRole.employee,
             company=company_val,
             is_active=True,
-            must_change_password=False
+            must_change_password=False,
         )
         db.add(new_user)
-        
+
         # Логируем действие импорта
-        await audit_repo.create_audit_log(
-            db, current_user.id, "IMPORT_USER_MS", "user", 0, {"email": email}
-        )
+        await audit_repo.create_audit_log(db, current_user.id, "IMPORT_USER_MS", "user", 0, {"email": email})
         imported_count += 1
-        
+
     await db.commit()
     return {"status": "success", "imported": imported_count, "count": imported_count}
 
+
 @router.post("/test-email")
-async def test_microsoft_email(
-    current_user: User = Depends(get_current_user)
-):
+async def test_microsoft_email(current_user: User = Depends(get_current_user)):
     """Тестовая отправка письма через MS Graph."""
     require_admin(current_user)
     success = await ms_graph.send_email(
         recipient=current_user.email,
         subject="Тест системы Overtime Pro",
-        body_content="<h1>Привет!</h1><p>Если ты видишь это письмо, значит интеграция с почтой MS Graph работает корректно.</p>"
+        body_content="<h1>Привет!</h1><p>Если ты видишь это письмо, значит интеграция с почтой MS Graph работает корректно.</p>",
     )
     if success:
         return {"status": "success", "message": f"Письмо отправлено на {current_user.email}"}
@@ -653,10 +622,9 @@ async def test_microsoft_email(
 
 # ==================== ODOO CRM INTEGRATION ====================
 
+
 @router.get("/odoo/status")
-async def odoo_integration_status(
-    current_user: User = Depends(get_current_user)
-):
+async def odoo_integration_status(current_user: User = Depends(get_current_user)):
     """
     Проверить статус интеграции с Odoo CRM.
 
@@ -672,9 +640,7 @@ async def odoo_integration_status(
 
 
 @router.get("/odoo/projects")
-async def list_odoo_projects(
-    current_user: User = Depends(get_current_user)
-):
+async def list_odoo_projects(current_user: User = Depends(get_current_user)):
     """
     Получить список активных проектов из Odoo CRM.
 
@@ -692,7 +658,7 @@ async def list_odoo_projects(
     if not odoo_service.is_configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Odoo CRM не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env"
+            detail="Odoo CRM не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env",
         )
 
     try:
@@ -702,17 +668,18 @@ async def list_odoo_projects(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Ошибка подключения к Odoo: {str(e)}"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Ошибка подключения к Odoo: {str(e)}"
         )
 
 
 class OdooImportRequest(list):
     """Schema: список проектов для импорта."""
+
     pass
 
 
 from pydantic import BaseModel as PydanticBaseModel
+
 
 class OdooProjectImportItem(PydanticBaseModel):
     """
@@ -724,6 +691,7 @@ class OdooProjectImportItem(PydanticBaseModel):
         code:          Номер проекта (YYYY-NNNNN). Может быть None.
         manager_email: Email менеджера для маппинга на локального User.
     """
+
     odoo_id: int
     name: str
     code: str | None = None
@@ -734,7 +702,7 @@ class OdooProjectImportItem(PydanticBaseModel):
 async def import_odoo_projects(
     projects_to_import: List[OdooProjectImportItem],
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Импортировать выбранные проекты из Odoo CRM в локальную БД.
@@ -760,9 +728,7 @@ async def import_odoo_projects(
         try:
             # Проверяем существование проекта с таким code
             if item.code:
-                existing = await db.execute(
-                    select(Project).where(Project.code == item.code)
-                )
+                existing = await db.execute(select(Project).where(Project.code == item.code))
                 if existing.scalar_one_or_none():
                     skipped += 1
                     continue
@@ -798,7 +764,7 @@ async def import_odoo_projects(
                     "code": item.code,
                     "odoo_id": item.odoo_id,
                     "manager_email": item.manager_email,
-                }
+                },
             )
             imported += 1
 
@@ -818,13 +784,12 @@ async def import_odoo_projects(
 
 # ==================== ODOO INTEGRATION MICROSERVICE (API) ====================
 
+
 @router.get("/odoo-integration/status")
-async def odoo_integration_status_api(
-    current_user: User = Depends(get_current_user)
-):
+async def odoo_integration_status_api(current_user: User = Depends(get_current_user)):
     """
     Проверить статус интеграции с микросервисом Odoo CRM.
-    
+
     Доступно только администраторам.
     """
     require_admin(current_user)
@@ -839,11 +804,11 @@ async def list_odoo_integration_projects(
     fields: List[str] = Query(None, description="Список полей, запрашиваемых из Odoo"),
     name: str = Query(None, description="Фильтр по названию проекта (частичное совпадение)"),
     code: str = Query(None, description="Фильтр по коду проекта (частичное совпадение)"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить проекты из Odoo через микросервис-коннектор.
-    
+
     Доступно только администраторам.
     """
     require_admin(current_user)
@@ -851,7 +816,7 @@ async def list_odoo_integration_projects(
     if not settings.ODOO_INTEGRATION_URL or not settings.ODOO_INTEGRATION_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Микросервис Odoo CRM не настроен. Заполните ODOO_INTEGRATION_URL and ODOO_INTEGRATION_KEY в .env"
+            detail="Микросервис Odoo CRM не настроен. Заполните ODOO_INTEGRATION_URL and ODOO_INTEGRATION_KEY в .env",
         )
 
     params = {}
@@ -862,32 +827,28 @@ async def list_odoo_integration_projects(
     if code:
         params["code"] = code
 
-    headers = {
-        "X-API-Key": settings.ODOO_INTEGRATION_KEY
-    }
+    headers = {"X-API-Key": settings.ODOO_INTEGRATION_KEY}
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             response = await client.get(
-                f"{settings.ODOO_INTEGRATION_URL.rstrip('/')}/api/v1/projects",
-                params=params,
-                headers=headers
+                f"{settings.ODOO_INTEGRATION_URL.rstrip('/')}/api/v1/projects", params=params, headers=headers
             )
             if response.status_code != 200:
                 raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Ошибка сервиса интеграции Odoo: {response.text}"
+                    status_code=response.status_code, detail=f"Ошибка сервиса интеграции Odoo: {response.text}"
                 )
             return response.json()
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Ошибка соединения с сервисом интеграции Odoo: {str(e)}"
+                detail=f"Ошибка соединения с сервисом интеграции Odoo: {str(e)}",
             )
 
 
 class OdooIntegrationImportItem(PydanticBaseModel):
     """Схема проекта для импорта из микросервиса Odoo."""
+
     id: int
     name: str | None = None
     code: str | None = None
@@ -898,11 +859,11 @@ class OdooIntegrationImportItem(PydanticBaseModel):
 async def import_odoo_integration_projects(
     projects_to_import: List[OdooIntegrationImportItem],
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Импортировать выбранные проекты из микросервиса Odoo в локальную БД.
-    
+
     Доступно только администраторам.
     """
     require_admin(current_user)
@@ -917,17 +878,13 @@ async def import_odoo_integration_projects(
 
             # Проверяем существование проекта с таким code
             if item.code:
-                existing = await db.execute(
-                    select(Project).where(Project.code == item.code)
-                )
+                existing = await db.execute(select(Project).where(Project.code == item.code))
                 if existing.scalar_one_or_none():
                     skipped += 1
                     continue
             else:
                 # Проверяем существование по имени
-                existing = await db.execute(
-                    select(Project).where(Project.name == name)
-                )
+                existing = await db.execute(select(Project).where(Project.name == name))
                 if existing.scalar_one_or_none():
                     skipped += 1
                     continue
@@ -937,12 +894,7 @@ async def import_odoo_integration_projects(
             if item.status and item.status not in ("active", "worked", "draft"):
                 is_active = False
 
-            new_project = Project(
-                name=name,
-                code=item.code,
-                is_active=is_active,
-                weekly_limit=50
-            )
+            new_project = Project(name=name, code=item.code, is_active=is_active, weekly_limit=50)
             db.add(new_project)
             await db.flush()
 
@@ -957,7 +909,7 @@ async def import_odoo_integration_projects(
                     "code": item.code,
                     "odoo_id": item.id,
                     "status": item.status,
-                }
+                },
             )
             imported += 1
 

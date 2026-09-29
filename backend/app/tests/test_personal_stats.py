@@ -1,18 +1,17 @@
 # pyrefly: ignore [missing-import]
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone, timedelta
+
 from app.models.organization import Project
-from app.models.user import User
 from app.models.overtime import Overtime, OvertimeStatus
+from app.models.user import User
 
 
 @pytest.mark.asyncio
-async def test_personal_stats_empty(
-    client: AsyncClient,
-    normal_user_token_headers: dict
-):
+async def test_personal_stats_empty(client: AsyncClient, normal_user_token_headers: dict):
     """
     Тест: для пользователя без заявок возвращается ровно 30 дней с нулевыми часами.
     """
@@ -37,7 +36,7 @@ async def test_personal_stats_approved_and_pending_separation(
     db_session: AsyncSession,
     normal_user: User,
     normal_user_token_headers: dict,
-    test_project: Project
+    test_project: Project,
 ):
     """
     Тест: проверка разделения часов на согласованные (hours) и находящиеся на согласовании (pending_hours).
@@ -53,7 +52,7 @@ async def test_personal_stats_approved_and_pending_separation(
         end_time=now - timedelta(hours=1),
         approved_hours=3.0,
         status=OvertimeStatus.APPROVED,
-        description="Согласованная работа"
+        description="Согласованная работа",
     )
 
     # 2. Создаем переработку на согласовании (PENDING) на сегодня (2 часа)
@@ -63,7 +62,7 @@ async def test_personal_stats_approved_and_pending_separation(
         start_time=now - timedelta(hours=2),
         end_time=now,
         status=OvertimeStatus.PENDING,
-        description="Работа на проверке"
+        description="Работа на проверке",
     )
 
     db_session.add(approved_ot)

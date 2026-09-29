@@ -3,15 +3,16 @@
 Предоставляет функции преобразования технических логов аудита в человекочитаемые описания
 и экспорта структурированного отчета с корпоративным оформлением.
 """
+
 import io
 from datetime import datetime, timezone
+
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.models.user import User
 from app.core.config import settings
-
+from app.models.user import User
 
 # Словарь человекопонятных названий действий на русском языке
 ACTION_TITLES: dict[str, str] = {
@@ -158,7 +159,6 @@ def format_details_to_text(action: str, details: dict | None) -> str:
             parts.append(f"Статус до удаления: {details.get('status')}")
 
     elif action.startswith("REVIEW_") or action == "SELF_REVIEW_ADMIN":
-
         approved = details.get("approved")
         app_h = details.get("approved_hours")
         req_h = details.get("requested_hours")
@@ -282,12 +282,7 @@ async def generate_audit_excel_file(
     fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 
     thin_border_side = Side(border_style="thin", color="CBD5E1")
-    border_cell = Border(
-        left=thin_border_side,
-        right=thin_border_side,
-        top=thin_border_side,
-        bottom=thin_border_side
-    )
+    border_cell = Border(left=thin_border_side, right=thin_border_side, top=thin_border_side, bottom=thin_border_side)
 
     align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
@@ -323,7 +318,7 @@ async def generate_audit_excel_file(
         "Категория",
         "Действие",
         "Объект",
-        "Подробности / Описание изменений"
+        "Подробности / Описание изменений",
     ]
 
     header_row_idx = 4
@@ -342,11 +337,13 @@ async def generate_audit_excel_file(
         raw_action = item.get("action", "")
         action_title = ACTION_TITLES.get(raw_action, raw_action)
         category = ACTION_CATEGORIES.get(raw_action, "Общее")
-        
+
         user_info = item.get("user") or {}
-        user_name = user_info.get("full_name") or ("Система" if not item.get("user_id") else f"ID: {item.get('user_id')}")
+        user_name = user_info.get("full_name") or (
+            "Система" if not item.get("user_id") else f"ID: {item.get('user_id')}"
+        )
         user_email = user_info.get("email") or "-"
-        
+
         target_type = item.get("target_type") or "-"
         target_id = item.get("target_id")
         target_str = f"{target_type} #{target_id}" if target_id else target_type
@@ -356,19 +353,10 @@ async def generate_audit_excel_file(
 
         details_desc = format_details_to_text(raw_action, item.get("details"))
 
-        row_data = [
-            idx,
-            dt_str,
-            user_name,
-            user_email,
-            category,
-            action_title,
-            target_str,
-            details_desc
-        ]
+        row_data = [idx, dt_str, user_name, user_email, category, action_title, target_str, details_desc]
 
         ws.row_dimensions[row_idx].height = 24
-        is_even = (idx % 2 == 0)
+        is_even = idx % 2 == 0
 
         for col_idx, val in enumerate(row_data, start=1):
             val_safe = sanitize_excel_formula(val)
@@ -387,7 +375,7 @@ async def generate_audit_excel_file(
 
     # 5. Настройка ширины колонок
     col_widths = {
-        1: 6,   # №
+        1: 6,  # №
         2: 20,  # Дата
         3: 26,  # Пользователь
         4: 24,  # Email

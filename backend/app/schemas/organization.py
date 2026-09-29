@@ -1,22 +1,28 @@
 # pyrefly: ignore [missing-import]
 import re
-from pydantic import BaseModel, ConfigDict, field_validator, Field
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # --- Departments ---
 
+
 class DepartmentCreate(BaseModel):
     """Схема создания отдела."""
+
     name: str
     head_id: int | None = None
 
+
 class DepartmentUpdate(BaseModel):
     """Схема обновления отдела."""
+
     name: str | None = None
     head_id: int | None = None
 
+
 class DepartmentResponse(BaseModel):
     """Схема ответа с данными отдела."""
+
     id: int
     name: str
     head_id: int | None
@@ -37,6 +43,7 @@ class ProjectCreate(BaseModel):
     Поле code (номер проекта) является иммутабельным после создания
     и должно соответствовать формату YYYY-NNNNN (например, 2026-00001).
     """
+
     name: str
     code: str
     manager_id: int | None = None
@@ -49,10 +56,7 @@ class ProjectCreate(BaseModel):
         """Проверяет соответствие номера проекта формату YYYY-NNNNN."""
         v = v.strip()
         if not _PROJECT_CODE_RE.match(v):
-            raise ValueError(
-                "Номер проекта должен быть в формате ГГГГ-ННННН, "
-                "например: 2026-00001"
-            )
+            raise ValueError("Номер проекта должен быть в формате ГГГГ-ННННН, например: 2026-00001")
         return v
 
 
@@ -63,14 +67,18 @@ class ProjectUpdate(BaseModel):
     Поле code (номер проекта) намеренно исключено:
     номер проекта является иммутабельным после создания.
     """
+
     name: str | None = None
     manager_id: int | None = None
-    weekly_limit: int | None = Field(default=None, ge=0, le=168, description="Недельный лимит часов переработок (0-168)")
+    weekly_limit: int | None = Field(
+        default=None, ge=0, le=168, description="Недельный лимит часов переработок (0-168)"
+    )
     is_active: bool | None = None
 
 
 class ProjectResponse(BaseModel):
     """Схема ответа с данными проекта."""
+
     id: int
     name: str
     code: str | None = None
@@ -79,4 +87,3 @@ class ProjectResponse(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
-

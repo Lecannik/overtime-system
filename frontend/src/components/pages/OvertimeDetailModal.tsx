@@ -459,18 +459,18 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Оригинальная запись</label>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '12px', 
-                                    padding: '12px 16px', 
-                                    background: 'var(--bg-tertiary)', 
-                                    borderRadius: '16px', 
-                                    border: '1px solid var(--border)' 
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    padding: '12px 16px',
+                                    background: 'var(--bg-tertiary)',
+                                    borderRadius: '16px',
+                                    border: '1px solid var(--border)'
                                 }}>
-                                    <audio 
-                                        controls 
-                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/${overtime.voice_url}`} 
+                                    <audio
+                                        controls
+                                        src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/${overtime.voice_url}`}
                                         style={{ width: '100%', height: '40px' }}
                                     />
                                 </div>
@@ -597,7 +597,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <AlertCircle size={14} /> Согласование переработки
                         </h4>
-                        
+
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                             {currentUser?.role === 'admin' && (
                                 <select

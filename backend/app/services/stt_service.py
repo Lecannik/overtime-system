@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 # pyrefly: ignore [missing-import]
 import torch
 
@@ -9,6 +10,7 @@ os.environ["DNNL_PRIMITIVE_CACHE_CAPACITY"] = "0"
 
 # pyrefly: ignore [missing-import]
 import whisper
+
 # pyrefly: ignore [missing-import]
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
@@ -19,6 +21,7 @@ _whisper_model = None
 _summary_model = None
 _summary_tokenizer = None
 
+
 def get_whisper():
     global _whisper_model
     if _whisper_model is None:
@@ -26,17 +29,13 @@ def get_whisper():
         _whisper_model = whisper.load_model("base")
     return _whisper_model
 
+
 def get_summarizer():
     global _summary_model, _summary_tokenizer
     if _summary_model is None:
         # Проверяем монтируемый том, затем встроенную директорию по умолчанию, затем локальные пути
-        paths_to_try = [
-            "/app/models/gazeta",
-            "/app/models/gazeta_default",
-            "models/gazeta",
-            "models/gazeta_default"
-        ]
-        
+        paths_to_try = ["/app/models/gazeta", "/app/models/gazeta_default", "models/gazeta", "models/gazeta_default"]
+
         loaded = False
         for path in paths_to_try:
             if os.path.exists(path) and os.listdir(path):
@@ -48,13 +47,16 @@ def get_summarizer():
                     break
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось загрузить из {path}: {e}")
-        
+
         if not loaded:
             fallback_model = "IlyaGusev/rut5_base_sum_gazeta"
-            logger.warning(f"⚠️ Не удалось загрузить модель локально из путей {paths_to_try}. Скачиваем из Hugging Face ({fallback_model})...")
+            logger.warning(
+                f"⚠️ Не удалось загрузить модель локально из путей {paths_to_try}. Скачиваем из Hugging Face ({fallback_model})..."
+            )
             _summary_tokenizer = T5Tokenizer.from_pretrained(fallback_model)
             _summary_model = T5ForConditionalGeneration.from_pretrained(fallback_model)
     return _summary_model, _summary_tokenizer
+
 
 async def summarize_text(text: str) -> str:
     """Генерирует профессиональное резюме с помощью T5."""
@@ -65,7 +67,7 @@ async def summarize_text(text: str) -> str:
         model, tokenizer = get_summarizer()
         # Т5 работает лучше с префиксом (хотя эта модель училась без него, но мы добавим контекст)
         inputs = tokenizer([text], max_length=1024, truncation=True, return_tensors="pt")
-        
+
         # Генерация (регулируем краткость)
         output_ids = model.generate(
             input_ids=inputs["input_ids"],
@@ -73,19 +75,20 @@ async def summarize_text(text: str) -> str:
             min_length=10,
             num_beams=4,
             no_repeat_ngram_size=2,
-            early_stopping=True
+            early_stopping=True,
         )
-        
+
         summary = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
-        
+
         # Умная чистка (исправление первой буквы)
         if summary:
             summary = summary[0].upper() + summary[1:]
-        
+
         return summary
     except Exception as e:
         logger.error(f"❌ Ошибка суммаризации: {str(e)}")
         return text[:50] + "..."
+
 
 async def transcribe_audio(file_path: str) -> dict:
     """ASR + NLP Summary."""
@@ -97,14 +100,11 @@ async def transcribe_audio(file_path: str) -> dict:
         w_model = get_whisper()
         result = w_model.transcribe(file_path, language="ru")
         raw_text = result["text"].strip()
-        
+
         # 2. Текст -> Резюме + Исправление ошибок (автоматически при суммаризации)
         summary = await summarize_text(raw_text)
-        
-        return {
-            "text": raw_text,
-            "summary": summary
-        }
+
+        return {"text": raw_text, "summary": summary}
     except Exception as e:
         logger.error(f"❌ Ошибка STT: {str(e)}")
         return {"text": f"[Ошибка: {str(e)}]", "summary": "[Ошибка]"}

@@ -1,8 +1,9 @@
-import httpx
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories import settings as settings_repo
 
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories import settings as settings_repo
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 async def send_telegram_message(session: AsyncSession, chat_id: str, text: str):
     """Отправляет сообщение в Telegram, используя токен из БД с fallback на env."""
     import os
+
     # 1. Получаем актуальный токен
     token = await settings_repo.get_setting(session, "telegram_bot_token")
     if not token:
@@ -22,11 +24,7 @@ async def send_telegram_message(session: AsyncSession, chat_id: str, text: str):
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            })
+            resp = await client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
             resp.raise_for_status()
             return True
     except Exception as e:

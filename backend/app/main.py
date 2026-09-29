@@ -1,43 +1,43 @@
-import os
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
+
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+
 # pyrefly: ignore [missing-import]
 from fastapi.responses import FileResponse
-from app.api.deps import get_current_user
-from app.core.database import get_session
-from app.models.user import User, UserRole
-from app.models.overtime import Overtime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+from app.api.deps import get_current_user
+from app.core.database import get_session
+from app.models.overtime import Overtime
+from app.models.user import User, UserRole
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 # Правильные импорты роутеров
-from app.api.v1.auth import router as auth_router
-from app.api.v1.overtime import router as overtime_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.analytics import router as analytics_router
-from app.api.v1.projects import router as projects_router
-from app.api.v1.notifications import router as notifications_router
 from app.api.v1.audit import router as audit_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
+from app.api.v1.notifications import router as notifications_router
+from app.api.v1.overtime import router as overtime_router
+from app.api.v1.projects import router as projects_router
 from app.api.v1.websocket import router as websocket_router
-
-from app.services.bot_service import run_bot_async
 from app.core.config import settings
+from app.services.bot_service import run_bot_async
 
 _cleanup_logger = logging.getLogger("stale_cleanup")
+
 
 async def _stale_session_cleanup_loop():
     """Каждый час автоматически закрывает IN_PROGRESS сессии старше MAX_OVERTIME_HOURS."""
@@ -81,6 +81,7 @@ async def lifespan(app: FastAPI):
 
     cleanup_task.cancel()
 
+
 app = FastAPI(
     title="Overtime System",
     lifespan=lifespan,
@@ -102,6 +103,7 @@ app.add_middleware(
 # Безопасная выдача файлов загрузок (требует аутентификации)
 uploads_dir = os.path.abspath("uploads")
 os.makedirs(os.path.join(uploads_dir, "voice"), exist_ok=True)
+
 
 @app.get("/uploads/{file_path:path}")
 async def get_protected_upload(
@@ -127,27 +129,17 @@ async def get_protected_upload(
     # Администраторам доступ открыт ко всем файлам
     if current_user.role != UserRole.admin:
         filename = os.path.basename(resolved_path)
-        stmt = (
-            select(Overtime)
-            .options(selectinload(Overtime.project))
-            .where(Overtime.voice_url.like(f"%{filename}"))
-        )
+        stmt = select(Overtime).options(selectinload(Overtime.project)).where(Overtime.voice_url.like(f"%{filename}"))
         result = await session.execute(stmt)
         overtime = result.scalars().first()
 
         if not overtime:
             # Принцип Default Deny (CWE-276): если файл не привязан к объекту переработки в БД,
             # обычным пользователям доступ строго запрещен (разрешен только администраторам).
-            raise HTTPException(
-                status_code=403,
-                detail="У вас нет прав для доступа к данному файлу."
-            )
+            raise HTTPException(status_code=403, detail="У вас нет прав для доступа к данному файлу.")
 
         is_author = overtime.user_id == current_user.id
-        is_manager = (
-            overtime.project is not None
-            and overtime.project.manager_id == current_user.id
-        )
+        is_manager = overtime.project is not None and overtime.project.manager_id == current_user.id
         is_dept_head = False
         if current_user.role == UserRole.head and current_user.department_id:
             author = await session.get(User, overtime.user_id)
@@ -155,12 +147,10 @@ async def get_protected_upload(
                 is_dept_head = True
 
         if not (is_author or is_manager or is_dept_head):
-            raise HTTPException(
-                status_code=403,
-                detail="У вас нет прав для доступа к данному файлу."
-            )
+            raise HTTPException(status_code=403, detail="У вас нет прав для доступа к данному файлу.")
 
     return FileResponse(resolved_path)
+
 
 # Роутеры
 app.include_router(health_router, prefix="/api/v1")

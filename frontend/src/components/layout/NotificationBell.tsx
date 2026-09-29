@@ -21,13 +21,13 @@ const NotificationBell: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        // Use an IIFE or just call it directly if it's async, but we want to avoid 
+        // Use an IIFE or just call it directly if it's async, but we want to avoid
         // synchronous execution in the effect body that triggers state updates.
         const initFetch = async () => {
             await fetchNotifications();
         };
         initFetch();
-        
+
         const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
 
         let ws: WebSocket | null = null;
@@ -46,7 +46,7 @@ const NotificationBell: React.FC = () => {
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
-            
+
             try {
                 ws = new WebSocket(wsUrl);
 

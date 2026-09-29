@@ -1,19 +1,17 @@
 import asyncio
-import sys
 import os
+import sys
 
 # Добавляем путь к приложению, чтобы импорты работали корректно
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import secrets
+
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
-from app.models.user import User, UserRole, UserCompany
-from app.models.organization import Department, Project
-from app.models.overtime import Overtime
-from app.models.audit import AuditLog
+from app.models.user import User, UserCompany, UserRole
 from app.repositories import user as user_repo
 
-import secrets
 
 async def create_admin():
     async with AsyncSessionLocal() as session:
@@ -31,9 +29,9 @@ async def create_admin():
             role=UserRole.admin,
             company=UserCompany.Polymedia,
             is_active=True,
-            must_change_password=True
+            must_change_password=True,
         )
-        
+
         try:
             await user_repo.create_user(session, admin)
             print("✅ Администратор admin@example.com успешно создан.")
@@ -42,6 +40,7 @@ async def create_admin():
             print("⚠️ При первом входе в систему потребуется изменить этот пароль.")
         except Exception as e:
             print(f"❌ Ошибка при создании администратора: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(create_admin())

@@ -6,16 +6,19 @@ import {
 } from 'lucide-react';
 import Logo from '../atoms/Logo';
 import NotificationBell from './NotificationBell';
-import { logout, setAccessToken } from '../../services/api';
+import { logout } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import type { User } from '../../types';
 
 interface HeaderProps {
-    user: User;
+    user?: User | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ user }) => {
+const Header: React.FC<HeaderProps> = ({ user: propUser }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { user: authUser, logout: authLogout } = useAuth();
+    const user = propUser || authUser;
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -34,14 +37,14 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
         try {
             const response = await logout();
             if (response.data && response.data.sso_logout_url) {
-                setAccessToken(null);
+                await authLogout();
                 window.location.href = response.data.sso_logout_url;
                 return;
             }
         } catch (error) {
             console.error('Ошибка при выходе из системы:', error);
         } finally {
-            setAccessToken(null);
+            await authLogout();
             navigate('/login');
         }
     };

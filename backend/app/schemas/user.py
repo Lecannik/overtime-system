@@ -1,15 +1,18 @@
 """
 Модуль содержит Pydantic-схемы для валидации данных пользователей.
 """
-from pydantic import BaseModel, EmailStr, field_validator
+
+from datetime import datetime
 from typing import Optional
 
-from app.models.user import UserRole, UserCompany, NotificationLevel
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, field_validator
+
+from app.models.user import NotificationLevel, UserCompany, UserRole
 
 
 class UserCreate(BaseModel):
     """Схема для регистрации нового пользователя."""
+
     full_name: str
     email: EmailStr
     password: str
@@ -38,6 +41,7 @@ class UserResponse(BaseModel):
     Схема ответа с данными пользователя.
     Используется для передачи информации о профиле на фронтенд.
     """
+
     id: int
     full_name: str
     email: EmailStr
@@ -71,11 +75,12 @@ class LoginResponse(BaseModel):
     Схема ответа при попытке входа.
     Обрабатывает два сценария: прямую выдачу токена или запрос 2FA кода.
     """
+
     status: str = "success"  # "success" (вход разрешен) или "2fa_required"
     access_token: Optional[str] = None
     token_type: Optional[str] = "bearer"
     user: Optional[UserResponse] = None
-    email: Optional[str] = None # Для идентификации при 2FA
+    email: Optional[str] = None  # Для идентификации при 2FA
 
 
 class UserUpdatePreferences(BaseModel):
@@ -84,17 +89,19 @@ class UserUpdatePreferences(BaseModel):
     Используется для обновления профиля на фронтенде.
     Смена отдела доступна исключительно администраторам через UserAdminUpdate.
     """
+
     full_name: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     notification_level: Optional[NotificationLevel] = None
     is_2fa_enabled: Optional[bool] = None
 
 
-class UserAdminUpdate (BaseModel):
+class UserAdminUpdate(BaseModel):
     """
     Схема обновления данных пользователя.
     Используется для обновления профиля на фронтенд.
     """
+
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     telegram_chat_id: Optional[str] = None
@@ -124,6 +131,7 @@ class UserChangePassword(BaseModel):
 
 class PaginatedUsersResponse(BaseModel):
     """Пагинированный ответ со списком пользователей."""
+
     items: list[UserResponse]
     total: int
     page: int

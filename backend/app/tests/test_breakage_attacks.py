@@ -12,17 +12,17 @@
 
 import os
 from datetime import datetime, timezone
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import admin_limiter, overtime_create_limiter
+from app.core.security import create_access_token, hash_password
 from app.models.organization import Department, Project
-from app.models.user import User, UserRole, UserCompany
 from app.models.overtime import Overtime, OvertimeStatus
-from app.core.security import hash_password, create_access_token
-from app.core.rate_limit import overtime_create_limiter, admin_limiter
+from app.models.user import User, UserCompany, UserRole
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,7 @@ def reset_rate_limiters():
 # =====================================================================
 # АТАКА 1: Серверный краш (HTTP 500 / AttributeError) при несуществующем project_id
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_1_server_crash_500_invalid_project_id(
@@ -86,6 +87,7 @@ async def test_attack_1_server_crash_500_invalid_project_id(
 # =====================================================================
 # АТАКА 2: BOLA / Несанкционированное согласование менеджером
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_2_bola_unauthorized_review_by_same_department_manager(
@@ -185,6 +187,7 @@ async def test_attack_2_bola_unauthorized_review_by_same_department_manager(
 # АТАКА 3: Серверный краш (HTTP 500 / IntegrityError) при удалении пользователя со связями
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_3_server_crash_500_delete_user_with_overtimes_integrity_error(
     client: AsyncClient,
@@ -262,6 +265,7 @@ async def test_attack_3_server_crash_500_delete_user_with_overtimes_integrity_er
 # АТАКА 4: Серверный краш (HTTP 500 / IntegrityError) при смене email на дублирующийся
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_4_server_crash_500_duplicate_email_in_admin_update_user(
     client: AsyncClient,
@@ -321,6 +325,7 @@ async def test_attack_4_server_crash_500_duplicate_email_in_admin_update_user(
 # АТАКА 5: Публичная утечка голосовых записей без авторизации
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
     client: AsyncClient,
@@ -367,10 +372,7 @@ async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
         )
 
         # 3. Аутентифицированный владелец получает доступ к своему файлу
-        auth_resp = await client.get(
-            f"/uploads/voice/{test_leak_filename}",
-            headers=normal_user_token_headers
-        )
+        auth_resp = await client.get(f"/uploads/voice/{test_leak_filename}", headers=normal_user_token_headers)
         assert auth_resp.status_code == 200, (
             f"Ожидался статус 200 OK для авторизованного пользователя, но получен {auth_resp.status_code}"
         )
@@ -384,6 +386,7 @@ async def test_attack_5_unauthenticated_leakage_of_confidential_voice_records(
 # =====================================================================
 # АТАКА 6: Защита от некорректного интервала времени и корректность расчета микропереработок
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_6_duration_validation_and_micro_overtime_calculation(
@@ -429,4 +432,3 @@ async def test_attack_6_duration_validation_and_micro_overtime_calculation(
     assert resp_valid.status_code == 200, f"Ошибка создания: {resp_valid.text}"
     data = resp_valid.json()
     assert data["hours"] == 1.0
-

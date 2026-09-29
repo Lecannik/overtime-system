@@ -1,5 +1,7 @@
 import asyncio
+
 import httpx
+
 
 async def test():
     # Мы знаем, что API на 8000, а не 5173
@@ -12,7 +14,7 @@ async def test():
         token_data = resp.json()
         token = token_data["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # 2. Get overtimes
         resp = await client.get("/overtimes/", headers=headers)
         print(f"Status: {resp.status_code}")
@@ -23,6 +25,7 @@ async def test():
                 print(f"  Project: {ot.get('project')}")
                 print(f"  User: {ot.get('user')}")
                 print("-" * 10)
+
 
 if __name__ == "__main__":
     asyncio.run(test())

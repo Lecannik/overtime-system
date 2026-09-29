@@ -9,15 +9,14 @@ Create Date: 2026-06-18 21:02:54.708879
 USING col AT TIME ZONE 'UTC' — это правильно интерпретирует наивное значение
 как UTC и конвертирует в timestamptz.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = '6f7e27ef722d'
-down_revision: Union[str, None] = '58bb2b3932ea'
+revision: str = "6f7e27ef722d"
+down_revision: Union[str, None] = "58bb2b3932ea"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

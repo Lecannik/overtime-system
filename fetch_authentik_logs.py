@@ -4,10 +4,10 @@ import sys
 def run_ssh_command(host, user, password, command):
     ssh_command = f"ssh -o StrictHostKeyChecking=no {user}@{host} \"{command}\""
     child = pexpect.spawn(ssh_command, timeout=20)
-    
+
     # Режим логирования вывода
     child.logfile_read = sys.stdout.buffer
-    
+
     try:
         index = child.expect(["password:", pexpect.EOF, pexpect.TIMEOUT])
         if index == 0:
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     host = "192.168.20.23"
     user = "nik"
     password = "Polymedia!10"
-    
+
     print("--- Fetching Authentik Server Errors ---")
     run_ssh_command(host, user, password, "docker logs --tail=500 authentik-server-1 2>&1 | grep -i -E 'error|warn|fail' | head -n 50")
     print("--- Fetching Authentik Worker Errors ---")

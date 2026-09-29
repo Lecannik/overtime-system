@@ -13,16 +13,16 @@
 
 import os
 from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
 
+from app.core.rate_limit import admin_limiter, login_limiter, overtime_create_limiter
 from app.models.organization import Department, Project
-from app.models.user import User, UserRole, UserCompany, RefreshToken
 from app.models.overtime import Overtime, OvertimeStatus
-from app.core.security import hash_password, create_access_token
-from app.core.rate_limit import overtime_create_limiter, admin_limiter, login_limiter
+from app.models.user import RefreshToken, User
 from app.services.refresh_token import create_refresh_token
 
 
@@ -41,6 +41,7 @@ def reset_all_rate_limiters():
 # =====================================================================
 # ТЕСТ 1: Искажение аналитики и бюджетов компании (CWE-840)
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_1_analytics_total_hours_ignores_rejected_and_cancelled(
@@ -121,6 +122,7 @@ async def test_attack_1_analytics_total_hours_ignores_rejected_and_cancelled(
 # ТЕСТ 2: Защита Default Deny на непривязанные файлы (CWE-276)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_2_fail_open_unlinked_file_blocked_by_default_deny(
     client: AsyncClient,
@@ -173,6 +175,7 @@ async def test_attack_2_fail_open_unlinked_file_blocked_by_default_deny(
 # ТЕСТ 3: Защита от краша 500 при обновлении отдела (CWE-755)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_3_update_department_invalid_head_id_and_integrity_error(
     client: AsyncClient,
@@ -220,6 +223,7 @@ async def test_attack_3_update_department_invalid_head_id_and_integrity_error(
 # ТЕСТ 4: Валидация department_id при создании пользователя (CWE-755)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_4_create_user_with_invalid_department_id_returns_404(
     client: AsyncClient,
@@ -262,6 +266,7 @@ async def test_attack_4_create_user_with_invalid_department_id_returns_404(
 # ТЕСТ 5: Отзыв всех RefreshToken при смене/сбросе пароля (CWE-613)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_attack_5_password_change_and_reset_revokes_all_refresh_tokens(
     client: AsyncClient,
@@ -277,8 +282,8 @@ async def test_attack_5_password_change_and_reset_revokes_all_refresh_tokens(
     должны немедленно аннулироваться (revoked = True).
     """
     # 1. Создаем несколько активных refresh-токенов для пользователя
-    token_1 = await create_refresh_token(db_session, normal_user.id)
-    token_2 = await create_refresh_token(db_session, normal_user.id)
+    await create_refresh_token(db_session, normal_user.id)
+    await create_refresh_token(db_session, normal_user.id)
     await db_session.commit()
 
     # Проверяем, что оба токена активны
@@ -307,7 +312,7 @@ async def test_attack_5_password_change_and_reset_revokes_all_refresh_tokens(
     )
 
     # 4. Проверяем отзыв при административном сбросе пароля
-    token_3 = await create_refresh_token(db_session, normal_user.id)
+    await create_refresh_token(db_session, normal_user.id)
     await db_session.commit()
 
     admin_reset_resp = await client.post(
@@ -317,14 +322,13 @@ async def test_attack_5_password_change_and_reset_revokes_all_refresh_tokens(
     assert admin_reset_resp.status_code == 200
 
     active_after_reset = (await db_session.execute(tokens_stmt)).scalars().all()
-    assert len(active_after_reset) == 0, (
-        "Уязвимость подтверждена: админский сброс пароля не отозвал refresh-токены!"
-    )
+    assert len(active_after_reset) == 0, "Уязвимость подтверждена: админский сброс пароля не отозвал refresh-токены!"
 
 
 # =====================================================================
 # ТЕСТ 6: Устранение Time Skew при расчете недельных лимитов
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_6_time_skew_weekly_overtime_limit_evaluation(
@@ -402,6 +406,7 @@ async def test_attack_6_time_skew_weekly_overtime_limit_evaluation(
 # =====================================================================
 # ТЕСТ 7: Защита от самоблокировки и самопонижения администратора (CWE-284)
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_attack_7_admin_self_lockout_and_demotion_prevention(

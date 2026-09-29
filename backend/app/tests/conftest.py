@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 # Загружаем переменные из корневого .env файла для успешной валидации pydantic settings
@@ -6,18 +7,19 @@ dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../
 load_dotenv(dotenv_path)
 
 import asyncio
-import pytest
 from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+import httpx
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-import httpx
 
 from app.core.database import Base, get_session
+from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models.user import User, UserRole, UserCompany
 from app.models.organization import Department, Project
-from app.core.security import hash_password, create_access_token
+from app.models.user import User, UserCompany, UserRole
 
 # Используем SQLite в памяти для тестов
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -27,9 +29,7 @@ engine = create_async_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
+TestingSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session")
@@ -63,6 +63,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[httpx.AsyncClient, None]:
     """Тестовый HTTP-клиент с подмененной базой данных."""
+
     async def override_get_session():
         try:
             yield db_session
@@ -88,12 +89,7 @@ async def test_department(db_session: AsyncSession) -> Department:
 @pytest.fixture
 async def test_project(db_session: AsyncSession) -> Project:
     """Создает тестовый проект."""
-    project = Project(
-        name="Тестовый проект",
-        code="2026-00001",
-        weekly_limit=50,
-        is_active=True
-    )
+    project = Project(name="Тестовый проект", code="2026-00001", weekly_limit=50, is_active=True)
     db_session.add(project)
     await db_session.commit()
     await db_session.refresh(project)
@@ -109,7 +105,7 @@ async def admin_user(db_session: AsyncSession) -> User:
         hashed_password=hash_password("admin_pass"),
         role=UserRole.admin,
         company=UserCompany.Polymedia,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -127,7 +123,7 @@ async def normal_user(db_session: AsyncSession, test_department: Department) -> 
         role=UserRole.employee,
         company=UserCompany.Polymedia,
         department_id=test_department.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -144,7 +140,7 @@ async def manager_user(db_session: AsyncSession) -> User:
         hashed_password=hash_password("manager_pass"),
         role=UserRole.manager,
         company=UserCompany.Polymedia,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -162,17 +158,17 @@ async def head_user(db_session: AsyncSession, test_department: Department) -> Us
         role=UserRole.head,
         company=UserCompany.Polymedia,
         department_id=test_department.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
-    
+
     # Делаем его начальником тестового отдела
     test_department.head_id = user.id
     db_session.add(test_department)
     await db_session.commit()
-    
+
     return user
 
 

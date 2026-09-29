@@ -29,7 +29,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSuccess, editD
         try {
             const depts = await getDepartments();
             setDepartments(depts);
-            
+
             if (editData) {
                 setFullName(editData.full_name || '');
                 setEmail(editData.email || '');

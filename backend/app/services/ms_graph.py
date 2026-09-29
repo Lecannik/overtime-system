@@ -1,10 +1,13 @@
 import logging
-import msal
+from typing import Any, Dict, List
+
 import httpx
-from typing import List, Dict, Any
+import msal
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class MSGraphService:
     def __init__(self):
@@ -13,13 +16,11 @@ class MSGraphService:
         self.tenant_id = settings.MS_TENANT_ID
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}" if self.tenant_id else None
         self.scope = ["https://graph.microsoft.com/.default"]
-        
+
         if all([self.client_id, self.secret, self.tenant_id]):
             logger.debug(f"Initializing MS ConfidentialClientApplication for Tenant: {self.tenant_id}")
             self._app = msal.ConfidentialClientApplication(
-                self.client_id,
-                authority=self.authority,
-                client_credential=self.secret
+                self.client_id, authority=self.authority, client_credential=self.secret
             )
         else:
             logger.warning("MS Graph credentials not fully configured; client application will not be initialized.")
@@ -55,24 +56,21 @@ class MSGraphService:
 
         all_users = []
         url = "https://graph.microsoft.com/v1.0/users"
-        
+
         async with httpx.AsyncClient() as client:
             while url:
                 logger.debug(f"Calling MS Graph API: {url}")
-                response = await client.get(
-                    url, 
-                    headers={"Authorization": f"Bearer {token}"}
-                )
-                
+                response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+
                 if response.status_code != 200:
                     logger.error(f"MS Graph API Error: {response.status_code} - {response.text}")
                     break
-                    
+
                 data = response.json()
                 users = data.get("value", [])
                 all_users.extend(users)
                 url = data.get("@odata.nextLink")
-                
+
         logger.info(f"MS Graph returned {len(all_users)} users in total")
         return all_users
 
@@ -86,19 +84,10 @@ class MSGraphService:
         email_data = {
             "message": {
                 "subject": subject,
-                "body": {
-                    "contentType": "HTML",
-                    "content": body_content
-                },
-                "toRecipients": [
-                    {
-                        "emailAddress": {
-                            "address": recipient
-                        }
-                    }
-                ]
+                "body": {"contentType": "HTML", "content": body_content},
+                "toRecipients": [{"emailAddress": {"address": recipient}}],
             },
-            "saveToSentItems": "false"
+            "saveToSentItems": "false",
         }
 
         url = f"https://graph.microsoft.com/v1.0/users/{settings.MS_SENDER_EMAIL}/sendMail"
@@ -107,7 +96,7 @@ class MSGraphService:
                 response = await client.post(
                     url,
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json=email_data
+                    json=email_data,
                 )
                 if response.status_code == 202:
                     logger.info(f"MS Graph successfully accepted email to {recipient}")
@@ -118,5 +107,6 @@ class MSGraphService:
         except Exception as e:
             logger.error(f"HTTP client error while sending MS Graph email: {str(e)}", exc_info=True)
             return False
+
 
 ms_graph = MSGraphService()

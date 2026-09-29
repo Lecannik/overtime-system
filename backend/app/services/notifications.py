@@ -1,22 +1,22 @@
 import logging
 from datetime import timezone
-from app.core.config import settings
-from app.models.overtime import Overtime, OvertimeStatus
-from app.models.user import User, UserRole, NotificationLevel
-from app.services.telegram import send_telegram_message
-from app.services.ms_graph import ms_graph
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.models.overtime import Overtime, OvertimeStatus
+from app.models.user import NotificationLevel, User, UserRole
 from app.repositories import notification as notif_repo
+from app.services.ms_graph import ms_graph
+from app.services.telegram import send_telegram_message
 from app.services.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
 
+
 async def notify_new_overtime(
-    session: AsyncSession,
-    overtime: Overtime,
-    manager: User | None = None,
-    head: User | None = None
+    session: AsyncSession, overtime: Overtime, manager: User | None = None, head: User | None = None
 ):
     """Уведомляет менеджера и нач. отдела о новой заявке."""
     from app.core.utils import format_duration_human
@@ -52,7 +52,7 @@ async def notify_new_overtime(
         f"Запрошено к согласованию: {overtime.hours}ч\n"
         f"Требуется решение"
     )
-    
+
     msg_html = (
         f"🔔 <b>Новая заявка #{overtime.id}</b>\n"
         f"От: {overtime.user.full_name}\n"
@@ -65,15 +65,25 @@ async def notify_new_overtime(
     # Отправляем менеджеру
     if manager:
         await notif_repo.create_notification(session, manager.id, "Новая заявка", msg_plain)
-        await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
-        if manager.telegram_chat_id and manager.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
+        await ws_manager.broadcast_to_user(
+            manager.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain}
+        )
+        if manager.telegram_chat_id and manager.notification_level in (
+            NotificationLevel.ALL,
+            NotificationLevel.TELEGRAM_ONLY,
+        ):
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
 
     # Отправляем нач. отдела
     if head:
         await notif_repo.create_notification(session, head.id, "Новая заявка", msg_plain)
-        await ws_manager.broadcast_to_user(head.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain})
-        if head.telegram_chat_id and head.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
+        await ws_manager.broadcast_to_user(
+            head.id, {"type": "NEW_NOTIFICATION", "title": "Новая заявка", "message": msg_plain}
+        )
+        if head.telegram_chat_id and head.notification_level in (
+            NotificationLevel.ALL,
+            NotificationLevel.TELEGRAM_ONLY,
+        ):
             await send_telegram_message(session, head.telegram_chat_id, msg_html)
 
     await ws_manager.broadcast_to_all({"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
@@ -88,7 +98,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
         OvertimeStatus.REJECTED: "❌ Отклонена",
         OvertimeStatus.MANAGER_APPROVED: "👨‍💼 Одобрена менеджером (ожидает руководителя)",
         OvertimeStatus.HEAD_APPROVED: "🏫 Одобрена нач. отдела (ожидает менеджера)",
-        OvertimeStatus.CANCELLED: "⏹ Отменена"
+        OvertimeStatus.CANCELLED: "⏹ Отменена",
     }
 
     # Подгружаем проект и сотрудника
@@ -98,7 +108,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
         return
 
     status_text = status_map.get(overtime.status, str(overtime.status))
-    
+
     is_final = overtime.status in [OvertimeStatus.APPROVED, OvertimeStatus.REJECTED]
     should_notify_tg = False
 
@@ -108,7 +118,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
     comment = overtime.head_comment if overtime.head_comment else overtime.manager_comment
     comment_block = f"\n💬 <b>Коммент</b>: {comment}" if comment else ""
     comment_plain = f"\nКомментарий: {comment}" if comment else ""
-    
+
     start_local = overtime.start_time
     if start_local.tzinfo is None:
         start_local = start_local.replace(tzinfo=timezone.utc)
@@ -144,8 +154,12 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
 
     # 1. In-app — всегда
     await notif_repo.create_notification(session, employee.id, status_text, msg_plain)
-    await ws_manager.broadcast_to_user(employee.id, {"type": "NEW_NOTIFICATION", "title": status_text, "message": msg_plain})
-    await ws_manager.broadcast_to_all({"type": "OVERTIME_UPDATED", "overtime_id": overtime.id, "status": overtime.status})
+    await ws_manager.broadcast_to_user(
+        employee.id, {"type": "NEW_NOTIFICATION", "title": status_text, "message": msg_plain}
+    )
+    await ws_manager.broadcast_to_all(
+        {"type": "OVERTIME_UPDATED", "overtime_id": overtime.id, "status": overtime.status}
+    )
 
     # 2. Telegram — с фильтром по уровню
     if employee.telegram_chat_id and should_notify_tg:
@@ -167,15 +181,11 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
 
 
 async def _send_review_email(
-    overtime: Overtime,
-    employee: User,
-    reviewer: User,
-    status_text: str,
-    comment: str | None,
-    time_str: str
+    overtime: Overtime, employee: User, reviewer: User, status_text: str, comment: str | None, time_str: str
 ):
     """Отправляет стилизованное email-уведомление о решении по заявке."""
     import html
+
     is_approved = overtime.status == OvertimeStatus.APPROVED
 
     # Цвета и иконки в зависимости от решения
@@ -244,11 +254,7 @@ async def _send_review_email(
     subject = f"{status_emoji} Заявка #{overtime.id} — {status_label}"
 
     try:
-        success = await ms_graph.send_email(
-            recipient=employee.email,
-            subject=subject,
-            body_content=body
-        )
+        success = await ms_graph.send_email(recipient=employee.email, subject=subject, body_content=body)
         if success:
             logger.info(f"Email sent successfully to {employee.email} for overtime #{overtime.id} ({status_label})")
         else:
@@ -256,12 +262,10 @@ async def _send_review_email(
     except Exception as e:
         # Email не должен ломать основной флоу — логируем и идём дальше
         logger.error(f"Unexpected error sending email to {employee.email}: {e}")
+
+
 async def notify_limit_exceeded(
-    session: AsyncSession,
-    overtime: Overtime,
-    manager: User,
-    current_hours: float,
-    limit: int
+    session: AsyncSession, overtime: Overtime, manager: User, current_hours: float, limit: int
 ):
     """Уведомляет менеджера о превышении лимита часов за неделю."""
     msg_plain = (
@@ -271,7 +275,7 @@ async def notify_limit_exceeded(
         f"Часов за неделю: {current_hours} из {limit}\n"
         f"Заявка #{overtime.id} создана с превышением."
     )
-    
+
     msg_html = (
         f"⚠️ <b>ПРЕВЫШЕНИЕ ЛИМИТА</b>\n\n"
         f"👤 <b>Сотрудник</b>: {overtime.user.full_name}\n"
@@ -283,16 +287,17 @@ async def notify_limit_exceeded(
 
     if manager:
         await notif_repo.create_notification(session, manager.id, "Превышение лимита", msg_plain)
-        await ws_manager.broadcast_to_user(manager.id, {"type": "NEW_NOTIFICATION", "title": "Превышение лимита", "message": msg_plain})
-        if manager.telegram_chat_id and manager.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
+        await ws_manager.broadcast_to_user(
+            manager.id, {"type": "NEW_NOTIFICATION", "title": "Превышение лимита", "message": msg_plain}
+        )
+        if manager.telegram_chat_id and manager.notification_level in (
+            NotificationLevel.ALL,
+            NotificationLevel.TELEGRAM_ONLY,
+        ):
             await send_telegram_message(session, manager.telegram_chat_id, msg_html)
 
 
-async def notify_admin_self_approval(
-    session: AsyncSession,
-    overtime: Overtime,
-    admin_user: User
-) -> None:
+async def notify_admin_self_approval(session: AsyncSession, overtime: Overtime, admin_user: User) -> None:
     """
     Оповещает всех администраторов системы о самосогласовании заявки администратором.
     Обеспечивает прозрачность операций и аудит конфликта интересов.
@@ -321,6 +326,11 @@ async def notify_admin_self_approval(
     for admin in admins:
         if admin.id != admin_user.id:
             await notif_repo.create_notification(session, admin.id, "Самосогласование администратора", msg_plain)
-            await ws_manager.broadcast_to_user(admin.id, {"type": "NEW_NOTIFICATION", "title": "Самосогласование администратора", "message": msg_plain})
-            if admin.telegram_chat_id and admin.notification_level in (NotificationLevel.ALL, NotificationLevel.TELEGRAM_ONLY):
+            await ws_manager.broadcast_to_user(
+                admin.id, {"type": "NEW_NOTIFICATION", "title": "Самосогласование администратора", "message": msg_plain}
+            )
+            if admin.telegram_chat_id and admin.notification_level in (
+                NotificationLevel.ALL,
+                NotificationLevel.TELEGRAM_ONLY,
+            ):
                 await send_telegram_message(session, admin.telegram_chat_id, msg_html)

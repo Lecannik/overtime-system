@@ -1,11 +1,14 @@
 # pyrefly: ignore [missing-import]
+from datetime import datetime, timedelta, timezone
+
 import pytest
+
 # pyrefly: ignore [missing-import]
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.organization import Project
 from app.models.user import User
-from datetime import datetime, timezone, timedelta
 
 
 @pytest.mark.asyncio
@@ -18,7 +21,7 @@ async def test_create_overtime(client: AsyncClient, admin_token_headers, test_pr
         "end_time": "2026-03-01T06:30:00",
         "description": "Test Overtime",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
 
     response = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
@@ -36,7 +39,7 @@ async def test_rbac_list_overtimes(client: AsyncClient, normal_user_token_header
     """Тест получения списка переработок обычным пользователем (поддерживающим пагинацию)."""
     response = await client.get("/api/v1/overtimes/", headers=normal_user_token_headers)
     assert response.status_code == 200
-    
+
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
@@ -60,7 +63,7 @@ async def test_review_overtime_approved_by_head_within_limit(
     manager_user: User,
     head_user: User,
     head_token_headers: dict,
-    test_project: Project
+    test_project: Project,
 ):
     """Тест: если начальник отдела одобрил, а лимит не превышен — статус APPROVED (bypass)."""
     # Привязываем менеджера к проекту
@@ -80,16 +83,18 @@ async def test_review_overtime_approved_by_head_within_limit(
         "end_time": end_time,
         "description": "Test Overtime Within Limit",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
-    
+
     create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
     assert create_resp.status_code == 200
     overtime_id = create_resp.json()["id"]
 
     # Начальник одобряет
     review_data = {"approved": True, "comment": "Approved by head", "as_role": "head"}
-    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    review_resp = await client.post(
+        f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers
+    )
     assert review_resp.status_code == 200
     assert review_resp.json()["status"] == "APPROVED"
 
@@ -104,7 +109,7 @@ async def test_review_overtime_head_approved_when_limit_exceeded(
     manager_token_headers: dict,
     head_user: User,
     head_token_headers: dict,
-    test_project: Project
+    test_project: Project,
 ):
     """Тест: если начальник отдела одобрил, но лимит превышен — статус HEAD_APPROVED, а после менеджера — APPROVED."""
     # Изменяем лимит проекта на 1 час и привязываем менеджера
@@ -125,22 +130,26 @@ async def test_review_overtime_head_approved_when_limit_exceeded(
         "end_time": end_time,
         "description": "Test Overtime Over Limit",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
-    
+
     create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
     assert create_resp.status_code == 200
     overtime_id = create_resp.json()["id"]
 
     # Начальник одобряет
     review_data = {"approved": True, "comment": "Approved by head", "as_role": "head"}
-    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    review_resp = await client.post(
+        f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers
+    )
     assert review_resp.status_code == 200
     assert review_resp.json()["status"] == "HEAD_APPROVED"
 
     # Теперь менеджер одобряет
     manager_review_data = {"approved": True, "comment": "Approved by manager", "as_role": "manager"}
-    review_resp2 = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=manager_review_data, headers=manager_token_headers)
+    review_resp2 = await client.post(
+        f"/api/v1/overtimes/{overtime_id}/review", json=manager_review_data, headers=manager_token_headers
+    )
     assert review_resp2.status_code == 200
     assert review_resp2.json()["status"] == "APPROVED"
 
@@ -152,7 +161,7 @@ async def test_cannot_review_in_progress_overtime(
     normal_user: User,
     normal_user_token_headers: dict,
     head_token_headers: dict,
-    test_project: Project
+    test_project: Project,
 ):
     """Тест: нельзя согласовать заявку, которая находится в процессе (IN_PROGRESS), и она исключается из review-списка."""
     # Создаем заявку
@@ -166,15 +175,17 @@ async def test_cannot_review_in_progress_overtime(
         "end_time": end_time,
         "description": "Active Session Overtime",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
     create_resp = await client.post("/api/v1/overtimes/", json=overtime_data, headers=normal_user_token_headers)
     assert create_resp.status_code == 200
     overtime_id = create_resp.json()["id"]
 
     # Принудительно меняем статус на IN_PROGRESS через БД
-    from app.models.overtime import Overtime, OvertimeStatus
     from sqlalchemy import select
+
+    from app.models.overtime import Overtime, OvertimeStatus
+
     res = await db_session.execute(select(Overtime).where(Overtime.id == overtime_id))
     overtime_obj = res.scalar_one()
     overtime_obj.status = OvertimeStatus.IN_PROGRESS
@@ -184,7 +195,9 @@ async def test_cannot_review_in_progress_overtime(
 
     # Пробуем согласовать (должно выдать 400 Bad Request)
     review_data = {"approved": True, "comment": "Trying to approve unfinished", "as_role": "head"}
-    review_resp = await client.post(f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers)
+    review_resp = await client.post(
+        f"/api/v1/overtimes/{overtime_id}/review", json=review_data, headers=head_token_headers
+    )
     assert review_resp.status_code == 400
     assert "процессе выполнения" in review_resp.json()["detail"]
 
@@ -197,8 +210,9 @@ async def test_cannot_review_in_progress_overtime(
 
 def test_split_interval_by_days_logic():
     """Тест чистой логики разделения интервала по границам суток."""
-    from app.core.utils import split_interval_by_days
     from datetime import datetime, timezone
+
+    from app.core.utils import split_interval_by_days
 
     # Стык дней (18.06.2026 22:00 до 19.06.2026 02:00 по времени Asia/Almaty)
     # 22:00 по Алматы = 17:00 UTC
@@ -223,14 +237,12 @@ def test_split_interval_by_days_logic():
 
 @pytest.mark.asyncio
 async def test_overtime_creation_split_by_days(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    admin_token_headers: dict,
-    test_project: Project
+    client: AsyncClient, db_session: AsyncSession, admin_token_headers: dict, test_project: Project
 ):
     """Тест: при создании переработки, пересекающей границу суток, создается несколько заявок."""
-    from app.models.overtime import Overtime
     from sqlalchemy import select
+
+    from app.models.overtime import Overtime
 
     # Используем статическую прошедшую дату: 2026-01-15 22:00 - 2026-01-16 02:00 по Almaty
     # = 17:00 - 21:00 UTC 2026-01-15 (гарантированно в прошлом)
@@ -243,7 +255,7 @@ async def test_overtime_creation_split_by_days(
         "end_time": end_time,
         "description": "Multi-day overtime",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
 
     res_before = await db_session.execute(select(Overtime))
@@ -303,9 +315,9 @@ async def test_update_overtime_time_logs_audit(
     test_project: Project,
 ):
     """Тест: изменение времени переработки вызывает запись в журнал аудита."""
-    from app.models.audit import AuditLog
-    from app.models.overtime import Overtime
     from sqlalchemy import select
+
+    from app.models.audit import AuditLog
 
     # 1. Создаем переработку
     overtime_data = {
@@ -314,31 +326,26 @@ async def test_update_overtime_time_logs_audit(
         "end_time": "2026-03-01T06:30:00",
         "description": "Log test",
         "start_lat": 10.0,
-        "start_lng": 20.0
+        "start_lng": 20.0,
     }
     response = await client.post("/api/v1/overtimes/", json=overtime_data, headers=admin_token_headers)
     assert response.status_code == 200
     ot_id = response.json()["id"]
 
     # 2. Обновляем время окончания
-    update_data = {
-        "end_time": "2026-03-01T06:00:00"
-    }
+    update_data = {"end_time": "2026-03-01T06:00:00"}
     patch_resp = await client.patch(f"/api/v1/overtimes/{ot_id}", json=update_data, headers=admin_token_headers)
     assert patch_resp.status_code == 200
 
     # 3. Проверяем, что в аудит-логе появилась запись
     db_session.expire_all()
     audit_res = await db_session.execute(
-        select(AuditLog).where(
-            AuditLog.action == "UPDATE_OVERTIME_TIME",
-            AuditLog.target_id == ot_id
-        )
+        select(AuditLog).where(AuditLog.action == "UPDATE_OVERTIME_TIME", AuditLog.target_id == ot_id)
     )
     logs = audit_res.scalars().all()
     assert len(logs) == 1
     log = logs[0]
-    
+
     # Проверяем структуру деталей
     assert log.target_type == "overtime"
     assert log.details["new_end"].startswith("2026-03-01T06:00:00")
@@ -355,7 +362,7 @@ async def test_create_overtime_future_time_rejected(
 ):
     """Тест: попытка создания заявки с будущим временем отклоняется с кодом HTTP 400."""
     now = datetime.now(timezone.utc)
-    
+
     # 1. Будущее время начала
     future_start = (now + timedelta(hours=2)).isoformat()
     future_end = (now + timedelta(hours=4)).isoformat()
@@ -365,9 +372,9 @@ async def test_create_overtime_future_time_rejected(
             "project_id": test_project.id,
             "start_time": future_start,
             "end_time": future_end,
-            "description": "Future start test"
+            "description": "Future start test",
         },
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert resp1.status_code == 400
     assert "не может быть в будущем" in resp1.json()["detail"]
@@ -381,9 +388,9 @@ async def test_create_overtime_future_time_rejected(
             "project_id": test_project.id,
             "start_time": past_start,
             "end_time": future_end2,
-            "description": "Future end test"
+            "description": "Future end test",
         },
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert resp2.status_code == 400
     assert "Время окончания переработки не может быть в будущем." in resp2.json()["detail"]
@@ -397,7 +404,7 @@ async def test_update_overtime_future_time_rejected(
 ):
     """Тест: попытка редактирования времени заявки на будущее время отклоняется с кодом HTTP 400."""
     now = datetime.now(timezone.utc)
-    
+
     # 1. Создаем валидную заявку в прошлом
     past_start = (now - timedelta(hours=5)).isoformat()
     past_end = (now - timedelta(hours=2)).isoformat()
@@ -407,9 +414,9 @@ async def test_update_overtime_future_time_rejected(
             "project_id": test_project.id,
             "start_time": past_start,
             "end_time": past_end,
-            "description": "Update future test"
+            "description": "Update future test",
         },
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert create_resp.status_code == 200
     ot_id = create_resp.json()["id"]
@@ -417,9 +424,7 @@ async def test_update_overtime_future_time_rejected(
     # 2. Пытаемся обновить end_time на будущее время
     future_end = (now + timedelta(hours=2)).isoformat()
     patch_resp1 = await client.patch(
-        f"/api/v1/overtimes/{ot_id}",
-        json={"end_time": future_end},
-        headers=admin_token_headers
+        f"/api/v1/overtimes/{ot_id}", json={"end_time": future_end}, headers=admin_token_headers
     )
     assert patch_resp1.status_code == 400
     assert "Время окончания переработки не может быть в будущем." in patch_resp1.json()["detail"]
@@ -429,7 +434,7 @@ async def test_update_overtime_future_time_rejected(
     patch_resp2 = await client.patch(
         f"/api/v1/overtimes/{ot_id}",
         json={"start_time": future_start, "end_time": (now + timedelta(hours=3)).isoformat()},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert patch_resp2.status_code == 400
     assert "Время начала переработки не может быть в будущем." in patch_resp2.json()["detail"]
@@ -441,14 +446,15 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     admin_token_headers: dict,
     head_token_headers: dict,
     test_project: Project,
-    db_session: AsyncSession
+    db_session: AsyncSession,
 ):
     """
     Тест: Администратор обладает правами изменять, пересогласовывать и отменять
     заявки в терминальных статусах (APPROVED, CANCELLED, REJECTED),
     в то время как обычные согласующие блокируются защитой терминальных статусов.
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from app.models.overtime import OvertimeStatus
 
     now = datetime.now(timezone.utc) - timedelta(days=1)
@@ -460,9 +466,9 @@ async def test_admin_can_review_and_update_terminal_overtimes(
             "project_id": test_project.id,
             "start_time": (now - timedelta(hours=4)).isoformat(),
             "end_time": (now - timedelta(hours=1)).isoformat(),
-            "description": "Тест терминальных статусов администратора"
+            "description": "Тест терминальных статусов администратора",
         },
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert create_resp.status_code == 200
     ot_id = create_resp.json()["id"]
@@ -471,7 +477,7 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     review_resp = await client.post(
         f"/api/v1/overtimes/{ot_id}/review",
         json={"approved": True, "comment": "Первичное одобрение", "approved_hours": 3.0},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert review_resp.status_code == 200
     assert review_resp.json()["status"] == OvertimeStatus.APPROVED.value
@@ -480,7 +486,7 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     head_review_resp = await client.post(
         f"/api/v1/overtimes/{ot_id}/review",
         json={"approved": False, "comment": "Попытка начальника изменить одобренное", "as_role": "head"},
-        headers=head_token_headers
+        headers=head_token_headers,
     )
     assert head_review_resp.status_code == 400
     assert "Заявка находится в финальном статусе" in head_review_resp.json()["detail"]
@@ -489,7 +495,7 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     admin_reject_resp = await client.post(
         f"/api/v1/overtimes/{ot_id}/review",
         json={"approved": False, "comment": "Отклонено администратором после проверки"},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert admin_reject_resp.status_code == 200
     assert admin_reject_resp.json()["status"] == OvertimeStatus.REJECTED.value
@@ -498,17 +504,14 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     admin_reapprove_resp = await client.post(
         f"/api/v1/overtimes/{ot_id}/review",
         json={"approved": True, "comment": "Повторно согласовано админом", "approved_hours": 2.5},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert admin_reapprove_resp.status_code == 200
     assert admin_reapprove_resp.json()["status"] == OvertimeStatus.APPROVED.value
     assert admin_reapprove_resp.json()["approved_hours"] == 2.5
 
     # 6. Администратор отменяет утвержденную заявку -> 200 OK, переводится в CANCELLED
-    cancel_resp = await client.post(
-        f"/api/v1/overtimes/{ot_id}/cancel",
-        headers=admin_token_headers
-    )
+    cancel_resp = await client.post(f"/api/v1/overtimes/{ot_id}/cancel", headers=admin_token_headers)
     assert cancel_resp.status_code == 200
     assert cancel_resp.json()["status"] == OvertimeStatus.CANCELLED.value
 
@@ -516,7 +519,7 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     admin_from_cancelled_resp = await client.post(
         f"/api/v1/overtimes/{ot_id}/review",
         json={"approved": True, "comment": "Администратор восстановил и одобрил", "approved_hours": 3.0},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert admin_from_cancelled_resp.status_code == 200
     assert admin_from_cancelled_resp.json()["status"] == OvertimeStatus.APPROVED.value
@@ -525,9 +528,7 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     patch_resp = await client.patch(
         f"/api/v1/overtimes/{ot_id}",
         json={"description": "Обновленное администратором описание заявки"},
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["description"] == "Обновленное администратором описание заявки"
-
-

@@ -1,29 +1,30 @@
-import logging
 import html
-from datetime import datetime, timezone, timedelta
+import logging
 import os
+from datetime import datetime, timedelta, timezone
+
 import telegram.error
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+
+# pyrefly: ignore [missing-import]
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton, ReplyKeyboardMarkup, Update
+
 # pyrefly: ignore [missing-import]
 from telegram.ext import (
     Application,
-    CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
-    filters,
     ConversationHandler,
+    MessageHandler,
+    filters,
 )
-# pyrefly: ignore [missing-import]
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.repositories import user as user_repo
-from app.repositories import organization as org_repo
-from app.repositories import overtime as overtime_repo
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User
+from app.repositories import organization as org_repo, overtime as overtime_repo, user as user_repo
 from app.services.stt_service import transcribe_audio
-from app.core.config import settings
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -32,11 +33,16 @@ logger = logging.getLogger(__name__)
 # Состояния для ConversationHandler
 CHOOSING_PROJECT, SENDING_LOCATION, SENDING_END_LOCATION, SENDING_COMMENT = range(4)
 
+
 def start_markup():
-    return ReplyKeyboardMarkup([
-        [KeyboardButton("🚀 Начать переработку")],
-        [KeyboardButton("📊 Получить отчет"), KeyboardButton("❓ Статус сессии")]
-    ], resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("🚀 Начать переработку")],
+            [KeyboardButton("📊 Получить отчет"), KeyboardButton("❓ Статус сессии")],
+        ],
+        resize_keyboard=True,
+    )
+
 
 async def verify_user(update: Update) -> User | None:
     if not update.effective_chat:
@@ -50,20 +56,24 @@ async def verify_user(update: Update) -> User | None:
                     f"❌ <b>Ваш аккаунт Telegram не привязан к системе.</b>\n\n"
                     f"Пожалуйста, укажите ваш Telegram ID в профиле личного кабинета на веб-портале, чтобы пользоваться ботом.\n\n"
                     f"🆔 Ваш Telegram ID: <code>{chat_id}</code>",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             return None
         return user
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
-    if not user: return ConversationHandler.END
+    if not user:
+        return ConversationHandler.END
     await update.message.reply_text(f"Привет, {user.full_name}! 👋", reply_markup=start_markup())
     return ConversationHandler.END
 
+
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
-    if not user: return
+    if not user:
+        return
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
         if active:
@@ -78,24 +88,23 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Завершите переработку сейчас."
                 )
             elif elapsed_hours >= settings.MAX_OVERTIME_HOURS / 2:
-                warning = (
-                    f"\n\n⚠️ <b>Сессия идёт уже {elapsed_hours:.1f}ч.</b> "
-                    "Не забудьте завершить переработку!"
-                )
+                warning = f"\n\n⚠️ <b>Сессия идёт уже {elapsed_hours:.1f}ч.</b> Не забудьте завершить переработку!"
 
             await update.message.reply_text(
                 f"👷‍♂️ В процессе: проект «{active.project.name}»\n"
                 f"Начало: {start_time_local.strftime('%d.%m %H:%M:%S')}"
                 f"{warning}",
                 parse_mode="HTML",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True),
             )
         else:
             await update.message.reply_text("У вас нет активных переработок.", reply_markup=start_markup())
 
+
 async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
-    if not user: return ConversationHandler.END
+    if not user:
+        return ConversationHandler.END
 
     async with AsyncSessionLocal() as session:
         active = await overtime_repo.get_active_session(session, user.id)
@@ -105,6 +114,7 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
             if elapsed_hours >= settings.MAX_OVERTIME_HOURS:
                 # Автозакрываем зависшую сессию
                 from app.core.utils import split_interval_by_days
+
                 auto_end = active.start_time + timedelta(hours=settings.MAX_OVERTIME_HOURS)
                 intervals = split_interval_by_days(active.start_time, auto_end)
                 if not intervals:
@@ -117,14 +127,16 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
                     active.description = "[Автозакрытие: сессия превысила лимит]"
 
                 for s, e in intervals[1:]:
-                    session.add(Overtime(
-                        user_id=active.user_id,
-                        project_id=active.project_id,
-                        start_time=s,
-                        end_time=e,
-                        description=active.description,
-                        status=OvertimeStatus.PENDING,
-                    ))
+                    session.add(
+                        Overtime(
+                            user_id=active.user_id,
+                            project_id=active.project_id,
+                            start_time=s,
+                            end_time=e,
+                            description=active.description,
+                            status=OvertimeStatus.PENDING,
+                        )
+                    )
 
                 await session.commit()
 
@@ -151,7 +163,9 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "Вы не можете начать новую переработку, пока не завершите текущую.\n"
                     "Используйте кнопку «⏹ Остановить переработку», чтобы завершить её.",
                     parse_mode="HTML",
-                    reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True)
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True
+                    ),
                 )
                 return ConversationHandler.END
 
@@ -161,23 +175,20 @@ async def start_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE
     if last_ot:
         await update.message.reply_text(
             "Начало выбора проекта. Вы можете отменить операцию в любой момент кнопкой ниже.",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True),
         )
         proj_name = last_ot.project.name
         text = f"Вы можете быстро выбрать предыдущий проект «<b>{html.escape(proj_name)}</b>» или ввести название/номер для поиска нового:"
-        reply_markup = InlineKeyboardMarkup([[
-            InlineKeyboardButton(f"⏮ {proj_name}", callback_data=f"proj_{last_ot.project_id}")
-        ]])
+        reply_markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"⏮ {proj_name}", callback_data=f"proj_{last_ot.project_id}")]]
+        )
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            parse_mode="HTML",
-            reply_markup=reply_markup
+            chat_id=update.effective_chat.id, text=text, parse_mode="HTML", reply_markup=reply_markup
         )
     else:
         await update.message.reply_text(
             "🔍 Введите название или номер проекта для поиска:",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True),
         )
     return CHOOSING_PROJECT
 
@@ -187,16 +198,19 @@ def clean_project_code(code: str | None) -> str:
     if not code:
         return ""
     import re
+
     return re.sub(r"[^a-zA-Z0-9а-яА-Я]", "", code).lower()
+
 
 async def project_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
-    if not user: return ConversationHandler.END
+    if not user:
+        return ConversationHandler.END
     search_text = update.message.text.strip()
-    
+
     async with AsyncSessionLocal() as session:
         projects = await org_repo.get_projects(session, only_active=True)
-        
+
         search_clean = clean_project_code(search_text)
         matching = []
         for p in projects:
@@ -204,61 +218,73 @@ async def project_search_handler(update: Update, context: ContextTypes.DEFAULT_T
             if search_text.lower() in p.name.lower():
                 matching.append(p)
                 continue
-            
+
             # 2. Поиск по очищенному коду/номеру проекта
             if p.code:
                 p_code_clean = clean_project_code(p.code)
                 if search_clean and search_clean in p_code_clean:
                     matching.append(p)
 
-        
         if not matching:
             await update.message.reply_text(
                 "❌ Проекты не найдены. Попробуйте ввести другую часть названия или номера:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("❌ Отмена")]], resize_keyboard=True),
             )
             return CHOOSING_PROJECT
-        
+
         keyboard = [[InlineKeyboardButton(p.name, callback_data=f"proj_{p.id}")] for p in matching[:10]]
-        
+
         if len(matching) > 10:
             await update.message.reply_text(
                 f"Найдено {len(matching)} проектов. Вот первые 10 результатов. Выберите нужный или уточните поиск, отправив другое название:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
         else:
-            await update.message.reply_text(
-                "Выберите проект:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            await update.message.reply_text("Выберите проект:", reply_markup=InlineKeyboardMarkup(keyboard))
         return CHOOSING_PROJECT
+
 
 async def project_choice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data['project_id'] = int(query.data.split('_')[1])
+    context.user_data["project_id"] = int(query.data.split("_")[1])
     await query.delete_message()
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text="📍 Отправьте вашу текущую геопозицию (СТАРТ):",
-        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("📍 Отправить местоположение (СТАРТ)", request_location=True)], [KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+        reply_markup=ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("📍 Отправить местоположение (СТАРТ)", request_location=True)],
+                [KeyboardButton("❌ Отмена")],
+            ],
+            resize_keyboard=True,
+        ),
     )
     return SENDING_LOCATION
+
 
 async def start_location_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняем начальную точку."""
     user = await verify_user(update)
     location = update.message.location
-    project_id = context.user_data.get('project_id')
+    project_id = context.user_data.get("project_id")
     async with AsyncSessionLocal() as session:
         new_ot = Overtime(
-            user_id=user.id, project_id=project_id, start_time=datetime.now(timezone.utc),
-            start_lat=location.latitude, start_lng=location.longitude,
-            status=OvertimeStatus.IN_PROGRESS, description="[Бот]"
+            user_id=user.id,
+            project_id=project_id,
+            start_time=datetime.now(timezone.utc),
+            start_lat=location.latitude,
+            start_lng=location.longitude,
+            status=OvertimeStatus.IN_PROGRESS,
+            description="[Бот]",
         )
         await overtime_repo.create_overtime(session, new_ot)
-        await update.message.reply_text("✅ Работа начата!", reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True))
+        await update.message.reply_text(
+            "✅ Работа начата!",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("⏹ Остановить переработку")]], resize_keyboard=True),
+        )
     return ConversationHandler.END
+
 
 async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -272,15 +298,14 @@ async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
         active = await overtime_repo.get_active_session(session, user.id)
         if not active:
             await update.message.reply_text(
-                "⚠️ Нет активной сессии. Возможно, она была автоматически закрыта системой.",
-                reply_markup=start_markup()
+                "⚠️ Нет активной сессии. Возможно, она была автоматически закрыта системой.", reply_markup=start_markup()
             )
             return ConversationHandler.END
-        
+
         now_utc = datetime.now(timezone.utc)
-        context.user_data['active_id'] = active.id
-        context.user_data['stop_button_time'] = now_utc
-        context.user_data['end_time'] = now_utc
+        context.user_data["active_id"] = active.id
+        context.user_data["stop_button_time"] = now_utc
+        context.user_data["end_time"] = now_utc
 
         # Сохраняем end_time сразу в сессию БД для защиты от сброса контекста
         active.end_time = now_utc
@@ -288,20 +313,28 @@ async def stop_overtime_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         await update.message.reply_text(
             "⏹ Завершение работы. Пожалуйста, отправьте геопозицию (ФИНИШ):",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("📍 Отправить местоположение (ФИНИШ)", request_location=True)], [KeyboardButton("❌ Отмена")]], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup(
+                [
+                    [KeyboardButton("📍 Отправить местоположение (ФИНИШ)", request_location=True)],
+                    [KeyboardButton("❌ Отмена")],
+                ],
+                resize_keyboard=True,
+            ),
         )
     return SENDING_END_LOCATION
+
 
 async def end_location_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняем конечную точку и переходим к комментарию."""
     location = update.message.location
-    context.user_data['end_lat'] = location.latitude
-    context.user_data['end_lng'] = location.longitude
-    if not context.user_data.get('stop_button_time') and not context.user_data.get('end_time'):
-        context.user_data['end_time'] = datetime.now(timezone.utc)
-    
+    context.user_data["end_lat"] = location.latitude
+    context.user_data["end_lng"] = location.longitude
+    if not context.user_data.get("stop_button_time") and not context.user_data.get("end_time"):
+        context.user_data["end_time"] = datetime.now(timezone.utc)
+
     await update.message.reply_text("🗣 Теперь отправьте описание выполненных работ (текст или голос):")
     return SENDING_COMMENT
+
 
 async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -311,13 +344,13 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user:
         return ConversationHandler.END
-    active_id = context.user_data.get('active_id')
-    end_lat = context.user_data.get('end_lat')
-    end_lng = context.user_data.get('end_lng')
-    
+    active_id = context.user_data.get("active_id")
+    end_lat = context.user_data.get("end_lat")
+    end_lng = context.user_data.get("end_lng")
+
     # Получаем зафиксированное при остановке время завершения
-    end_time = context.user_data.get('stop_button_time') or context.user_data.get('end_time')
-    
+    end_time = context.user_data.get("stop_button_time") or context.user_data.get("end_time")
+
     comment_text = ""
     summary_text = ""
     voice_url = None
@@ -326,6 +359,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         processing_msg = await update.message.reply_text("⏳ Анализирую ваш голос, секунду...")
         try:
             import uuid
+
             upload_dir = os.path.abspath("uploads/voice")
             os.makedirs(upload_dir, exist_ok=True)
             file_name = f"{uuid.uuid4()}.ogg"
@@ -340,7 +374,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stt_result = await transcribe_audio(file_path)
             comment_text = stt_result["text"]
             summary_text = stt_result["summary"]
-        except Exception as e:
+        except Exception:
             logger.error("🚨 Ошибка при обработке голосового сообщения:", exc_info=True)
             comment_text = "[Голосовое сообщение не распознано]"
             summary_text = "[Ошибка]"
@@ -354,10 +388,9 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not active:
             await update.message.reply_text(
-                "⚠️ Сессия не найдена. Возможно, она была автоматически закрыта системой.",
-                reply_markup=start_markup()
+                "⚠️ Сессия не найдена. Возможно, она была автоматически закрыта системой.", reply_markup=start_markup()
             )
-            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
+            for key in ["active_id", "end_lat", "end_lng", "end_time", "stop_button_time", "project_id"]:
                 context.user_data.pop(key, None)
             return ConversationHandler.END
 
@@ -366,9 +399,9 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ <b>Сессия была автоматически закрыта системой</b> из-за превышения лимита времени.\n\n"
                 "Ваш комментарий не был сохранён. Обратитесь к администратору для корректировки данных.",
                 parse_mode="HTML",
-                reply_markup=start_markup()
+                reply_markup=start_markup(),
             )
-            for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
+            for key in ["active_id", "end_lat", "end_lng", "end_time", "stop_button_time", "project_id"]:
                 context.user_data.pop(key, None)
             return ConversationHandler.END
 
@@ -378,10 +411,11 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if active:
             # Разделяем интервал по дням (00:00 локального времени)
             from app.core.utils import split_interval_by_days
+
             intervals = split_interval_by_days(active.start_time, end_time)
             if not intervals:
                 intervals = [(active.start_time, end_time)]
-                
+
             # Первую часть сохраняем в существующей записи
             active.start_time = intervals[0][0]
             active.end_time = intervals[0][1]
@@ -392,7 +426,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Сохраняем конечные координаты
             active.end_lat = end_lat
             active.end_lng = end_lng
-            
+
             # Для остальных интервалов создаем новые записи
             other_overtimes = []
             for s, e in intervals[1:]:
@@ -409,22 +443,23 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     start_lng=active.start_lng,
                     end_lat=end_lat,
                     end_lng=end_lng,
-                    status=OvertimeStatus.PENDING
+                    status=OvertimeStatus.PENDING,
                 )
                 session.add(new_ot)
                 other_overtimes.append(new_ot)
-                
+
             await session.commit()
-            
+
             # Релоадим все записи, чтобы подтянулись релейшны
             all_overtimes = [active]
             for ot in other_overtimes:
                 ot_full = await overtime_repo.get_overtime_by_id(session, ot.id)
                 if ot_full:
                     all_overtimes.append(ot_full)
-                    
+
             # Для каждой части отправляем уведомление руководителям
             from app.services import notifications
+
             for ot_full in all_overtimes:
                 # Получаем менеджера проекта
                 manager = None
@@ -433,20 +468,21 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Получаем начальника для стандартного уведомления
                 dept = await org_repo.get_department_by_id(session, ot_full.user.department_id)
                 head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
-                
+
                 await notifications.notify_new_overtime(session, ot_full, manager, head)
-            
+
             # Вычисляем общую продолжительность и текст для бота
             total_seconds = max(0, int((end_time - intervals[0][0]).total_seconds()))
             total_hours_float = total_seconds / 3600
-            
+
             # Считаем сумму округленных часов по всем созданным частям
             from app.core.utils import calculate_overtime_hours, format_duration_human
+
             rounded_hours = sum(int(calculate_overtime_hours(ot.start_time, ot.end_time)) for ot in all_overtimes)
-            
+
             human_dur = format_duration_human(total_seconds)
             dur_str = f"{human_dur} (к согласованию: {rounded_hours}ч)"
-            
+
             # Если заявок больше одной, сообщаем об этом
             split_info = ""
             if len(all_overtimes) > 1:
@@ -458,7 +494,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ot_end_loc = ot.end_time.astimezone(tz_local)
                     h_part = int(calculate_overtime_hours(ot.start_time, ot.end_time))
                     split_info += f"\n  {idx}. {ot_start_loc.strftime('%d.%m %H:%M')} — {ot_end_loc.strftime('%H:%M')} ({h_part}ч)"
-            
+
             escaped_summary = html.escape(summary_text)
             escaped_proj_name = html.escape(active.project.name)
             escaped_comment = html.escape(comment_text)
@@ -470,9 +506,7 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{settings.MAX_OVERTIME_HOURS}ч — проверьте корректность данных."
                 )
             elif total_hours_float >= settings.MAX_OVERTIME_HOURS / 2:
-                duration_warning = (
-                    f"\n\n⚠️ Длительность переработки составила {total_hours_float:.1f}ч."
-                )
+                duration_warning = f"\n\n⚠️ Длительность переработки составила {total_hours_float:.1f}ч."
 
             report = (
                 "📊 <b>ОТЧЕТ ПО ПЕРЕРАБОТКЕ</b>\n"
@@ -488,12 +522,13 @@ async def comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{duration_warning}"
             )
             await update.message.reply_text(report, parse_mode="HTML", reply_markup=start_markup())
-            
+
     # Очищаем временные переменные из context.user_data
-    for key in ['active_id', 'end_lat', 'end_lng', 'end_time', 'stop_button_time', 'project_id']:
+    for key in ["active_id", "end_lat", "end_lng", "end_time", "stop_button_time", "project_id"]:
         context.user_data.pop(key, None)
-        
+
     return ConversationHandler.END
+
 
 async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -502,21 +537,22 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user:
         return
-    
+
     if update.effective_message:
         await update.effective_message.reply_text("⏳ Формирую отчет за текущий месяц, пожалуйста, подождите...")
-    
+
     tz_local = settings.tz_info
     now = datetime.now(timezone.utc).astimezone(tz_local)
     start_date = datetime(now.year, now.month, 1, tzinfo=tz_local)
     import calendar
+
     _, last_day = calendar.monthrange(now.year, now.month)
     end_date = datetime(now.year, now.month, last_day, 23, 59, 59, tzinfo=tz_local)
-    
+
+    from app.models.user import UserRole
     from app.repositories import analytics as analytics_repo
     from app.services.excel_service import generate_excel_file
-    from app.models.user import UserRole
-    
+
     # Определение области видимости в соответствии с ролью
     is_personal = False
     scope = {}
@@ -527,41 +563,44 @@ async def get_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif user.role != UserRole.head:
         scope = {"user_id": user.id}
         is_personal = True
-        
+
     async with AsyncSessionLocal() as session:
         try:
             if user.role == UserRole.head:
-                from app.models.organization import Department
                 # pyrefly: ignore [missing-import]
                 from sqlalchemy import select
-                dept_res = await session.execute(
-                    select(Department.id).where(Department.head_id == user.id)
-                )
+
+                from app.models.organization import Department
+
+                dept_res = await session.execute(select(Department.id).where(Department.head_id == user.id))
                 dept_ids = [row[0] for row in dept_res.all()]
                 scope = {"manager_id": None, "department_ids": dept_ids}
 
-            data = await analytics_repo.get_export_data(
-                session,
-                **scope,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
+            data = await analytics_repo.get_export_data(session, **scope, start_date=start_date, end_date=end_date)
+
             if not data:
                 if update.effective_message:
                     await update.effective_message.reply_text("❌ За текущий месяц нет данных для выгрузки отчета.")
                 return
-                
+
             output = await generate_excel_file(data, user, is_personal=is_personal)
             if not output:
                 if update.effective_message:
                     await update.effective_message.reply_text("❌ Не удалось сгенерировать отчет.")
                 return
-                
+
             output.seek(0)
-            filename = f"personal_report_{now.strftime('%Y%m%d')}.xlsx" if is_personal else f"overtime_report_{now.strftime('%Y%m%d')}.xlsx"
-            caption = f"📋 Ваш персональный отчет за {now.strftime('%m.%Y')}" if is_personal else f"📋 Отчет по переработкам за {now.strftime('%m.%Y')}"
-            
+            filename = (
+                f"personal_report_{now.strftime('%Y%m%d')}.xlsx"
+                if is_personal
+                else f"overtime_report_{now.strftime('%Y%m%d')}.xlsx"
+            )
+            caption = (
+                f"📋 Ваш персональный отчет за {now.strftime('%m.%Y')}"
+                if is_personal
+                else f"📋 Отчет по переработкам за {now.strftime('%m.%Y')}"
+            )
+
             if update.effective_message:
                 await update.effective_message.reply_document(
                     document=InputFile(output, filename=filename),
@@ -605,6 +644,7 @@ async def _notify_auto_close(
         return
 
     from telegram import Bot
+
     bot = Bot(token=token)
 
     tz_local = settings.tz_info
@@ -638,20 +678,21 @@ def setup_bot(token: str):
         states={
             CHOOSING_PROJECT: [
                 CallbackQueryHandler(project_choice_handler, pattern="^proj_"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Отмена$"), project_search_handler)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Отмена$"), project_search_handler),
             ],
             SENDING_LOCATION: [MessageHandler(filters.LOCATION, start_location_handler)],
             SENDING_END_LOCATION: [MessageHandler(filters.LOCATION, end_location_handler)],
             SENDING_COMMENT: [MessageHandler(filters.TEXT | filters.VOICE, comment_handler)],
         },
         fallbacks=[MessageHandler(filters.Regex("^❌ Отмена$"), start)],
-        allow_reentry=True
+        allow_reentry=True,
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.Regex("^❓ Статус сессии$"), status))
     application.add_handler(MessageHandler(filters.Regex("^📊 Получить отчет$"), get_report))
     application.add_handler(main_handler)
     return application
+
 
 async def run_bot_async(token: str):
     app = setup_bot(token)

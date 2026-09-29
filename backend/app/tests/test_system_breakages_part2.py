@@ -6,25 +6,20 @@
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization import Project, Department
-from app.models.user import User, UserRole, UserCompany
 from app.models.notification import Notification
-from app.core.security import hash_password, create_access_token
-
+from app.models.user import User
 
 # =====================================================================
 # НАПРАВЛЕНИЕ: Целостность данных и серверные сбои
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_duplicate_project_code_crashes_with_500_instead_of_409(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    admin_token_headers: dict,
-    manager_user: User
+    client: AsyncClient, db_session: AsyncSession, admin_token_headers: dict, manager_user: User
 ):
     """
     Суть проверяемого сценария:
@@ -35,40 +30,26 @@ async def test_duplicate_project_code_crashes_with_500_instead_of_409(
     # 1. Создаем первый проект с валидным форматом кода (YYYY-NNNNN)
     resp1 = await client.post(
         "/api/v1/admin/projects",
-        json={
-            "name": "Проект Альфа",
-            "code": "2026-88881",
-            "weekly_limit": 40,
-            "manager_id": manager_user.id
-        },
-        headers=admin_token_headers
+        json={"name": "Проект Альфа", "code": "2026-88881", "weekly_limit": 40, "manager_id": manager_user.id},
+        headers=admin_token_headers,
     )
     assert resp1.status_code == 201
 
     # 2. Пытаемся создать проект с дублирующимся кодом
     resp2 = await client.post(
         "/api/v1/admin/projects",
-        json={
-            "name": "Проект Бета Дубликат",
-            "code": "2026-88881",
-            "weekly_limit": 40,
-            "manager_id": manager_user.id
-        },
-        headers=admin_token_headers
+        json={"name": "Проект Бета Дубликат", "code": "2026-88881", "weekly_limit": 40, "manager_id": manager_user.id},
+        headers=admin_token_headers,
     )
 
     # Проверка защиты: Сервер возвращает 409 Conflict при дубликате кода проекта
-    assert resp2.status_code == 409, (
-        f"Ожидался статус 409 Conflict, получен {resp2.status_code}"
-    )
+    assert resp2.status_code == 409, f"Ожидался статус 409 Conflict, получен {resp2.status_code}"
     assert "уже существует" in resp2.json()["detail"]
 
 
 @pytest.mark.asyncio
 async def test_negative_project_weekly_limit_bypasses_validation(
-    client: AsyncClient,
-    admin_token_headers: dict,
-    manager_user: User
+    client: AsyncClient, admin_token_headers: dict, manager_user: User
 ):
     """
     Суть проверяемого сценария:
@@ -81,26 +62,22 @@ async def test_negative_project_weekly_limit_bypasses_validation(
             "name": "Проект с отрицательным лимитом",
             "code": "2026-88882",
             "weekly_limit": -50,
-            "manager_id": manager_user.id
+            "manager_id": manager_user.id,
         },
-        headers=admin_token_headers
+        headers=admin_token_headers,
     )
 
     # Проверка защиты: Отрицательный лимит отклоняется валидатором (422 Unprocessable Entity)
-    assert resp.status_code == 422, (
-        f"Ожидалась ошибка валидации (422 Unprocessable Entity), получен {resp.status_code}"
-    )
+    assert resp.status_code == 422, f"Ожидалась ошибка валидации (422 Unprocessable Entity), получен {resp.status_code}"
 
 
 # =====================================================================
 # НАПРАВЛЕНИЕ: Аналитика и валидация временных диапазонов
 # =====================================================================
 
+
 @pytest.mark.asyncio
-async def test_analytics_inverted_date_range_unvalidated(
-    client: AsyncClient,
-    admin_token_headers: dict
-):
+async def test_analytics_inverted_date_range_unvalidated(client: AsyncClient, admin_token_headers: dict):
     """
     Суть проверяемого сценария и входные данные:
         Пользователь запрашивает сводную аналитику с инвертированным диапазоном дат:
@@ -120,14 +97,11 @@ async def test_analytics_inverted_date_range_unvalidated(
         потенциальные логические аномалии при генерации заголовков экспортных файлов Excel.
     """
     resp = await client.get(
-        "/api/v1/analytics/summary?start_date=2026-12-31&end_date=2026-01-01",
-        headers=admin_token_headers
+        "/api/v1/analytics/summary?start_date=2026-12-31&end_date=2026-01-01", headers=admin_token_headers
     )
 
     # Проверка защиты: Запрос с инвертированными датами отклоняется с ошибкой 422
-    assert resp.status_code == 422, (
-        f"Ожидался статус 422 Unprocessable Entity, получен {resp.status_code}"
-    )
+    assert resp.status_code == 422, f"Ожидался статус 422 Unprocessable Entity, получен {resp.status_code}"
     assert "не может быть позже" in resp.json()["detail"]
 
 
@@ -135,13 +109,10 @@ async def test_analytics_inverted_date_range_unvalidated(
 # НАПРАВЛЕНИЕ: Уведомления и маскировка статусов
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_notification_status_blind_success_on_other_users_notification(
-    client: AsyncClient,
-    db_session: AsyncSession,
-    normal_user: User,
-    normal_user_token_headers: dict,
-    admin_user: User
+    client: AsyncClient, db_session: AsyncSession, normal_user: User, normal_user_token_headers: dict, admin_user: User
 ):
     """
     Суть проверяемого сценария и входные данные:
@@ -168,22 +139,17 @@ async def test_notification_status_blind_success_on_other_users_notification(
         user_id=admin_user.id,
         title="Административное оповещение",
         message="Конфиденциальное системное сообщение",
-        is_read=False
+        is_read=False,
     )
     db_session.add(notif)
     await db_session.commit()
     await db_session.refresh(notif)
 
     # 2. Обычный сотрудник отправляет запрос на прочтение чужого уведомления
-    resp = await client.post(
-        f"/api/v1/notifications/{notif.id}/read",
-        headers=normal_user_token_headers
-    )
+    resp = await client.post(f"/api/v1/notifications/{notif.id}/read", headers=normal_user_token_headers)
 
     # Проверка защиты: Сервер возвращает 404 Not Found при попытке изменить чужое уведомление
-    assert resp.status_code == 404, (
-        f"Ожидался статус 404 Not Found, получен {resp.status_code}"
-    )
+    assert resp.status_code == 404, f"Ожидался статус 404 Not Found, получен {resp.status_code}"
     assert "не найдено" in resp.json()["detail"].lower()
 
     # Проверяем, что в БД уведомление администратора так и осталось непрочитанным
@@ -197,11 +163,10 @@ async def test_notification_status_blind_success_on_other_users_notification(
 # НАПРАВЛЕНИЕ: BFLA / Разграничение прав на создание проектов
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_employee_forbidden_to_create_project(
-    client: AsyncClient,
-    normal_user_token_headers: dict,
-    normal_user: User
+    client: AsyncClient, normal_user_token_headers: dict, normal_user: User
 ):
     """
     Суть проверяемого сценария и входные данные:
@@ -218,12 +183,10 @@ async def test_employee_forbidden_to_create_project(
             "name": "Несанкционированный проект",
             "code": "2026-88883",
             "weekly_limit": 10,
-            "manager_id": normal_user.id
+            "manager_id": normal_user.id,
         },
-        headers=normal_user_token_headers
+        headers=normal_user_token_headers,
     )
 
     # Проверка защиты: Доступ к созданию проектов закрыт для сотрудников (403 Forbidden)
-    assert resp.status_code == 403, (
-        f"Ожидался статус 403 Forbidden, получен {resp.status_code}"
-    )
+    assert resp.status_code == 403, f"Ожидался статус 403 Forbidden, получен {resp.status_code}"

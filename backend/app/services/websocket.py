@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, List
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,9 @@ class ConnectionManager:
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
-        logger.info(f"User {user_id} connected to WebSocket. Total connections for user: {len(self.active_connections[user_id])}")
+        logger.info(
+            f"User {user_id} connected to WebSocket. Total connections for user: {len(self.active_connections[user_id])}"
+        )
 
     def disconnect(self, websocket: WebSocket, user_id: int):
         if user_id in self.active_connections:
