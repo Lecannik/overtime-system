@@ -486,6 +486,7 @@ async def telegram_webapp_auth(
     if not user:
         return TelegramWebAppAuthResponse(
             status="link_required",
+            authenticated=False,
             telegram_id=telegram_id,
             first_name=first_name,
         )
@@ -523,6 +524,7 @@ async def telegram_webapp_auth(
 
     return TelegramWebAppAuthResponse(
         status="authenticated",
+        authenticated=True,
         access_token=access_token,
         telegram_id=telegram_id,
         first_name=first_name,
@@ -609,6 +611,7 @@ async def telegram_link_account(
 
     return TelegramWebAppAuthResponse(
         status="authenticated",
+        authenticated=True,
         access_token=access_token,
         telegram_id=telegram_id,
         first_name=tg_user.get("first_name", ""),

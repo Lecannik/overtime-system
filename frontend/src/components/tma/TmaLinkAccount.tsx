@@ -50,7 +50,10 @@ export const TmaLinkAccount: React.FC<TmaLinkAccountProps> = ({
 
     try {
       const res = await linkTelegramAccount(initData, email.trim(), password);
-      if (res.authenticated && res.access_token && res.user) {
+      const isAuthed = Boolean(
+        (res.authenticated || res.status === 'authenticated') && res.access_token && res.user
+      );
+      if (isAuthed && res.access_token && res.user) {
         haptic.notification('success');
         login(res.access_token, res.user);
         onLinked();

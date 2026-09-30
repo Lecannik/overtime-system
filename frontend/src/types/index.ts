@@ -326,9 +326,12 @@ export interface TelegramWebAppUser {
 }
 
 export interface TelegramWebAppAuthResponse {
-    authenticated: boolean;
+    status?: 'authenticated' | 'link_required' | string;
+    authenticated?: boolean;
     access_token?: string;
     token_type?: string;
+    telegram_id?: number;
+    first_name?: string;
     user?: User;
     detail?: string;
     telegram_user?: TelegramWebAppUser;

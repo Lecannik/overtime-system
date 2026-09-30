@@ -151,11 +151,13 @@ class TelegramWebAppAuthResponse(BaseModel):
     """Ответ аутентификации Telegram WebApp."""
 
     status: str  # "authenticated" | "link_required"
+    authenticated: bool = False
     access_token: Optional[str] = None
     token_type: Optional[str] = "bearer"
     telegram_id: Optional[int] = None
     first_name: Optional[str] = None
     user: Optional[UserResponse] = None
+    detail: Optional[str] = None
 
 
 class TelegramLinkAccountRequest(BaseModel):

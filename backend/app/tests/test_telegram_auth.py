@@ -116,6 +116,7 @@ async def test_telegram_webapp_auth_endpoint_authenticated(client, db_session, n
     data = response.json()
 
     assert data["status"] == "authenticated"
+    assert data["authenticated"] is True
     assert data["access_token"] is not None
     assert data["user"]["id"] == normal_user.id
     assert data["user"]["email"] == normal_user.email
@@ -134,5 +135,31 @@ async def test_telegram_webapp_auth_endpoint_link_required(client, monkeypatch):
     data = response.json()
 
     assert data["status"] == "link_required"
+    assert data["authenticated"] is False
     assert data["telegram_id"] == 999111222
     assert data["access_token"] is None
+
+
+@pytest.mark.asyncio
+async def test_telegram_link_endpoint_success(client, db_session, normal_user, monkeypatch):
+    """Тест эндпоинта /auth/telegram/link: связывание Telegram ID с аккаунтом."""
+    test_bot_token = "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+    monkeypatch.setattr("app.core.config.settings.TELEGRAM_BOT_TOKEN", test_bot_token)
+
+    init_data = generate_valid_init_data(test_bot_token, {"id": 888777666, "first_name": "Linked User"})
+
+    response = await client.post(
+        "/api/v1/auth/telegram/link",
+        json={
+            "init_data": init_data,
+            "email": normal_user.email,
+            "password": "user_pass",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "authenticated"
+    assert data["authenticated"] is True
+    assert data["access_token"] is not None
+    assert data["user"]["id"] == normal_user.id

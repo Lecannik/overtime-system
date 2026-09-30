@@ -39,7 +39,11 @@ export const TmaApp: React.FC = () => {
           const res = await authTelegramWebApp(initData);
           if (!isMounted) return;
 
-          if (res.authenticated && res.access_token && res.user) {
+          const isAuthed = Boolean(
+            (res.authenticated || res.status === 'authenticated') && res.access_token && res.user
+          );
+
+          if (isAuthed && res.access_token && res.user) {
             login(res.access_token, res.user);
             setAuthStatus('authenticated');
             // Если пользователь руководитель/менеджер — по умолчанию открываем ленту согласования
