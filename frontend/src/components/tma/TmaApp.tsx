@@ -304,10 +304,11 @@ export const TmaApp: React.FC = () => {
       {/* Основной контент */}
       <main style={{ flex: 1, overflowY: 'auto' }}>
         {activeTab === 'tracker' ? (
-          <TmaTrackerView haptic={haptic} />
+          <TmaTrackerView haptic={haptic} currentUser={authUser} />
         ) : (
           <TmaReviewView
             haptic={haptic}
+            currentUser={authUser}
             onCountChange={handleCountChange}
           />
         )}

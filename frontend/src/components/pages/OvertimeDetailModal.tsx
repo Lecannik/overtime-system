@@ -6,7 +6,7 @@ import type { Overtime, User } from '../../types';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
-import { updateOvertime, getAdminProjects } from '../../services/api';
+import { updateOvertime, getAdminProjects, getProjects } from '../../services/api';
 
 const toLocalISOString = (date: Date): string => {
     const tzOffset = date.getTimezoneOffset() * 60000;
@@ -177,7 +177,9 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
         if (projects.length === 0) {
             setLoadingProjects(true);
             try {
-                const data = await getAdminProjects();
+                const data = currentUser?.role === 'admin'
+                    ? await getAdminProjects()
+                    : await getProjects();
                 setProjects(data || []);
             } catch (err) {
                 console.error('Failed to load projects:', err);
@@ -240,6 +242,12 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
         }
     };
 
+    const canEdit =
+        Boolean(currentUser) &&
+        (currentUser?.role === 'admin' ||
+            (currentUser?.id === overtime.user_id &&
+                (overtime.status === 'PENDING' || overtime.status === 'IN_PROGRESS')));
+
     const canReview =
         currentUser &&
         currentUser.role !== 'employee' &&
@@ -283,7 +291,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                        {currentUser?.role === 'admin' && !isEditing && (
+                        {canEdit && !isEditing && (
                             <button
                                 onClick={handleStartEdit}
                                 className="action-button-modern"

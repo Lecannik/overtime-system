@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   CheckCircle2, XCircle, Clock,
   RefreshCw, Check, ChevronDown, ChevronUp, MapPin,
-  Building2, X
+  Building2, X, Edit2
 } from 'lucide-react';
-import { getOvertimes, reviewOvertime, getDepartments } from '../../services/api';
-import type { Overtime, Department } from '../../types';
+import { getOvertimes, reviewOvertime, getDepartments, updateOvertime, getProjects } from '../../services/api';
+import type { Overtime, Department, User, Project } from '../../types';
 
 interface TmaReviewViewProps {
   haptic: {
@@ -13,6 +13,7 @@ interface TmaReviewViewProps {
     impact: (style?: 'light' | 'medium' | 'heavy') => void;
     selection: () => void;
   };
+  currentUser?: User | null;
   onCountChange?: (count: number) => void;
 }
 
@@ -57,12 +58,38 @@ const formatDateYMD = (d: Date): string => {
  */
 export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   haptic,
+  currentUser,
   onCountChange,
 }) => {
   const [items, setItems] = useState<Overtime[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
+
+  // Редактирование заявки администратором
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [editingAdminOtId, setEditingAdminOtId] = useState<number | null>(null);
+  const [adminEditProjectId, setAdminEditProjectId] = useState<string>('');
+  const [adminEditStartTime, setAdminEditStartTime] = useState<string>('');
+  const [adminEditEndTime, setAdminEditEndTime] = useState<string>('');
+  const [adminEditDesc, setAdminEditDesc] = useState<string>('');
+  const [isAdminUpdating, setIsAdminUpdating] = useState<boolean>(false);
+  const [adminUpdateError, setAdminUpdateError] = useState<string>('');
+
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      getProjects().then(setAllProjects).catch(() => {});
+    }
+  }, [currentUser]);
+
+  const formatDateTimeLocal = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   // Фильтры
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -686,29 +713,293 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
               </div>
             )}
 
-            {/* Корректировка часов (аккордеон) */}
+            {/* Корректировка часов (аккордеон) и Редактирование (для админа) */}
             <div style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))', paddingTop: '8px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.selection();
-                  setExpandedId(isExpanded ? null : ot.id);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--tg-theme-hint-color, var(--text-muted, #94a3b8))',
-                  fontSize: '0.78rem',
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic.selection();
+                    setExpandedId(isExpanded ? null : ot.id);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--tg-theme-hint-color, var(--text-muted, #94a3b8))',
+                    fontSize: '0.78rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{isExpanded ? 'Скрыть параметры согласования' : 'Скорректировать часы...'}</span>
+                </button>
+
+                {currentUser?.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.selection();
+                      if (editingAdminOtId === ot.id) {
+                        setEditingAdminOtId(null);
+                      } else {
+                        setEditingAdminOtId(ot.id);
+                        setAdminEditProjectId((ot.project_id || '').toString());
+                        setAdminEditStartTime(ot.start_time ? formatDateTimeLocal(new Date(ot.start_time)) : '');
+                        setAdminEditEndTime(ot.end_time ? formatDateTimeLocal(new Date(ot.end_time)) : '');
+                        setAdminEditDesc(ot.description || '');
+                        setAdminUpdateError('');
+                      }
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#60a5fa',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Edit2 size={13} />
+                    <span>{editingAdminOtId === ot.id ? 'Скрыть правку' : 'Править заявку'}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Форма полного редактирования заявки админом */}
+              {editingAdminOtId === ot.id && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                <span>{isExpanded ? 'Скрыть параметры согласования' : 'Скорректировать часы...'}</span>
-              </button>
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa' }}>
+                    Редактирование заявки администратором (ID #{ot.id})
+                  </div>
+
+                  {adminUpdateError && (
+                    <div style={{
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#ef4444',
+                      fontSize: '0.76rem',
+                    }}>
+                      {adminUpdateError}
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                      Проект
+                    </label>
+                    <select
+                      value={adminEditProjectId}
+                      onChange={(e) => setAdminEditProjectId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 9px',
+                        borderRadius: '8px',
+                        background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+                        border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                        color: 'var(--tg-theme-text-color, #f8fafc)',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <option value="">Выберите проект...</option>
+                      {allProjects.map((p) => (
+                        <option key={p.id} value={p.id.toString()}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                        Начало
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={adminEditStartTime}
+                        max={formatDateTimeLocal(new Date())}
+                        onChange={(e) => setAdminEditStartTime(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: '8px',
+                          background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                          color: 'var(--tg-theme-text-color, #f8fafc)',
+                          fontSize: '0.76rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                        Окончание
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={adminEditEndTime}
+                        min={adminEditStartTime || undefined}
+                        max={formatDateTimeLocal(new Date())}
+                        onChange={(e) => setAdminEditEndTime(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          borderRadius: '8px',
+                          background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                          color: 'var(--tg-theme-text-color, #f8fafc)',
+                          fontSize: '0.76rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                      Описание работ
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={adminEditDesc}
+                      onChange={(e) => setAdminEditDesc(e.target.value)}
+                      placeholder="Описание..."
+                      style={{
+                        width: '100%',
+                        padding: '6px 9px',
+                        borderRadius: '8px',
+                        background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+                        border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                        color: 'var(--tg-theme-text-color, #f8fafc)',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        resize: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      disabled={isAdminUpdating}
+                      onClick={async () => {
+                        if (!adminEditProjectId) {
+                          setAdminUpdateError('Пожалуйста, выберите проект');
+                          haptic.notification('warning');
+                          return;
+                        }
+                        if (!adminEditStartTime) {
+                          setAdminUpdateError('Пожалуйста, укажите время начала');
+                          haptic.notification('warning');
+                          return;
+                        }
+
+                        const startD = new Date(adminEditStartTime);
+                        const endD = adminEditEndTime ? new Date(adminEditEndTime) : null;
+                        const now = new Date();
+
+                        if (startD > now) {
+                          setAdminUpdateError('Время начала не может быть в будущем');
+                          haptic.notification('warning');
+                          return;
+                        }
+                        if (endD && endD > now) {
+                          setAdminUpdateError('Время окончания не может быть в будущем');
+                          haptic.notification('warning');
+                          return;
+                        }
+                        if (endD && endD <= startD) {
+                          setAdminUpdateError('Время окончания должно быть позже времени начала');
+                          haptic.notification('warning');
+                          return;
+                        }
+
+                        setIsAdminUpdating(true);
+                        setAdminUpdateError('');
+                        haptic.impact('medium');
+
+                        try {
+                          const updated = await updateOvertime(ot.id, {
+                            project_id: Number(adminEditProjectId),
+                            start_time: startD.toISOString(),
+                            end_time: endD ? endD.toISOString() : undefined,
+                            description: adminEditDesc.trim() || undefined,
+                          });
+                          haptic.notification('success');
+                          setEditingAdminOtId(null);
+                          setItems((prev) => prev.map((item) => (item.id === ot.id ? { ...item, ...updated } : item)));
+                        } catch (err: unknown) {
+                          const msg =
+                            (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+                            'Не удалось обновить заявку';
+                          setAdminUpdateError(msg);
+                          haptic.notification('error');
+                        } finally {
+                          setIsAdminUpdating(false);
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: '#ffffff',
+                        border: 'none',
+                        fontWeight: 700,
+                        fontSize: '0.8rem',
+                        cursor: isAdminUpdating ? 'not-allowed' : 'pointer',
+                        opacity: isAdminUpdating ? 0.7 : 1,
+                      }}
+                    >
+                      {isAdminUpdating ? 'Сохранение...' : 'Сохранить правки'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAdminUpdating}
+                      onClick={() => {
+                        haptic.selection();
+                        setEditingAdminOtId(null);
+                        setAdminUpdateError('');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        color: 'var(--tg-theme-text-color, #f8fafc)',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {isExpanded && (
                 <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>

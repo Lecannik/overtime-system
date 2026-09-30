@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Square, AlertCircle, Check, Search } from 'lucide-react';
+import { Play, Square, AlertCircle, Check, Search, Edit2 } from 'lucide-react';
 import {
   getActiveSession, startSession, stopSession,
-  getProjects, getMyStats, getMyOvertimes, createOvertime
+  getProjects, getMyStats, getMyOvertimes, createOvertime, updateOvertime
 } from '../../services/api';
-import type { Overtime, Project, UserStats } from '../../types';
+import type { Overtime, Project, UserStats, User } from '../../types';
 
 interface TmaTrackerViewProps {
   haptic: {
@@ -12,6 +12,7 @@ interface TmaTrackerViewProps {
     impact: (style?: 'light' | 'medium' | 'heavy') => void;
     selection: () => void;
   };
+  currentUser?: User | null;
 }
 
 /**
@@ -26,12 +27,21 @@ interface TmaTrackerViewProps {
  * @param {TmaTrackerViewProps} props - Свойства компонента.
  * @returns {JSX.Element} Экран персонального трекера переработок.
  */
-export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
+export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentUser }) => {
   const [activeSession, setActiveSession] = useState<Overtime | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [recentOvertimes, setRecentOvertimes] = useState<Overtime[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Состояние редактирования заявки
+  const [editingOt, setEditingOt] = useState<Overtime | null>(null);
+  const [editProjectId, setEditProjectId] = useState<string>('');
+  const [editStartTime, setEditStartTime] = useState<string>('');
+  const [editEndTime, setEditEndTime] = useState<string>('');
+  const [editDesc, setEditDesc] = useState<string>('');
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [updateError, setUpdateError] = useState<string>('');
 
   // Форма запуска новой сессии
   const [selectedProjectId, setSelectedProjectId] = useState<number | ''>('');
@@ -786,6 +796,13 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
             const badgeColor = isApproved ? '#10b981' : isRejected ? '#ef4444' : '#f59e0b';
             const badgeText = isApproved ? 'Одобрено' : isRejected ? 'Отклонено' : isPending ? 'Ожидает' : String(ot.status);
 
+            const canEdit =
+              Boolean(currentUser) &&
+              (currentUser?.role === 'admin' ||
+                (ot.user_id === currentUser?.id && (ot.status === 'PENDING' || ot.status === 'IN_PROGRESS')));
+
+            const isBeingEdited = editingOt?.id === ot.id;
+
             return (
               <div
                 key={ot.id}
@@ -793,31 +810,309 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
                   background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
                   borderRadius: '14px',
                   padding: '12px 14px',
-                  border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+                  border: isBeingEdited ? '1px solid #3b82f6' : '1px solid var(--border, rgba(255, 255, 255, 0.08))',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  flexDirection: 'column',
+                  gap: '10px',
                 }}
               >
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
-                    {ot.project?.name || 'Проект'}
+                {/* Верхняя строка карточки */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                      {ot.project?.name || 'Проект'}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
+                      {new Date(ot.start_time).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} • {ot.hours || ot.raw_hours || 0} ч
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
-                    {new Date(ot.start_time).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} • {ot.hours || ot.raw_hours || 0} ч
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{
+                      background: badgeBg,
+                      color: badgeColor,
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      padding: '4px 8px',
+                      borderRadius: '8px',
+                    }}>
+                      {badgeText}
+                    </span>
+
+                    {canEdit && !isBeingEdited && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic.selection();
+                          setEditingOt(ot);
+                          setEditProjectId((ot.project_id || '').toString());
+                          setEditStartTime(ot.start_time ? formatDateTimeLocal(new Date(ot.start_time)) : '');
+                          setEditEndTime(ot.end_time ? formatDateTimeLocal(new Date(ot.end_time)) : '');
+                          setEditDesc(ot.description || '');
+                          setUpdateError('');
+                        }}
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          color: '#60a5fa',
+                          padding: '5px 8px',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Edit2 size={12} />
+                        <span>Изменить</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <span style={{
-                  background: badgeBg,
-                  color: badgeColor,
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  padding: '4px 8px',
-                  borderRadius: '8px',
-                }}>
-                  {badgeText}
-                </span>
+                {/* Описание заявки если есть и не редактируется */}
+                {!isBeingEdited && ot.description && (
+                  <div style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--tg-theme-text-color, var(--text-secondary, #cbd5e1))',
+                    lineHeight: 1.35,
+                  }}>
+                    💬 {ot.description}
+                  </div>
+                )}
+
+                {/* Форма редактирования */}
+                {isBeingEdited && (
+                  <div style={{
+                    marginTop: '4px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#60a5fa' }}>
+                      Редактирование заявки #{ot.id}
+                    </div>
+
+                    {updateError && (
+                      <div style={{
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#ef4444',
+                        fontSize: '0.78rem',
+                      }}>
+                        {updateError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
+                        Проект
+                      </label>
+                      <select
+                        value={editProjectId}
+                        onChange={(e) => setEditProjectId(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                          color: 'var(--tg-theme-text-color, #f8fafc)',
+                          fontSize: '0.82rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <option value="">Выберите проект...</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id.toString()}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
+                          Начало
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editStartTime}
+                          max={formatDateTimeLocal(new Date())}
+                          onChange={(e) => setEditStartTime(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                            color: 'var(--tg-theme-text-color, #f8fafc)',
+                            fontSize: '0.78rem',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
+                          Окончание
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editEndTime}
+                          min={editStartTime || undefined}
+                          max={formatDateTimeLocal(new Date())}
+                          onChange={(e) => setEditEndTime(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                            color: 'var(--tg-theme-text-color, #f8fafc)',
+                            fontSize: '0.78rem',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
+                        Описание работ
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editDesc}
+                        onChange={(e) => setEditDesc(e.target.value)}
+                        placeholder="Что было сделано..."
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                          color: 'var(--tg-theme-text-color, #f8fafc)',
+                          fontSize: '0.82rem',
+                          outline: 'none',
+                          resize: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!editProjectId) {
+                            setUpdateError('Пожалуйста, выберите проект');
+                            haptic.notification('warning');
+                            return;
+                          }
+                          if (!editStartTime) {
+                            setUpdateError('Пожалуйста, укажите время начала');
+                            haptic.notification('warning');
+                            return;
+                          }
+                          if (!editEndTime) {
+                            setUpdateError('Пожалуйста, укажите время окончания');
+                            haptic.notification('warning');
+                            return;
+                          }
+
+                          const startD = new Date(editStartTime);
+                          const endD = new Date(editEndTime);
+                          const now = new Date();
+
+                          if (startD > now) {
+                            setUpdateError('Время начала не может быть в будущем');
+                            haptic.notification('warning');
+                            return;
+                          }
+                          if (endD > now) {
+                            setUpdateError('Время окончания не может быть в будущем');
+                            haptic.notification('warning');
+                            return;
+                          }
+                          if (endD <= startD) {
+                            setUpdateError('Время окончания должно быть позже времени начала');
+                            haptic.notification('warning');
+                            return;
+                          }
+
+                          setIsUpdating(true);
+                          setUpdateError('');
+                          haptic.impact('medium');
+
+                          try {
+                            await updateOvertime(ot.id, {
+                              project_id: Number(editProjectId),
+                              start_time: startD.toISOString(),
+                              end_time: endD.toISOString(),
+                              description: editDesc.trim() || undefined,
+                            });
+                            haptic.notification('success');
+                            setEditingOt(null);
+                            await loadData();
+                          } catch (err: unknown) {
+                            const msg =
+                              (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+                              'Не удалось обновить заявку';
+                            setUpdateError(msg);
+                            haptic.notification('error');
+                          } finally {
+                            setIsUpdating(false);
+                          }
+                        }}
+                        disabled={isUpdating}
+                        style={{
+                          flex: 1,
+                          padding: '9px',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: isUpdating ? 'not-allowed' : 'pointer',
+                          opacity: isUpdating ? 0.7 : 1,
+                        }}
+                      >
+                        {isUpdating ? 'Сохранение...' : 'Сохранить изменения'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic.selection();
+                          setEditingOt(null);
+                          setUpdateError('');
+                        }}
+                        disabled={isUpdating}
+                        style={{
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          color: 'var(--tg-theme-text-color, #f8fafc)',
+                          border: 'none',
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
