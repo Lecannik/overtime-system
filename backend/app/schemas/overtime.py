@@ -108,6 +108,24 @@ class OvertimeReview(BaseModel):
     )
 
 
+class StartSessionRequest(BaseModel):
+    """Схема запуска активной сессии переработки (трекер TMA)."""
+
+    project_id: int
+    lat: float | None = None
+    lng: float | None = None
+    location_name: str | None = None
+    description: str | None = Field(default="[Telegram Mini App]", max_length=2000)
+
+
+class StopSessionRequest(BaseModel):
+    """Схема завершения активной сессии переработки (трекер TMA)."""
+
+    lat: float | None = None
+    lng: float | None = None
+    comment: str | None = Field(default=None, max_length=2000)
+
+
 # Вспомогательные схемы для уменьшения объема данных в ответах
 class ProjectMini(BaseModel):
     id: int

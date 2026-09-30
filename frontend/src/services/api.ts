@@ -3,7 +3,7 @@ import type {
     LoginResponse, User, Project, Department, Overtime,
     PaginatedResponse, UserStats, AuditLog, Notification,
     AnalyticsSummary, ProjectAnalytics, DepartmentAnalytics, UserAnalytics, ReviewAnalytics,
-    AnalyticsParams, OdooProjectPreview, OdooIntegrationProject
+    AnalyticsParams, OdooProjectPreview, OdooIntegrationProject, TelegramWebAppAuthResponse
 } from '../types';
 
 let inMemoryToken: string | null = null;
@@ -167,6 +167,11 @@ export const confirmPasswordReset = (data: Record<string, unknown>) =>
     api.post<{ detail: string }>('/auth/password-reset/confirm', data).then(r => r.data);
 export const changePassword = (data: Record<string, unknown>) =>
     api.post<{ detail: string }>('/auth/change-password', data).then(r => r.data);
+export const authTelegramWebApp = (initData: string) =>
+    api.post<TelegramWebAppAuthResponse>('/auth/telegram/webapp', { init_data: initData }).then(r => r.data);
+export const linkTelegramAccount = (initData: string, email: string, password: string) =>
+    api.post<TelegramWebAppAuthResponse>('/auth/telegram/link', { init_data: initData, email, password }).then(r => r.data);
+
 
 // --- USERS ---
 export const getUsers = (params?: Record<string, unknown>) =>
@@ -184,6 +189,7 @@ export const updateDepartment = (id: number, data: Partial<Department>) => api.p
 export const deleteDepartment = (id: number) => api.delete(`/admin/departments/${id}`).then(r => r.data);
 
 // --- PROJECTS ---
+export const getProjects = () => api.get<Project[]>('/projects/').then(r => r.data);
 export const getAdminProjects = () => api.get<Project[]>('/admin/projects').then(r => r.data);
 export const createProject = (data: { name: string; code: string }) => api.post<Project>('/admin/projects', data).then(r => r.data);
 export const updateProject = (id: number, data: Partial<Project>) => api.patch<Project>(`/admin/projects/${id}`, data).then(r => r.data);
@@ -216,6 +222,11 @@ export const importOdooIntegrationProjects = (projects: { id: number; name?: str
 export const getMyOvertimes = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
 export const getMyStats = () => api.get<UserStats>('/overtimes/stats/me').then(r => r.data);
+export const getActiveSession = () => api.get<Overtime | null>('/overtimes/active').then(r => r.data);
+export const startSession = (data: { project_id: number; lat?: number | null; lng?: number | null; location_name?: string | null; description?: string }) =>
+    api.post<Overtime>('/overtimes/start-session', data).then(r => r.data);
+export const stopSession = (data: { lat?: number | null; lng?: number | null; comment?: string }) =>
+    api.post<Overtime>('/overtimes/stop-session', data).then(r => r.data);
 export const createOvertime = (data: Partial<Overtime>) => api.post<Overtime>('/overtimes/', data).then(r => r.data);
 export const updateOvertime = (id: number, data: Partial<Overtime>) => api.patch<Overtime>(`/overtimes/${id}`, data).then(r => r.data);
 export const cancelOvertime = (id: number) => api.post(`/overtimes/${id}/cancel`).then(r => r.data);
@@ -224,6 +235,7 @@ export const getOvertimes = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
 export const reviewOvertime = (id: number, approved: boolean, comment?: string, as_role?: string, approved_hours?: number) =>
     api.post(`/overtimes/${id}/review`, { approved, comment, as_role, approved_hours }).then(r => r.data);
+
 
 /** Модель записи-дня для календарной сводки. */
 export interface CalendarDayEntry {

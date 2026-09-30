@@ -139,3 +139,28 @@ class PaginatedUsersResponse(BaseModel):
     pages: int
 
     model_config = {"from_attributes": True}
+
+
+class TelegramWebAppAuthRequest(BaseModel):
+    """Запрос на аутентификацию через Telegram WebApp initData."""
+
+    init_data: str
+
+
+class TelegramWebAppAuthResponse(BaseModel):
+    """Ответ аутентификации Telegram WebApp."""
+
+    status: str  # "authenticated" | "link_required"
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    telegram_id: Optional[int] = None
+    first_name: Optional[str] = None
+    user: Optional[UserResponse] = None
+
+
+class TelegramLinkAccountRequest(BaseModel):
+    """Запрос на связывание Telegram ID с существующим аккаунтом."""
+
+    init_data: str
+    email: EmailStr
+    password: str

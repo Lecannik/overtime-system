@@ -6,7 +6,16 @@ from datetime import datetime, timedelta, timezone
 import telegram.error
 
 # pyrefly: ignore [missing-import]
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile,
+    KeyboardButton,
+    MenuButtonWebApp,
+    ReplyKeyboardMarkup,
+    Update,
+    WebAppInfo,
+)
 
 # pyrefly: ignore [missing-import]
 from telegram.ext import (
@@ -34,9 +43,16 @@ logger = logging.getLogger(__name__)
 CHOOSING_PROJECT, SENDING_LOCATION, SENDING_END_LOCATION, SENDING_COMMENT = range(4)
 
 
+def get_tma_url() -> str:
+    """Возвращает базовый URL для Telegram Mini App."""
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/tma"
+
+
 def start_markup():
+    """Разметка главного меню бота с кнопкой запуска Telegram Mini App."""
     return ReplyKeyboardMarkup(
         [
+            [KeyboardButton("📱 Открыть OvertimePro", web_app=WebAppInfo(url=get_tma_url()))],
             [KeyboardButton("🚀 Начать переработку")],
             [KeyboardButton("📊 Получить отчет"), KeyboardButton("❓ Статус сессии")],
         ],
@@ -52,11 +68,23 @@ async def verify_user(update: Update) -> User | None:
         user = await user_repo.get_user_by_chat_id(session, str(chat_id))
         if not user:
             if update.effective_message:
+                link_markup = InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "🔗 Привязать аккаунт в OvertimePro",
+                                web_app=WebAppInfo(url=get_tma_url()),
+                            )
+                        ]
+                    ]
+                )
                 await update.effective_message.reply_text(
                     f"❌ <b>Ваш аккаунт Telegram не привязан к системе.</b>\n\n"
-                    f"Пожалуйста, укажите ваш Telegram ID в профиле личного кабинета на веб-портале, чтобы пользоваться ботом.\n\n"
+                    f"Нажмите кнопку ниже, чтобы войти под своей корпоративной учётной записью и привязать Telegram ID, "
+                    f"либо укажите ваш Telegram ID в профиле на веб-портале.\n\n"
                     f"🆔 Ваш Telegram ID: <code>{chat_id}</code>",
                     parse_mode="HTML",
+                    reply_markup=link_markup,
                 )
             return None
         return user
@@ -66,6 +94,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await verify_user(update)
     if not user:
         return ConversationHandler.END
+
+    # Настраиваем нативную кнопку меню чата на WebApp
+    try:
+        if update.effective_chat:
+            await context.bot.set_chat_menu_button(
+                chat_id=update.effective_chat.id,
+                menu_button=MenuButtonWebApp(text="📱 OvertimePro", web_app=WebAppInfo(url=get_tma_url())),
+            )
+    except Exception as e:
+        logger.warning(f"Не удалось установить MenuButtonWebApp: {e}")
+
     await update.message.reply_text(f"Привет, {user.full_name}! 👋", reply_markup=start_markup())
     return ConversationHandler.END
 
@@ -698,5 +737,11 @@ async def run_bot_async(token: str):
     app = setup_bot(token)
     await app.initialize()
     await app.start()
+    try:
+        await app.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="📱 OvertimePro", web_app=WebAppInfo(url=get_tma_url()))
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось установить глобальный MenuButtonWebApp: {e}")
     await app.updater.start_polling()
     return app

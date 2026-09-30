@@ -8,10 +8,18 @@ from app.core.database import get_session
 from app.core.rate_limit import login_limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import OTPType, User
-from app.repositories import audit as audit_repo
+from app.repositories import audit as audit_repo, user as user_repo
 from app.repositories.user import get_user_by_email, update_user
 from app.schemas.otp import OTPVerify, PasswordResetConfirm, PasswordResetRequest
-from app.schemas.user import LoginResponse, UserChangePassword, UserResponse, UserUpdatePreferences
+from app.schemas.user import (
+    LoginResponse,
+    TelegramLinkAccountRequest,
+    TelegramWebAppAuthRequest,
+    TelegramWebAppAuthResponse,
+    UserChangePassword,
+    UserResponse,
+    UserUpdatePreferences,
+)
 from app.services.auth import authenticate_user
 from app.services.ms_graph import ms_graph
 from app.services.otp import create_otp, verify_otp
@@ -21,6 +29,7 @@ from app.services.refresh_token import (
     revoke_refresh_token,
     verify_and_rotate_refresh_token,
 )
+from app.services.telegram_auth import TelegramAuthError, validate_telegram_init_data
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -431,3 +440,177 @@ async def microsoft_callback(
     )
 
     return redirect_response
+
+
+@router.post("/telegram/webapp", response_model=TelegramWebAppAuthResponse)
+async def telegram_webapp_auth(
+    payload: TelegramWebAppAuthRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Бесшовная аутентификация пользователя Telegram Mini App через initData.
+
+    Проверяет валидность криптографической подписи initData с помощью TELEGRAM_BOT_TOKEN.
+    Если пользователь с таким telegram_chat_id привязан и активен, возвращает
+    стандартный JWT access_token и данные профиля, а также устанавливает refresh_token cookie.
+    Если пользователь не найден, возвращает статус 'link_required' с Telegram ID для привязки.
+    """
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    if not bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Интеграция с Telegram не настроена на сервере (отсутствует TELEGRAM_BOT_TOKEN).",
+        )
+
+    try:
+        tg_data = validate_telegram_init_data(payload.init_data, bot_token)
+    except TelegramAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Ошибка верификации Telegram initData: {str(e)}",
+        )
+
+    tg_user = tg_data.get("user")
+    if not tg_user or "id" not in tg_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="В данных Telegram initData отсутствует информация о пользователе.",
+        )
+
+    telegram_id = tg_user["id"]
+    first_name = tg_user.get("first_name", "")
+
+    user = await user_repo.get_user_by_chat_id(session, str(telegram_id))
+
+    if not user:
+        return TelegramWebAppAuthResponse(
+            status="link_required",
+            telegram_id=telegram_id,
+            first_name=first_name,
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ваша учетная запись деактивирована администратором.",
+        )
+
+    # Логируем вход через Telegram WebApp
+    await audit_repo.create_audit_log(
+        session=session,
+        user_id=user.id,
+        action="LOGIN_TELEGRAM_WEBAPP",
+        details={
+            "email": user.email,
+            "telegram_id": telegram_id,
+            "telegram_username": tg_user.get("username"),
+        },
+    )
+
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role.value})
+    refresh_token = await create_refresh_token(session, user.id)
+    await session.commit()
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+    )
+
+    return TelegramWebAppAuthResponse(
+        status="authenticated",
+        access_token=access_token,
+        telegram_id=telegram_id,
+        first_name=first_name,
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/telegram/link", response_model=TelegramWebAppAuthResponse)
+async def telegram_link_account(
+    payload: TelegramLinkAccountRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Связывает аккаунт Telegram с корпоративной учетной записью OvertimePro.
+    Проверяет initData и логин/пароль сотрудника.
+    После успешной привязки сохраняет telegram_chat_id и возвращает JWT access_token.
+    """
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    if not bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Интеграция с Telegram не настроена на сервере.",
+        )
+
+    try:
+        tg_data = validate_telegram_init_data(payload.init_data, bot_token)
+    except TelegramAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Ошибка верификации Telegram initData: {str(e)}",
+        )
+
+    tg_user = tg_data.get("user")
+    if not tg_user or "id" not in tg_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="В данных Telegram initData отсутствует информация о пользователе.",
+        )
+
+    telegram_id = tg_user["id"]
+
+    # Проверяем корпоративный логин и пароль пользователя
+    user = await authenticate_user(session, payload.email, payload.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный корпоративный email или пароль.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ваша учетная запись деактивирована администратором.",
+        )
+
+    # Привязываем telegram_chat_id к пользователю
+    user.telegram_chat_id = str(telegram_id)
+    session.add(user)
+
+    await audit_repo.create_audit_log(
+        session=session,
+        user_id=user.id,
+        action="LINK_TELEGRAM_ACCOUNT",
+        details={
+            "email": user.email,
+            "telegram_id": telegram_id,
+            "telegram_username": tg_user.get("username"),
+        },
+    )
+
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role.value})
+    refresh_token = await create_refresh_token(session, user.id)
+    await session.commit()
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+    )
+
+    return TelegramWebAppAuthResponse(
+        status="authenticated",
+        access_token=access_token,
+        telegram_id=telegram_id,
+        first_name=tg_user.get("first_name", ""),
+        user=UserResponse.model_validate(user),
+    )

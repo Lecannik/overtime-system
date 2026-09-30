@@ -14,6 +14,8 @@ const ProfilePage = React.lazy(() => import('./components/pages/ProfilePage'));
 const AnalyticsPage = React.lazy(() => import('./components/pages/AnalyticsPage'));
 const ChangePasswordPage = React.lazy(() => import('./components/pages/ChangePasswordPage'));
 const AuthSuccessPage = React.lazy(() => import('./components/pages/AuthSuccessPage'));
+const TmaApp = React.lazy(() => import('./components/tma/TmaApp'));
+
 
 /**
  * Индикатор загрузки для Suspense и инициализации приложения.
@@ -97,6 +99,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/success" element={<AuthSuccessPage />} />
+        <Route path="/tma" element={<TmaApp />} />
 
         {/* Защищенные маршруты */}
         <Route

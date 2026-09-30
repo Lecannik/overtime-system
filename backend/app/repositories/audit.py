@@ -13,6 +13,8 @@ CATEGORY_ACTION_MAP: dict[str, list[str]] = {
         "LOGIN",
         "LOGIN_2FA",
         "LOGIN_SSO",
+        "LOGIN_TELEGRAM_WEBAPP",
+        "LINK_TELEGRAM_ACCOUNT",
         "LOGOUT",
         "PASSWORD_RESET_REQUEST",
         "PASSWORD_RESET_CONFIRM",

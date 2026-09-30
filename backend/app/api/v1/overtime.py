@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional
 
 # pyrefly: ignore [missing-import]
@@ -16,7 +16,7 @@ from app.core.rate_limit import overtime_create_limiter
 from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, UserRole
-from app.repositories import audit as audit_repo, overtime as overtime_repo
+from app.repositories import audit as audit_repo, organization as org_repo, overtime as overtime_repo, user as user_repo
 from app.schemas.overtime import (
     OvertimeCreate,
     OvertimeResponse,
@@ -24,10 +24,136 @@ from app.schemas.overtime import (
     OvertimeUpdate,
     PaginatedOvertimeResponse,
     PersonalStats,
+    StartSessionRequest,
+    StopSessionRequest,
 )
 from app.services import overtime as overtime_service
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
+
+
+@router.get("/active", response_model=Optional[OvertimeResponse])
+async def get_active_session(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Получить текущую активную сессию (IN_PROGRESS) текущего пользователя.
+    Используется в Telegram Mini App и мобильном трекере.
+    """
+    return await overtime_repo.get_active_session(session, current_user.id)
+
+
+@router.post("/start-session", response_model=OvertimeResponse)
+async def start_session(
+    payload: StartSessionRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Запустить активную сессию переработки (IN_PROGRESS).
+    """
+    existing = await overtime_repo.get_active_session(session, current_user.id)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У вас уже запущена переработка. Завершите текущую перед запуском новой.",
+        )
+
+    project = await org_repo.get_project_by_id(session, payload.project_id)
+    if not project or not project.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Выбранный проект не существует или неактивен.",
+        )
+
+    new_ot = Overtime(
+        user_id=current_user.id,
+        project_id=payload.project_id,
+        start_time=datetime.now(timezone.utc),
+        start_lat=payload.lat,
+        start_lng=payload.lng,
+        location_name=payload.location_name,
+        description=payload.description or "[Telegram Mini App]",
+        status=OvertimeStatus.IN_PROGRESS,
+    )
+    await overtime_repo.create_overtime(session, new_ot)
+    return await overtime_repo.get_overtime_by_id(session, new_ot.id)
+
+
+@router.post("/stop-session", response_model=OvertimeResponse)
+async def stop_session(
+    payload: StopSessionRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Завершить активную сессию переработки, зафиксировать время и перевести в PENDING.
+    """
+    active = await overtime_repo.get_active_session(session, current_user.id)
+    if not active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Активная сессия не найдена.",
+        )
+
+    end_time = datetime.now(timezone.utc)
+    from app.core.utils import split_interval_by_days
+
+    intervals = split_interval_by_days(active.start_time, end_time)
+    if not intervals:
+        intervals = [(active.start_time, end_time)]
+
+    comment_text = payload.comment or active.description
+
+    active.start_time = intervals[0][0]
+    active.end_time = intervals[0][1]
+    active.description = comment_text
+    active.status = OvertimeStatus.PENDING
+    active.end_lat = payload.lat
+    active.end_lng = payload.lng
+
+    other_overtimes = []
+    for s, e in intervals[1:]:
+        new_ot = Overtime(
+            user_id=active.user_id,
+            project_id=active.project_id,
+            start_time=s,
+            end_time=e,
+            description=comment_text,
+            location_name=active.location_name,
+            start_lat=active.start_lat,
+            start_lng=active.start_lng,
+            end_lat=payload.lat,
+            end_lng=payload.lng,
+            status=OvertimeStatus.PENDING,
+        )
+        session.add(new_ot)
+        other_overtimes.append(new_ot)
+
+    await session.commit()
+
+    all_overtimes = [active]
+    for ot in other_overtimes:
+        ot_full = await overtime_repo.get_overtime_by_id(session, ot.id)
+        if ot_full:
+            all_overtimes.append(ot_full)
+
+    from app.services import notifications
+
+    for ot_full in all_overtimes:
+        manager = None
+        if ot_full.project and ot_full.project.manager_id:
+            manager = await user_repo.get_user_by_id(session, ot_full.project.manager_id)
+        dept = (
+            await org_repo.get_department_by_id(session, ot_full.user.department_id)
+            if ot_full.user.department_id
+            else None
+        )
+        head = await user_repo.get_user_by_id(session, dept.head_id) if dept and dept.head_id else None
+        await notifications.notify_new_overtime(session, ot_full, manager, head)
+
+    return await overtime_repo.get_overtime_by_id(session, active.id)
 
 
 @router.get("/", response_model=PaginatedOvertimeResponse)

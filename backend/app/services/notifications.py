@@ -62,6 +62,18 @@ async def notify_new_overtime(
         f"Требуется решение"
     )
 
+    tma_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/tma"
+    review_reply_markup = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "⚡ Рассмотреть в приложении",
+                    "web_app": {"url": tma_url},
+                }
+            ]
+        ]
+    }
+
     # Отправляем менеджеру
     if manager:
         await notif_repo.create_notification(session, manager.id, "Новая заявка", msg_plain)
@@ -72,7 +84,7 @@ async def notify_new_overtime(
             NotificationLevel.ALL,
             NotificationLevel.TELEGRAM_ONLY,
         ):
-            await send_telegram_message(session, manager.telegram_chat_id, msg_html)
+            await send_telegram_message(session, manager.telegram_chat_id, msg_html, reply_markup=review_reply_markup)
 
     # Отправляем нач. отдела
     if head:
@@ -84,7 +96,7 @@ async def notify_new_overtime(
             NotificationLevel.ALL,
             NotificationLevel.TELEGRAM_ONLY,
         ):
-            await send_telegram_message(session, head.telegram_chat_id, msg_html)
+            await send_telegram_message(session, head.telegram_chat_id, msg_html, reply_markup=review_reply_markup)
 
     await ws_manager.broadcast_to_all({"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
 
@@ -163,6 +175,17 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
 
     # 2. Telegram — с фильтром по уровню
     if employee.telegram_chat_id and should_notify_tg:
+        tma_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/tma"
+        employee_reply_markup = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "📱 Открыть в OvertimePro",
+                        "web_app": {"url": tma_url},
+                    }
+                ]
+            ]
+        }
         msg_html = (
             f"📢 <b>Обновление заявки #{overtime.id}</b>\n\n"
             f"📁 <b>Проект</b>: {overtime.project.name}\n"
@@ -173,7 +196,7 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
             f"👤 <b>Проверил</b>: {reviewer.full_name}"
             f"{comment_block}"
         )
-        await send_telegram_message(session, employee.telegram_chat_id, msg_html)
+        await send_telegram_message(session, employee.telegram_chat_id, msg_html, reply_markup=employee_reply_markup)
 
     # 3. Email — только при финальном решении (APPROVED / REJECTED)
     if is_final and employee.notification_level in (NotificationLevel.EMAIL_ONLY, NotificationLevel.ALL):
