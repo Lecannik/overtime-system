@@ -56,6 +56,17 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
   const [manualDesc, setManualDesc] = useState('');
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
+  const [manualError, setManualError] = useState('');
+
+  // Форматирование даты в локальный ISO формат для <input type="datetime-local">
+  const formatDateTimeLocal = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   // Загрузка начальных данных
   const loadData = useCallback(async () => {
@@ -189,7 +200,33 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setManualError('');
+
     if (!selectedProjectId || !manualStartTime || !manualEndTime) {
+      setManualError('Пожалуйста, выберите проект и укажите время');
+      haptic.notification('warning');
+      return;
+    }
+
+    const start = new Date(manualStartTime);
+    const end = new Date(manualEndTime);
+    const now = new Date();
+
+    // Запрет будущего времени для переработки
+    if (start > now) {
+      setManualError('Время начала не может быть в будущем. Переработка подается за фактически отработанное время.');
+      haptic.notification('warning');
+      return;
+    }
+
+    if (end > now) {
+      setManualError('Время окончания не может быть в будущем. Переработка подается за фактически отработанное время.');
+      haptic.notification('warning');
+      return;
+    }
+
+    if (end <= start) {
+      setManualError('Время окончания должно быть позже времени начала.');
       haptic.notification('warning');
       return;
     }
@@ -200,8 +237,8 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
     try {
       await createOvertime({
         project_id: Number(selectedProjectId),
-        start_time: new Date(manualStartTime).toISOString(),
-        end_time: new Date(manualEndTime).toISOString(),
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
         description: manualDesc.trim() || 'Переработка (ручной ввод в TMA)',
       });
       haptic.notification('success');
@@ -209,13 +246,17 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
       setManualDesc('');
       setManualStartTime('');
       setManualEndTime('');
+      setManualError('');
       setTimeout(() => {
         setIsManualMode(false);
         setManualSuccess(false);
       }, 1500);
       await loadData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[TMA Tracker] Ошибка создания ручной заявки:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || 'Ошибка создания заявки на переработку.';
+      setManualError(msg);
       haptic.notification('error');
     } finally {
       setManualLoading(false);
@@ -388,6 +429,14 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
               type="button"
               onClick={() => {
                 haptic.selection();
+                setManualError('');
+                if (!isManualMode) {
+                  // Инициализируем актуальным временем: окончание - сейчас, начало - 2 часа назад
+                  const now = new Date();
+                  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+                  setManualEndTime(formatDateTimeLocal(now));
+                  setManualStartTime(formatDateTimeLocal(twoHoursAgo));
+                }
                 setIsManualMode(!isManualMode);
               }}
               style={{
@@ -423,6 +472,23 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
           {isManualMode ? (
             /* ФОРМА РУЧНОЙ ПОДАЧИ */
             <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {manualError && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  color: '#ef4444',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                  <span>{manualError}</span>
+                </div>
+              )}
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
                   Проект
@@ -433,7 +499,8 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
                   required
                   style={{
                     width: '100%',
-                    padding: '10px',
+                    boxSizing: 'border-box',
+                    padding: '10px 12px',
                     borderRadius: '10px',
                     background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
                     border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
@@ -448,45 +515,55 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
                 </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                    Начало
+                    Время начала
                   </label>
                   <input
                     type="datetime-local"
                     required
+                    max={formatDateTimeLocal(new Date())}
                     value={manualStartTime}
-                    onChange={(e) => setManualStartTime(e.target.value)}
+                    onChange={(e) => {
+                      setManualStartTime(e.target.value);
+                      setManualError('');
+                    }}
                     style={{
                       width: '100%',
-                      padding: '8px 10px',
+                      boxSizing: 'border-box',
+                      padding: '10px 12px',
                       borderRadius: '10px',
                       background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
                       border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
                       color: 'var(--tg-theme-text-color, #f8fafc)',
-                      fontSize: '0.82rem',
+                      fontSize: '0.88rem',
                       outline: 'none',
                     }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                    Окончание
+                    Время окончания
                   </label>
                   <input
                     type="datetime-local"
                     required
+                    max={formatDateTimeLocal(new Date())}
                     value={manualEndTime}
-                    onChange={(e) => setManualEndTime(e.target.value)}
+                    onChange={(e) => {
+                      setManualEndTime(e.target.value);
+                      setManualError('');
+                    }}
                     style={{
                       width: '100%',
-                      padding: '8px 10px',
+                      boxSizing: 'border-box',
+                      padding: '10px 12px',
                       borderRadius: '10px',
                       background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
                       border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
                       color: 'var(--tg-theme-text-color, #f8fafc)',
-                      fontSize: '0.82rem',
+                      fontSize: '0.88rem',
                       outline: 'none',
                     }}
                   />
@@ -585,6 +662,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
                     onChange={(e) => setSelectedProjectId(Number(e.target.value))}
                     style={{
                       width: '100%',
+                      boxSizing: 'border-box',
                       padding: '11px',
                       borderRadius: '12px',
                       background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
