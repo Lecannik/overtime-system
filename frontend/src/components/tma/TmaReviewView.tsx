@@ -15,6 +15,10 @@ interface TmaReviewViewProps {
   };
   currentUser?: User | null;
   onCountChange?: (count: number) => void;
+  backButton?: {
+    show: (onClick: () => void) => void;
+    hide: () => void;
+  };
 }
 
 type DatePreset = 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -60,6 +64,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   haptic,
   currentUser,
   onCountChange,
+  backButton,
 }) => {
   const [items, setItems] = useState<Overtime[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +80,20 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   const [adminEditDesc, setAdminEditDesc] = useState<string>('');
   const [isAdminUpdating, setIsAdminUpdating] = useState<boolean>(false);
   const [adminUpdateError, setAdminUpdateError] = useState<string>('');
+
+  // Обработка нативной кнопки «Назад» Telegram
+  useEffect(() => {
+    if (editingAdminOtId !== null) {
+      backButton?.show(() => {
+        setEditingAdminOtId(null);
+      });
+      return () => {
+        backButton?.hide();
+      };
+    } else {
+      backButton?.hide();
+    }
+  }, [editingAdminOtId, backButton]);
 
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -161,6 +180,12 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
     }
     return {};
   }, [datePreset, customStartDate, customEndDate]);
+
+  const maxAllowedDateTime = useMemo(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 5);
+    return formatDateTimeLocal(d);
+  }, []);
 
   const loadOvertimes = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -278,7 +303,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       gap: '12px',
-      padding: '12px 14px 24px',
+      padding: '12px 14px 80px',
       fontFamily: 'Inter, -apple-system, sans-serif',
       color: 'var(--tg-theme-text-color, var(--text-primary, #f8fafc))',
     }}>
@@ -803,7 +828,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
                   )}
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                    <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
                       Проект
                     </label>
                     <select
@@ -811,90 +836,92 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
                       onChange={(e) => setAdminEditProjectId(e.target.value)}
                       style={{
                         width: '100%',
-                        padding: '7px 9px',
+                        padding: '8px 10px',
                         borderRadius: '8px',
                         background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
                         border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                         color: 'var(--tg-theme-text-color, #f8fafc)',
-                        fontSize: '0.8rem',
+                        fontSize: '0.82rem',
                         outline: 'none',
                         boxSizing: 'border-box',
                       }}
                     >
-                      <option value="">Выберите проект...</option>
+                      <option value="" style={{ background: '#1e293b', color: '#f8fafc' }}>Выберите проект...</option>
                       {allProjects.map((p) => (
-                        <option key={p.id} value={p.id.toString()}>
+                        <option key={p.id} value={p.id.toString()} style={{ background: '#1e293b', color: '#f8fafc' }}>
                           {p.name}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
                         Начало
                       </label>
                       <input
                         type="datetime-local"
                         value={adminEditStartTime}
-                        max={formatDateTimeLocal(new Date())}
+                        max={maxAllowedDateTime}
                         onChange={(e) => setAdminEditStartTime(e.target.value)}
                         style={{
                           width: '100%',
-                          padding: '6px 8px',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                          padding: '8px 10px',
                           borderRadius: '8px',
                           background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
                           border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                           color: 'var(--tg-theme-text-color, #f8fafc)',
-                          fontSize: '0.76rem',
+                          fontSize: '0.82rem',
                           outline: 'none',
-                          boxSizing: 'border-box',
                         }}
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
                         Окончание
                       </label>
                       <input
                         type="datetime-local"
                         value={adminEditEndTime}
                         min={adminEditStartTime || undefined}
-                        max={formatDateTimeLocal(new Date())}
+                        max={maxAllowedDateTime}
                         onChange={(e) => setAdminEditEndTime(e.target.value)}
                         style={{
                           width: '100%',
-                          padding: '6px 8px',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box',
+                          padding: '8px 10px',
                           borderRadius: '8px',
                           background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
                           border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                           color: 'var(--tg-theme-text-color, #f8fafc)',
-                          fontSize: '0.76rem',
+                          fontSize: '0.82rem',
                           outline: 'none',
-                          boxSizing: 'border-box',
                         }}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '3px' }}>
+                    <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
                       Описание работ
                     </label>
                     <textarea
                       rows={2}
                       value={adminEditDesc}
                       onChange={(e) => setAdminEditDesc(e.target.value)}
-                      placeholder="Описание..."
+                      placeholder="Описание проделанных работ..."
                       style={{
                         width: '100%',
-                        padding: '6px 9px',
+                        padding: '8px 10px',
                         borderRadius: '8px',
                         background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
                         border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                         color: 'var(--tg-theme-text-color, #f8fafc)',
-                        fontSize: '0.8rem',
+                        fontSize: '0.82rem',
                         outline: 'none',
                         resize: 'none',
                         boxSizing: 'border-box',
@@ -920,14 +947,14 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
 
                         const startD = new Date(adminEditStartTime);
                         const endD = adminEditEndTime ? new Date(adminEditEndTime) : null;
-                        const now = new Date();
+                        const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
 
-                        if (startD > now) {
+                        if (startD > nowWithGrace) {
                           setAdminUpdateError('Время начала не может быть в будущем');
                           haptic.notification('warning');
                           return;
                         }
-                        if (endD && endD > now) {
+                        if (endD && endD > nowWithGrace) {
                           setAdminUpdateError('Время окончания не может быть в будущем');
                           haptic.notification('warning');
                           return;
@@ -951,7 +978,12 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
                           });
                           haptic.notification('success');
                           setEditingAdminOtId(null);
-                          setItems((prev) => prev.map((item) => (item.id === ot.id ? { ...item, ...updated } : item)));
+                          const chosenProj = allProjects.find((p) => p.id === Number(adminEditProjectId));
+                          setItems((prev) => prev.map((item) => (item.id === ot.id ? {
+                            ...item,
+                            ...updated,
+                            project: updated.project || (chosenProj ? { id: chosenProj.id, name: chosenProj.name, code: chosenProj.code } : item.project),
+                          } : item)));
                         } catch (err: unknown) {
                           const msg =
                             (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||

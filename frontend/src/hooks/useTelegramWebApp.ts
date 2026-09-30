@@ -28,6 +28,11 @@ export interface UseTelegramWebAppResult {
   expand: () => void;
   /** Закрыть WebApp и вернуться в чат бота. */
   close: () => void;
+  /** Управление нативной кнопкой «Назад» в шапке Telegram. */
+  backButton: {
+    show: (onClick: () => void) => void;
+    hide: () => void;
+  };
 }
 
 /**
@@ -121,6 +126,28 @@ export const useTelegramWebApp = (): UseTelegramWebAppResult => {
     },
   }), [webApp]);
 
+  const backButton = useMemo(() => ({
+    show: (onClick: () => void) => {
+      try {
+        if (webApp?.BackButton) {
+          webApp.BackButton.onClick(onClick);
+          webApp.BackButton.show();
+        }
+      } catch {
+        // Fallback
+      }
+    },
+    hide: () => {
+      try {
+        if (webApp?.BackButton) {
+          webApp.BackButton.hide();
+        }
+      } catch {
+        // Fallback
+      }
+    },
+  }), [webApp]);
+
   return {
     isTma,
     webApp,
@@ -131,6 +158,7 @@ export const useTelegramWebApp = (): UseTelegramWebAppResult => {
     haptic,
     expand,
     close,
+    backButton,
   };
 };
 

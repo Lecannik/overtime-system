@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Play, Square, AlertCircle, Check, Search, Edit2, ChevronDown, Folder, X } from 'lucide-react';
 import {
   getActiveSession, startSession, stopSession,
@@ -14,6 +14,10 @@ interface TmaTrackerViewProps {
     selection: () => void;
   };
   currentUser?: User | null;
+  backButton?: {
+    show: (onClick: () => void) => void;
+    hide: () => void;
+  };
 }
 
 /**
@@ -28,7 +32,7 @@ interface TmaTrackerViewProps {
  * @param {TmaTrackerViewProps} props - Свойства компонента.
  * @returns {JSX.Element} Экран персонального трекера переработок.
  */
-export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentUser }) => {
+export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentUser, backButton }) => {
   const [activeSession, setActiveSession] = useState<Overtime | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -74,6 +78,23 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
   const [manualSuccess, setManualSuccess] = useState(false);
   const [manualError, setManualError] = useState('');
 
+  // Обработка нативной кнопки «Назад» Telegram
+  useEffect(() => {
+    if (editingOt !== null || isManualMode || isProjectPickerOpen || isManualProjectPickerOpen) {
+      backButton?.show(() => {
+        if (isProjectPickerOpen) setIsProjectPickerOpen(false);
+        else if (isManualProjectPickerOpen) setIsManualProjectPickerOpen(false);
+        else if (editingOt !== null) setEditingOt(null);
+        else if (isManualMode) setIsManualMode(false);
+      });
+      return () => {
+        backButton?.hide();
+      };
+    } else {
+      backButton?.hide();
+    }
+  }, [editingOt, isManualMode, isProjectPickerOpen, isManualProjectPickerOpen, backButton]);
+
   // Форматирование даты в локальный ISO формат для <input type="datetime-local">
   const formatDateTimeLocal = (date: Date): string => {
     const year = date.getFullYear();
@@ -83,6 +104,12 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
+
+  const maxAllowedDateTime = useMemo(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 5);
+    return formatDateTimeLocal(d);
+  }, []);
 
   // Безопасное сохранение ID последнего выбранного проекта
   const saveLastProjectId = (id: number | string) => {
@@ -267,16 +294,16 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
 
     const start = new Date(manualStartTime);
     const end = new Date(manualEndTime);
-    const now = new Date();
+    const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
 
     // Запрет будущего времени для переработки
-    if (start > now) {
+    if (start > nowWithGrace) {
       setManualError('Время начала не может быть в будущем. Переработка подается за фактически отработанное время.');
       haptic.notification('warning');
       return;
     }
 
-    if (end > now) {
+    if (end > nowWithGrace) {
       setManualError('Время окончания не может быть в будущем. Переработка подается за фактически отработанное время.');
       haptic.notification('warning');
       return;
@@ -850,7 +877,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                   <input
                     type="datetime-local"
                     required
-                    max={formatDateTimeLocal(new Date())}
+                    max={maxAllowedDateTime}
                     value={manualStartTime}
                     onChange={(e) => {
                       setManualStartTime(e.target.value);
@@ -876,7 +903,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                   <input
                     type="datetime-local"
                     required
-                    max={formatDateTimeLocal(new Date())}
+                    max={maxAllowedDateTime}
                     value={manualEndTime}
                     onChange={(e) => {
                       setManualEndTime(e.target.value);
@@ -1211,16 +1238,16 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                           boxSizing: 'border-box',
                         }}
                       >
-                        <option value="">Выберите проект...</option>
+                        <option value="" style={{ background: '#1e293b', color: '#f8fafc' }}>Выберите проект...</option>
                         {projects.map((p) => (
-                          <option key={p.id} value={p.id.toString()}>
+                          <option key={p.id} value={p.id.toString()} style={{ background: '#1e293b', color: '#f8fafc' }}>
                             {p.name}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
                           Начало
@@ -1228,18 +1255,19 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                         <input
                           type="datetime-local"
                           value={editStartTime}
-                          max={formatDateTimeLocal(new Date())}
+                          max={maxAllowedDateTime}
                           onChange={(e) => setEditStartTime(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '6px 8px',
+                            maxWidth: '100%',
+                            boxSizing: 'border-box',
+                            padding: '8px 10px',
                             borderRadius: '8px',
                             background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
                             border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                             color: 'var(--tg-theme-text-color, #f8fafc)',
-                            fontSize: '0.78rem',
+                            fontSize: '0.82rem',
                             outline: 'none',
-                            boxSizing: 'border-box',
                           }}
                         />
                       </div>
@@ -1251,18 +1279,19 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                           type="datetime-local"
                           value={editEndTime}
                           min={editStartTime || undefined}
-                          max={formatDateTimeLocal(new Date())}
+                          max={maxAllowedDateTime}
                           onChange={(e) => setEditEndTime(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '6px 8px',
+                            maxWidth: '100%',
+                            boxSizing: 'border-box',
+                            padding: '8px 10px',
                             borderRadius: '8px',
                             background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
                             border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
                             color: 'var(--tg-theme-text-color, #f8fafc)',
-                            fontSize: '0.78rem',
+                            fontSize: '0.82rem',
                             outline: 'none',
-                            boxSizing: 'border-box',
                           }}
                         />
                       </div>
@@ -1311,17 +1340,22 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                             haptic.notification('warning');
                             return;
                           }
+                          if (!editDesc.trim()) {
+                            setUpdateError('Пожалуйста, подробно укажите описание выполненных работ');
+                            haptic.notification('warning');
+                            return;
+                          }
 
                           const startD = new Date(editStartTime);
                           const endD = new Date(editEndTime);
-                          const now = new Date();
+                          const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
 
-                          if (startD > now) {
+                          if (startD > nowWithGrace) {
                             setUpdateError('Время начала не может быть в будущем');
                             haptic.notification('warning');
                             return;
                           }
-                          if (endD > now) {
+                          if (endD > nowWithGrace) {
                             setUpdateError('Время окончания не может быть в будущем');
                             haptic.notification('warning');
                             return;
@@ -1341,7 +1375,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                               project_id: Number(editProjectId),
                               start_time: startD.toISOString(),
                               end_time: endD.toISOString(),
-                              description: editDesc.trim() || undefined,
+                              description: editDesc.trim(),
                             });
                             haptic.notification('success');
                             setEditingOt(null);

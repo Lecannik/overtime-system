@@ -20,7 +20,7 @@ import { Clock, CheckSquare } from 'lucide-react';
  * @returns {JSX.Element} Полноэкранное мини-приложение Telegram.
  */
 export const TmaApp: React.FC = () => {
-  const { initData, telegramUser, haptic } = useTelegramWebApp();
+  const { initData, telegramUser, haptic, backButton } = useTelegramWebApp();
 
   const { user: authUser, login, token } = useAuth();
 
@@ -304,12 +304,13 @@ export const TmaApp: React.FC = () => {
       {/* Основной контент */}
       <main style={{ flex: 1, overflowY: 'auto' }}>
         {activeTab === 'tracker' ? (
-          <TmaTrackerView haptic={haptic} currentUser={authUser} />
+          <TmaTrackerView haptic={haptic} currentUser={authUser} backButton={backButton} />
         ) : (
           <TmaReviewView
             haptic={haptic}
             currentUser={authUser}
             onCountChange={handleCountChange}
+            backButton={backButton}
           />
         )}
       </main>

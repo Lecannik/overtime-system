@@ -661,7 +661,7 @@ async def update_overtime(session: AsyncSession, overtime_id: int, overtime_in: 
         )
 
     await session.commit()
-    await session.refresh(result)
+    reloaded = await overtime_repo.get_overtime_by_id(session, result.id)
     cache_clear()
 
     # WebSocket broadcast об изменении параметров заявки
@@ -672,11 +672,11 @@ async def update_overtime(session: AsyncSession, overtime_id: int, overtime_in: 
             "new_status": result.status.value,
             "reviewer_name": current_user.full_name,
             "action": "update",
-            "employee_name": result.user.full_name if result.user else "",
+            "employee_name": reloaded.user.full_name if (reloaded and reloaded.user) else "",
         }
     )
 
-    return result
+    return reloaded or result
 
 
 async def auto_close_stale_sessions(session: AsyncSession) -> int:
