@@ -115,7 +115,7 @@ class StartSessionRequest(BaseModel):
     lat: float | None = None
     lng: float | None = None
     location_name: str | None = None
-    description: str | None = Field(default="[Telegram Mini App]", max_length=2000)
+    description: str | None = Field(default=None, max_length=2000, description="Предварительная заметка к задаче")
 
 
 class StopSessionRequest(BaseModel):
@@ -123,7 +123,7 @@ class StopSessionRequest(BaseModel):
 
     lat: float | None = None
     lng: float | None = None
-    comment: str | None = Field(default=None, max_length=2000)
+    comment: str | None = Field(default=None, max_length=2000, description="Отчет о фактически выполненных работах")
 
 
 # Вспомогательные схемы для уменьшения объема данных в ответах

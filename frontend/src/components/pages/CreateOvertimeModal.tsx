@@ -287,13 +287,30 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
         e.preventDefault();
         setError('');
 
-        if (!projectId) {
+        let targetProjId = projectId;
+        if (!targetProjId && projectSearch.trim()) {
+            const match = projects.find(p =>
+                p.name.toLowerCase() === projectSearch.trim().toLowerCase() ||
+                (p.code && p.code.toLowerCase() === projectSearch.trim().toLowerCase())
+            );
+            if (match) {
+                targetProjId = match.id.toString();
+                setProjectId(targetProjId);
+            }
+        }
+
+        if (!targetProjId) {
             setError('Пожалуйста, выберите проект. Если вы выполняли внутренние работы, выберите проект "Внутренний".');
             return;
         }
 
         if (!startTime) {
             setError('Пожалуйста, укажите время начала переработки.');
+            return;
+        }
+
+        if (!description.trim()) {
+            setError('Пожалуйста, укажите описание фактически выполненных работ.');
             return;
         }
 
@@ -320,10 +337,10 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
 
         try {
             const data = {
-                project_id: parseInt(projectId),
+                project_id: parseInt(targetProjId),
                 start_time: new Date(startTime).toISOString(),
                 end_time: endTime ? new Date(endTime).toISOString() : undefined,
-                description,
+                description: description.trim(),
                 start_lat: startLat,
                 start_lng: startLng,
                 end_lat: endLat,

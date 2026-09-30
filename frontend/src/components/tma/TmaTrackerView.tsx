@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Square, AlertCircle, Check, Search, Edit2 } from 'lucide-react';
+import { Play, Square, AlertCircle, Check, Search, Edit2, ChevronDown, Folder, X } from 'lucide-react';
 import {
   getActiveSession, startSession, stopSession,
   getProjects, getMyStats, getMyOvertimes, createOvertime, updateOvertime
@@ -49,10 +49,11 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
   const [sessionDesc, setSessionDesc] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState('');
-
+  const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
 
   // Форма остановки сессии
   const [stopComment, setStopComment] = useState('');
+  const [stopError, setStopError] = useState('');
   const [isStopping, setIsStopping] = useState(false);
 
   // Живой секундомер
@@ -61,6 +62,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
 
   // Режим ручного ввода (fallback если забыл запустить таймер)
   const [isManualMode, setIsManualMode] = useState(false);
+  const [isManualProjectPickerOpen, setIsManualProjectPickerOpen] = useState(false);
   const [manualStartTime, setManualStartTime] = useState('');
   const [manualEndTime, setManualEndTime] = useState('');
   const [manualDesc, setManualDesc] = useState('');
@@ -168,7 +170,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         project_id: Number(selectedProjectId),
         lat: geo?.lat,
         lng: geo?.lng,
-        description: sessionDesc.trim() || '[Telegram Mini App]',
+        description: sessionDesc.trim() || undefined,
       });
       haptic.notification('success');
       setActiveSession(created);
@@ -184,6 +186,14 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
   };
 
   const handleStopSession = async () => {
+    const cleanComment = stopComment.trim();
+    if (!cleanComment) {
+      setStopError('Пожалуйста, подробно опишите проделанную работу. Комментарий обязателен для завершения переработки.');
+      haptic.notification('warning');
+      return;
+    }
+
+    setStopError('');
     setIsStopping(true);
     haptic.impact('heavy');
 
@@ -193,15 +203,19 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
       await stopSession({
         lat: geo?.lat,
         lng: geo?.lng,
-        comment: stopComment.trim() || undefined,
+        comment: cleanComment,
       });
       haptic.notification('success');
       setActiveSession(null);
       setStopComment('');
+      setStopError('');
       // Перезагружаем статистику и список
       await loadData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[TMA Tracker] Ошибка остановки сессии:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || 'Ошибка завершения переработки.';
+      setStopError(msg);
       haptic.notification('error');
     } finally {
       setIsStopping(false);
@@ -214,6 +228,12 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
 
     if (!selectedProjectId || !manualStartTime || !manualEndTime) {
       setManualError('Пожалуйста, выберите проект и укажите время');
+      haptic.notification('warning');
+      return;
+    }
+
+    if (!manualDesc.trim()) {
+      setManualError('Пожалуйста, подробно опишите выполненные работы. Описание обязательно.');
       haptic.notification('warning');
       return;
     }
@@ -249,7 +269,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         project_id: Number(selectedProjectId),
         start_time: start.toISOString(),
         end_time: end.toISOString(),
-        description: manualDesc.trim() || 'Переработка (ручной ввод в TMA)',
+        description: manualDesc.trim(),
       });
       haptic.notification('success');
       setManualSuccess(true);
@@ -277,6 +297,206 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
     (p.code && p.code.toLowerCase().includes(projectSearch.toLowerCase()))
   );
+
+  /**
+   * Отрисовывает кастомный селектор проектов для мобильного интерфейса TMA
+   * с живым поиском и мгновенной фиксацией выбора.
+   *
+   * @param {boolean} isManual Флаг ручного режима подачи заявки.
+   * @returns {JSX.Element} Интерактивный компонент выбора проекта.
+   */
+  const renderProjectSelector = (isManual: boolean) => {
+    const isOpen = isManual ? isManualProjectPickerOpen : isProjectPickerOpen;
+    const setIsOpen = isManual ? setIsManualProjectPickerOpen : setIsProjectPickerOpen;
+    const currentProject = projects.find((p) => p.id === Number(selectedProjectId));
+
+    return (
+      <div style={{ position: 'relative' }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
+          Проект <span style={{ color: '#ef4444' }}>*</span>
+        </label>
+
+        {/* Кнопка-карточка выбранного проекта */}
+        <div
+          onClick={() => {
+            haptic.selection();
+            setIsOpen(!isOpen);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '11px 14px',
+            borderRadius: '12px',
+            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+            border: !selectedProjectId && (startError || manualError)
+              ? '1px solid #ef4444'
+              : '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(59, 130, 246, 0.15)',
+              color: 'var(--primary, #3b82f6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Folder size={17} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                color: currentProject ? 'var(--tg-theme-text-color, #f8fafc)' : 'var(--tg-theme-hint-color, #94a3b8)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {currentProject ? currentProject.name : 'Выберите проект...'}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {currentProject?.code && (
+              <span style={{
+                fontSize: '0.72rem',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: 'var(--tg-theme-hint-color, #94a3b8)',
+                fontFamily: 'monospace'
+              }}>
+                {currentProject.code}
+              </span>
+            )}
+            <ChevronDown size={18} style={{
+              color: 'var(--tg-theme-hint-color, #94a3b8)',
+              transform: isOpen ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.2s ease'
+            }} />
+          </div>
+        </div>
+
+        {/* Выпадающий список проектов с поиском */}
+        {isOpen && (
+          <div style={{
+            marginTop: '8px',
+            padding: '10px',
+            borderRadius: '14px',
+            background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            maxHeight: '260px',
+            zIndex: 10,
+          }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{
+                position: 'absolute',
+                left: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--tg-theme-hint-color, #94a3b8)'
+              }} />
+              <input
+                type="text"
+                autoFocus
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Поиск по названию или коду..."
+                style={{
+                  width: '100%',
+                  padding: '8px 28px 8px 30px',
+                  borderRadius: '8px',
+                  background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: 'var(--tg-theme-text-color, #f8fafc)',
+                  fontSize: '0.84rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {projectSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProjectSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--tg-theme-hint-color, #94a3b8)',
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+              {filteredProjects.map((p) => {
+                const isSelected = p.id === Number(selectedProjectId);
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      setSelectedProjectId(p.id);
+                      setIsOpen(false);
+                      setProjectSearch('');
+                      setStartError('');
+                      setManualError('');
+                      haptic.selection();
+                    }}
+                    style={{
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: isSelected ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                      border: isSelected ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
+                      color: 'var(--tg-theme-text-color, #f8fafc)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: '8px' }}>
+                      <span style={{ fontWeight: isSelected ? 700 : 500, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.name}
+                      </span>
+                      {p.code && (
+                        <span style={{ fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', fontFamily: 'monospace' }}>
+                          {p.code}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && <Check size={16} color="var(--primary, #3b82f6)" />}
+                  </div>
+                );
+              })}
+              {filteredProjects.length === 0 && (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--tg-theme-hint-color, #94a3b8)', fontSize: '0.82rem' }}>
+                  Проекты не найдены
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading && !stats && !activeSession) {
     return (
@@ -373,24 +593,50 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
           </div>
 
           {/* Поле комментария к закрытию */}
-          <textarea
-            rows={2}
-            value={stopComment}
-            onChange={(e) => setStopComment(e.target.value)}
-            placeholder="Что было выполнено за эту смену (комментарий)..."
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '12px',
-              background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-              border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-              color: 'var(--tg-theme-text-color, #f8fafc)',
-              fontSize: '0.88rem',
-              outline: 'none',
-              resize: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{
+              display: 'block',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              color: stopError ? '#ef4444' : 'var(--tg-theme-text-color, #f8fafc)'
+            }}>
+              Отчет о выполненных работах <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={stopComment}
+              onChange={(e) => {
+                setStopComment(e.target.value);
+                if (stopError) setStopError('');
+              }}
+              placeholder="Подробно опишите, какие задачи были выполнены за смену (обязательно для завершения)..."
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '12px',
+                background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                border: stopError ? '1px solid #ef4444' : '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+                color: 'var(--tg-theme-text-color, #f8fafc)',
+                fontSize: '0.88rem',
+                outline: 'none',
+                resize: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            {stopError && (
+              <div style={{
+                color: '#ef4444',
+                fontSize: '0.78rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontWeight: 500,
+              }}>
+                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                <span>{stopError}</span>
+              </div>
+            )}
+          </div>
 
           {/* Большая кнопка завершения */}
           <button
@@ -499,31 +745,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                 </div>
               )}
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                  Проект
-                </label>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(Number(e.target.value))}
-                  required
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                    border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-                    color: 'var(--tg-theme-text-color, #f8fafc)',
-                    fontSize: '0.88rem',
-                    outline: 'none',
-                  }}
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
+              {renderProjectSelector(true)}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
@@ -636,70 +858,17 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
           ) : (
             /* ФОРМА БЫСТРОГО СТАРТА ТАЙМЕРА */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                  Проект
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ position: 'relative' }}>
-                    <Search size={14} style={{
-                      position: 'absolute',
-                      left: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'var(--tg-theme-hint-color, #94a3b8)',
-                    }} />
-                    <input
-                      type="text"
-                      value={projectSearch}
-                      onChange={(e) => setProjectSearch(e.target.value)}
-                      placeholder="Поиск по названию или коду..."
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px 8px 30px',
-                        borderRadius: '10px',
-                        background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                        border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-                        color: 'var(--tg-theme-text-color, #f8fafc)',
-                        fontSize: '0.82rem',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  <select
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(Number(e.target.value))}
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '11px',
-                      borderRadius: '12px',
-                      background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                      border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-                      color: 'var(--tg-theme-text-color, #f8fafc)',
-                      fontSize: '0.9rem',
-                      outline: 'none',
-                    }}
-                  >
-                    {filteredProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.code ? `(${p.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              {renderProjectSelector(false)}
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-                  Задача / Примечание (опционально)
+                  Предварительная заметка (опционально)
                 </label>
                 <input
                   type="text"
                   value={sessionDesc}
                   onChange={(e) => setSessionDesc(e.target.value)}
-                  placeholder="Например: Срочный релиз, настройка сервера"
+                  placeholder="Например: Срочный выезд, настройка сервера"
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -712,6 +881,9 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                     boxSizing: 'border-box',
                   }}
                 />
+                <span style={{ fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginTop: '4px', display: 'block' }}>
+                  ℹ️ Подробный отчет о выполненной работе заполняется при завершении переработки
+                </span>
               </div>
 
               {/* Большая зеленая кнопка старта */}

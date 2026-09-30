@@ -19,9 +19,43 @@ export const getAccessToken = () => {
 let refreshPromise: Promise<string | null> | null = null;
 
 /**
- * Обновляет локальный Access Token, выполняя запрос к эндпоинту /auth/refresh.
- * Использует паттерн Singleton для Promise, предотвращая одновременную отправку
- * нескольких параллельных запросов на обновление токена (например, в React Strict Mode).
+ * Извлекает криптографически подписанную строку initData Telegram WebApp.
+ * Проверяет объект window.Telegram.WebApp, sessionStorage и параметры URL.
+ *
+ * @returns {string | null} Строка initData или null, если запуск вне Telegram.
+ */
+export const getTmaInitData = (): string | null => {
+    try {
+        const tgData = (window as unknown as { Telegram?: { WebApp?: { initData?: string } } })?.Telegram?.WebApp?.initData;
+        if (tgData && tgData.length > 0) {
+            return tgData;
+        }
+        return sessionStorage.getItem('tma_init_data') || null;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * Сохраняет строку initData в сессионное хранилище браузера для бесшовных запросов.
+ *
+ * @param {string} data Строка initData из Telegram WebApp.
+ */
+export const setTmaInitData = (data: string): void => {
+    try {
+        if (data) {
+            sessionStorage.setItem('tma_init_data', data);
+        }
+    } catch {
+        // Игнорируем ограничения доступа к хранилищу
+    }
+};
+
+/**
+ * Обновляет локальный Access Token, выполняя запрос к бэкенду.
+ * Если приложение запущено внутри Telegram Mini App, бесшовно использует
+ * криптографическую подпись initData эндпоинта /auth/telegram/webapp.
+ * В остальных случаях использует Cookie /auth/refresh.
  *
  * @returns {Promise<string | null>} Промис, возвращающий Access Token или null.
  */
@@ -30,12 +64,28 @@ export const refreshAccessToken = (): Promise<string | null> => {
         return refreshPromise;
     }
 
-    refreshPromise = api.post<LoginResponse>('/auth/refresh')
-        .then((res) => {
-            const token = res.data.access_token;
-            setAccessToken(token || null);
-            return token || null;
-        })
+    const tgInitData = getTmaInitData();
+
+    refreshPromise = (async () => {
+        // 1. Бесшовный рефреш для Telegram Mini App через initData (без зависимости от Cookie)
+        if (tgInitData) {
+            try {
+                const res = await api.post<TelegramWebAppAuthResponse>('/auth/telegram/webapp', { init_data: tgInitData });
+                if (res.data?.access_token) {
+                    setAccessToken(res.data.access_token);
+                    return res.data.access_token;
+                }
+            } catch (tgErr) {
+                console.warn('[API] Не удалось обновить токен через Telegram initData, пробуем Cookie:', tgErr);
+            }
+        }
+
+        // 2. Стандартный рефреш для веб-портала через HttpOnly Cookie
+        const res = await api.post<LoginResponse>('/auth/refresh');
+        const token = res.data.access_token;
+        setAccessToken(token || null);
+        return token || null;
+    })()
         .catch((err) => {
             setAccessToken(null);
             return Promise.reject(err);
@@ -121,7 +171,8 @@ api.interceptors.response.use(
             } catch (err) {
                 processQueue(err, null);
                 setAccessToken(null);
-                if (!window.location.pathname.includes('/login')) {
+                const isTma = window.location.pathname.includes('/tma') || Boolean(getTmaInitData());
+                if (!isTma && !window.location.pathname.includes('/login')) {
                     window.location.href = '/login';
                 }
                 return Promise.reject(err);

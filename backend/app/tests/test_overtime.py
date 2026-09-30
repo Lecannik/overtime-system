@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization import Project
+from app.models.overtime import OvertimeStatus
 from app.models.user import User
 
 
@@ -532,3 +533,43 @@ async def test_admin_can_review_and_update_terminal_overtimes(
     )
     assert patch_resp.status_code == 200
     assert patch_resp.json()["description"] == "Обновленное администратором описание заявки"
+
+
+@pytest.mark.asyncio
+async def test_start_and_stop_session_comment_validation(client, normal_user_token_headers, test_project):
+    """
+    Тестирование запуска и остановки сессии через TMA:
+    1. Запуск без описания -> описание пустое (нет хардкода '[Telegram Mini App]').
+    2. Остановка без комментария -> 422 Unprocessable Entity (комментарий обязателен).
+    3. Остановка с валидным отчетом о работах -> 200 OK, описание обновлено.
+    """
+    # 1. Запуск сессии
+    start_resp = await client.post(
+        "/api/v1/overtimes/start-session",
+        json={"project_id": test_project.id},
+        headers=normal_user_token_headers,
+    )
+    assert start_resp.status_code == 200
+    data = start_resp.json()
+    assert data["status"] == OvertimeStatus.IN_PROGRESS.value
+    assert data["description"] == "[В процессе]"
+
+    # 2. Попытка остановки без комментария -> ошибка 422
+    stop_fail_resp = await client.post(
+        "/api/v1/overtimes/stop-session",
+        json={"comment": "   "},
+        headers=normal_user_token_headers,
+    )
+    assert stop_fail_resp.status_code == 422
+    assert "обязателен" in stop_fail_resp.json()["detail"]
+
+    # 3. Успешная остановка с комментарием о выполненных работах
+    stop_ok_resp = await client.post(
+        "/api/v1/overtimes/stop-session",
+        json={"comment": "Настройка и монтаж оборудования в серверной"},
+        headers=normal_user_token_headers,
+    )
+    assert stop_ok_resp.status_code == 200
+    stop_data = stop_ok_resp.json()
+    assert stop_data["status"] == OvertimeStatus.PENDING.value
+    assert stop_data["description"] == "Настройка и монтаж оборудования в серверной"

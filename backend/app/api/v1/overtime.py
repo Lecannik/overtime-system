@@ -74,7 +74,7 @@ async def start_session(
         start_lat=payload.lat,
         start_lng=payload.lng,
         location_name=payload.location_name,
-        description=payload.description or "[Telegram Mini App]",
+        description=(payload.description or "").strip() or "[В процессе]",
         status=OvertimeStatus.IN_PROGRESS,
     )
     await overtime_repo.create_overtime(session, new_ot)
@@ -89,6 +89,7 @@ async def stop_session(
 ):
     """
     Завершить активную сессию переработки, зафиксировать время и перевести в PENDING.
+    Комментарий по фактически выполненным работам обязателен.
     """
     active = await overtime_repo.get_active_session(session, current_user.id)
     if not active:
@@ -97,14 +98,31 @@ async def stop_session(
             detail="Активная сессия не найдена.",
         )
 
+    comment_text = (payload.comment or "").strip()
+    if not comment_text:
+        if active.description and active.description.strip() not in (
+            "",
+            "[В процессе]",
+            "[Telegram Mini App]",
+            "[Бот]",
+        ):
+            comment_text = active.description.strip()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Комментарий по выполненным работам обязателен при завершении переработки.",
+            )
+    elif active.description and active.description.strip() not in ("", "[В процессе]", "[Telegram Mini App]", "[Бот]"):
+        start_desc = active.description.strip()
+        if start_desc != comment_text:
+            comment_text = f"{start_desc}\nЗавершение: {comment_text}"
+
     end_time = datetime.now(timezone.utc)
     from app.core.utils import split_interval_by_days
 
     intervals = split_interval_by_days(active.start_time, end_time)
     if not intervals:
         intervals = [(active.start_time, end_time)]
-
-    comment_text = payload.comment or active.description
 
     active.start_time = intervals[0][0]
     active.end_time = intervals[0][1]

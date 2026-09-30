@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { TelegramWebAppSDK, TelegramWebAppUser, TelegramThemeParams } from '../types';
+import { setTmaInitData } from '../services/api';
 
 /**
  * Интерфейс результата хука `useTelegramWebApp`.
@@ -45,6 +46,9 @@ export const useTelegramWebApp = (): UseTelegramWebAppResult => {
     const tg = window.Telegram?.WebApp;
     if (tg) {
       setWebApp(tg);
+      if (tg.initData) {
+        setTmaInitData(tg.initData);
+      }
       try {
         tg.ready();
         tg.expand();
