@@ -88,9 +88,13 @@ async def list_departments(db: AsyncSession = Depends(get_session), current_user
     """
     Получить список всех отделов.
 
-    Доступно только администраторам.
+    Доступно администраторам, руководителям отделов и менеджерам.
     """
-    require_admin(current_user)
+    if current_user.role not in (UserRole.admin, UserRole.head, UserRole.manager):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен. Требуется роль администратора, руководителя или менеджера.",
+        )
     return await org_repo.get_departments(db)
 
 

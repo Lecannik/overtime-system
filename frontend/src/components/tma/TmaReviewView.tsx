@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   CheckCircle2, XCircle, Clock,
-  RefreshCw, Check, ChevronDown, ChevronUp, MapPin
+  RefreshCw, Check, ChevronDown, ChevronUp, MapPin,
+  Building2, X
 } from 'lucide-react';
-import { getOvertimes, reviewOvertime } from '../../services/api';
-import type { Overtime } from '../../types';
+import { getOvertimes, reviewOvertime, getDepartments } from '../../services/api';
+import type { Overtime, Department } from '../../types';
 
 interface TmaReviewViewProps {
   haptic: {
@@ -15,10 +16,37 @@ interface TmaReviewViewProps {
   onCountChange?: (count: number) => void;
 }
 
+type DatePreset = 'all' | 'today' | 'week' | 'month' | 'custom';
+
+interface DatePresetOption {
+  id: DatePreset;
+  label: string;
+}
+
+const DATE_PRESETS: DatePresetOption[] = [
+  { id: 'all', label: 'Все даты' },
+  { id: 'today', label: 'Сегодня' },
+  { id: 'week', label: '7 дней' },
+  { id: 'month', label: 'Этот месяц' },
+  { id: 'custom', label: 'Период...' },
+];
+
+/**
+ * Форматирует дату в формате YYYY-MM-DD для передачи в API.
+ */
+const formatDateYMD = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 /**
  * Компонент мобильной ленты согласования заявок на переработку (Telegram Mini App).
  *
  * Специально спроектирован для руководителей и менеджеров:
+ * - Фильтрация по датам (быстрые чипсы "Все", "Сегодня", "7 дней", "Месяц", "Период");
+ * - Фильтрация по отделам (выпадающий селект);
  * - Крупные touch-friendly карточки заявок;
  * - Согласование в один тап с тактильным откликом HapticFeedback;
  * - Возможность быстро скорректировать согласованные часы или указать причину отказа;
@@ -36,6 +64,13 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
+  // Фильтры
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+
   // Сохраняем актуальный коллбэк в ref, чтобы не пересоздавать loadOvertimes
   const onCountChangeRef = useRef(onCountChange);
   useEffect(() => {
@@ -50,16 +85,78 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   // Кастомные часы для одобрения (по id)
   const [customHours, setCustomHours] = useState<Record<number, string>>({});
 
+  // Загружаем список отделов при монтировании
+  useEffect(() => {
+    let isMounted = true;
+    getDepartments()
+      .then((depts) => {
+        if (isMounted && Array.isArray(depts)) {
+          setDepartments(depts);
+        }
+      })
+      .catch((err) => {
+        console.warn('[TMA Review] Список отделов не загружен или ограничен правами:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Карта отделов id -> name для быстрого поиска имени отдела в карточке
+  const deptMap = useMemo(() => {
+    const map = new Map<number, string>();
+    departments.forEach((d) => map.set(d.id, d.name));
+    return map;
+  }, [departments]);
+
+  // Вычисляем диапазон дат по пресету
+  const dateRange = useMemo(() => {
+    const today = new Date();
+    const todayStr = formatDateYMD(today);
+
+    if (datePreset === 'today') {
+      return { start_date: todayStr, end_date: todayStr };
+    }
+    if (datePreset === 'week') {
+      const d = new Date();
+      d.setDate(d.getDate() - 6);
+      return { start_date: formatDateYMD(d), end_date: todayStr };
+    }
+    if (datePreset === 'month') {
+      const d = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { start_date: formatDateYMD(d), end_date: todayStr };
+    }
+    if (datePreset === 'custom') {
+      return {
+        start_date: customStartDate || undefined,
+        end_date: customEndDate || undefined,
+      };
+    }
+    return {};
+  }, [datePreset, customStartDate, customEndDate]);
+
   const loadOvertimes = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
-      const res = await getOvertimes({
+      const params: Record<string, unknown> = {
         preset: 'action_required',
         view: 'review',
         page_size: 50,
-      });
+      };
+
+      if (selectedDeptId) {
+        params.department_id = Number(selectedDeptId);
+      }
+      if (dateRange.start_date) {
+        params.start_date = dateRange.start_date;
+      }
+      if (dateRange.end_date) {
+        params.end_date = dateRange.end_date;
+      }
+
+      const res = await getOvertimes(params);
       const list = res.items || [];
       setItems(list);
       if (onCountChangeRef.current) {
@@ -71,7 +168,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedDeptId, dateRange]);
 
   useEffect(() => {
     loadOvertimes();
@@ -127,6 +224,16 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
     }
   };
 
+  const handleResetFilters = () => {
+    haptic.selection();
+    setSelectedDeptId('');
+    setDatePreset('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
+
+  const hasActiveFilters = Boolean(selectedDeptId || datePreset !== 'all' || customStartDate || customEndDate);
+
   const formatPeriod = (startStr: string, endStr: string | null) => {
     const s = new Date(startStr);
     const datePart = s.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
@@ -136,6 +243,8 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
     const endTime = e.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     return `${datePart}, ${startTime} — ${endTime}`;
   };
+
+  const todayStr = formatDateYMD(new Date());
 
   return (
     <div style={{
@@ -194,6 +303,204 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
         </button>
       </div>
 
+      {/* Панель фильтров: Отдел и Период дат */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+        borderRadius: '14px',
+        padding: '10px 12px',
+        border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+      }}>
+        {/* Строка с выбором отдела и кнопкой сброса */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            flex: 1,
+            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+            borderRadius: '10px',
+            padding: '6px 10px',
+            border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
+            minWidth: 0,
+          }}>
+            <Building2 size={15} style={{ color: 'var(--tg-theme-hint-color, #94a3b8)', flexShrink: 0 }} />
+            <select
+              value={selectedDeptId}
+              onChange={(e) => {
+                haptic.selection();
+                setSelectedDeptId(e.target.value);
+              }}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--tg-theme-text-color, #f8fafc)',
+                fontSize: '0.82rem',
+                outline: 'none',
+                cursor: 'pointer',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}
+            >
+              <option value="" style={{ background: '#1e293b', color: '#f8fafc' }}>
+                Все отделы {departments.length > 0 ? `(${departments.length})` : ''}
+              </option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id} style={{ background: '#1e293b', color: '#f8fafc' }}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                padding: '6px 10px',
+                borderRadius: '10px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              <X size={13} />
+              <span>Сбросить</span>
+            </button>
+          )}
+        </div>
+
+        {/* Горизонтальный скролл чипсов дат */}
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: '2px',
+        }}>
+          {DATE_PRESETS.map((preset) => {
+            const isActive = datePreset === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  haptic.selection();
+                  setDatePreset(preset.id);
+                }}
+                style={{
+                  background: isActive
+                    ? 'var(--tg-theme-button-color, var(--primary, #3b82f6))'
+                    : 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                  color: isActive
+                    ? 'var(--tg-theme-button-text-color, #ffffff)'
+                    : 'var(--tg-theme-hint-color, #94a3b8)',
+                  border: isActive
+                    ? 'none'
+                    : '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+                  padding: '5px 11px',
+                  borderRadius: '16px',
+                  fontSize: '0.78rem',
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 2px 8px rgba(59, 130, 246, 0.3)' : 'none',
+                }}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Пользовательский диапазон дат (если выбран "Период...") */}
+        {datePreset === 'custom' && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+            paddingTop: '6px',
+            borderTop: '1px solid var(--border, rgba(255, 255, 255, 0.06))',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '0.72rem',
+                color: 'var(--tg-theme-hint-color, #94a3b8)',
+                marginBottom: '3px',
+              }}>
+                С даты
+              </label>
+              <input
+                type="date"
+                value={customStartDate}
+                max={todayStr}
+                onChange={(e) => {
+                  setCustomStartDate(e.target.value);
+                }}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '6px 8px',
+                  borderRadius: '8px',
+                  background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                  border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                  color: 'var(--tg-theme-text-color, #f8fafc)',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '0.72rem',
+                color: 'var(--tg-theme-hint-color, #94a3b8)',
+                marginBottom: '3px',
+              }}>
+                По дату
+              </label>
+              <input
+                type="date"
+                value={customEndDate}
+                min={customStartDate || undefined}
+                max={todayStr}
+                onChange={(e) => {
+                  setCustomEndDate(e.target.value);
+                }}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '6px 8px',
+                  borderRadius: '8px',
+                  background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
+                  border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
+                  color: 'var(--tg-theme-text-color, #f8fafc)',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Индикатор начальной загрузки */}
       {loading && !refreshing && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
@@ -215,24 +522,45 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
             height: '56px',
             margin: '0 auto 12px',
             borderRadius: '50%',
-            background: 'rgba(16, 185, 129, 0.15)',
+            background: hasActiveFilters ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#10b981',
+            color: hasActiveFilters ? '#3b82f6' : '#10b981',
           }}>
             <Check size={28} />
           </div>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 6px' }}>
-            Все заявки согласованы!
+            {hasActiveFilters ? 'Заявки не найдены' : 'Все заявки согласованы!'}
           </h3>
           <p style={{
             fontSize: '0.85rem',
             color: 'var(--tg-theme-hint-color, var(--text-muted, #94a3b8))',
             margin: 0,
           }}>
-            Новые заявки от ваших сотрудников появятся здесь автоматически.
+            {hasActiveFilters
+              ? 'По выбранным фильтрам (отдел / дата) нет заявок, требующих решения.'
+              : 'Новые заявки от ваших сотрудников появятся здесь автоматически.'}
           </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                marginTop: '16px',
+                background: 'var(--tg-theme-button-color, #3b82f6)',
+                color: 'var(--tg-theme-button-text-color, #ffffff)',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
       )}
 
@@ -244,6 +572,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
         const empName = ot.user?.full_name || ot.user?.email || 'Сотрудник';
         const projName = ot.project?.name || 'Внутренний проект';
         const hoursDisplay = ot.hours || ot.raw_hours || 0;
+        const deptName = ot.user?.department_id ? deptMap.get(ot.user.department_id) : undefined;
 
         return (
           <div
@@ -288,7 +617,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
                     fontSize: '0.78rem',
                     color: 'var(--tg-theme-hint-color, var(--text-muted, #94a3b8))',
                   }}>
-                    Заявка #{ot.id}
+                    Заявка #{ot.id} {deptName ? `• ${deptName}` : ''}
                   </div>
                 </div>
               </div>
