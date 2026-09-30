@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Square, AlertCircle, Check, Search, Edit2, ChevronDown, Folder, X } from 'lucide-react';
 import {
   getActiveSession, startSession, stopSession,
-  getProjects, getMyStats, getMyOvertimes, createOvertime, updateOvertime
+  getProjects, getMyStats, getMyOvertimes, getLastProject, createOvertime, updateOvertime
 } from '../../services/api';
 import type { Overtime, Project, UserStats, User } from '../../types';
 
@@ -33,6 +33,9 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
   const [stats, setStats] = useState<UserStats | null>(null);
   const [recentOvertimes, setRecentOvertimes] = useState<Overtime[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Предыдущий проект пользователя (стандартный выбор по умолчанию)
+  const [previousProject, setPreviousProject] = useState<Project | null>(null);
 
   // Состояние редактирования заявки
   const [editingOt, setEditingOt] = useState<Overtime | null>(null);
@@ -80,14 +83,24 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+  // Безопасное сохранение ID последнего выбранного проекта
+  const saveLastProjectId = (id: number | string) => {
+    try {
+      localStorage.setItem('overtime_last_project_id', String(id));
+    } catch {
+      // Игнорируем ошибку квоты или приватного режима webview
+    }
+  };
+
   // Загрузка начальных данных
   const loadData = useCallback(async () => {
     try {
-      const [active, projs, userStats, myOvt] = await Promise.all([
+      const [active, projs, userStats, myOvt, lastProj] = await Promise.all([
         getActiveSession().catch(() => null),
         getProjects().catch(() => []),
         getMyStats().catch(() => null),
-        getMyOvertimes({ page_size: 5 }).catch(() => ({ items: [] })),
+        getMyOvertimes({ page_size: 5, view: 'dashboard' }).catch(() => ({ items: [] })),
+        getLastProject().catch(() => null),
       ]);
 
       setActiveSession(active);
@@ -95,7 +108,19 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
       setStats(userStats);
       setRecentOvertimes(myOvt.items || []);
 
-      if (projs.length > 0) {
+      // Определение предыдущего проекта пользователя для стандартного выбора по умолчанию
+      const savedProjectId = localStorage.getItem('overtime_last_project_id');
+      const resolvedPrev = (lastProj && projs.find((p) => p.id === lastProj.id))
+        || (savedProjectId && projs.find((p) => String(p.id) === savedProjectId))
+        || (myOvt.items?.[0]?.project_id && projs.find((p) => p.id === myOvt.items[0].project_id))
+        || (myOvt.items?.[0]?.project?.id && projs.find((p) => p.id === myOvt.items?.[0]?.project?.id))
+        || null;
+
+      if (resolvedPrev) {
+        setPreviousProject(resolvedPrev);
+        setSelectedProjectId((prev) => (prev ? prev : resolvedPrev.id));
+        saveLastProjectId(resolvedPrev.id);
+      } else if (projs.length > 0) {
         setSelectedProjectId((prev) => (prev ? prev : projs[0].id));
       }
     } catch (err) {
@@ -173,6 +198,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         description: sessionDesc.trim() || undefined,
       });
       haptic.notification('success');
+      saveLastProjectId(selectedProjectId);
       setActiveSession(created);
       setSessionDesc('');
     } catch (err: unknown) {
@@ -272,6 +298,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         description: manualDesc.trim(),
       });
       haptic.notification('success');
+      saveLastProjectId(selectedProjectId);
       setManualSuccess(true);
       setManualDesc('');
       setManualStartTime('');
@@ -351,16 +378,31 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
               <Folder size={17} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <span style={{
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                color: currentProject ? 'var(--tg-theme-text-color, #f8fafc)' : 'var(--tg-theme-hint-color, #94a3b8)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {currentProject ? currentProject.name : 'Выберите проект...'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  color: currentProject ? 'var(--tg-theme-text-color, #f8fafc)' : 'var(--tg-theme-hint-color, #94a3b8)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {currentProject ? currentProject.name : 'Выберите проект...'}
+                </span>
+                {currentProject && previousProject && currentProject.id === previousProject.id && (
+                  <span style={{
+                    fontSize: '0.68rem',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: 'rgba(59, 130, 246, 0.22)',
+                    color: '#60a5fa',
+                    fontWeight: 600,
+                    flexShrink: 0
+                  }}>
+                    ⏮ Предыдущий
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
@@ -446,9 +488,45 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
               )}
             </div>
 
+            {/* Быстрый выбор предыдущего проекта, если сейчас выбран другой */}
+            {previousProject && Number(selectedProjectId) !== previousProject.id && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProjectId(previousProject.id);
+                  setIsOpen(false);
+                  setProjectSearch('');
+                  setStartError('');
+                  setManualError('');
+                  haptic.selection();
+                  saveLastProjectId(previousProject.id);
+                }}
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: 'rgba(59, 130, 246, 0.14)',
+                  border: '1px dashed rgba(59, 130, 246, 0.4)',
+                  color: '#60a5fa',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  textAlign: 'left'
+                }}
+              >
+                <span>⏮ Предыдущий проект:</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {previousProject.name}
+                </span>
+              </button>
+            )}
+
             <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
               {filteredProjects.map((p) => {
                 const isSelected = p.id === Number(selectedProjectId);
+                const isPrev = previousProject && p.id === previousProject.id;
                 return (
                   <div
                     key={p.id}
@@ -459,6 +537,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                       setStartError('');
                       setManualError('');
                       haptic.selection();
+                      saveLastProjectId(p.id);
                     }}
                     style={{
                       padding: '9px 12px',
@@ -473,9 +552,24 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: '8px' }}>
-                      <span style={{ fontWeight: isSelected ? 700 : 500, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {p.name}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: isSelected ? 700 : 500, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {p.name}
+                        </span>
+                        {isPrev && (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: 'rgba(59, 130, 246, 0.25)',
+                            color: '#60a5fa',
+                            fontWeight: 600,
+                            flexShrink: 0
+                          }}>
+                            ⏮ Предыдущий
+                          </span>
+                        )}
+                      </div>
                       {p.code && (
                         <span style={{ fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', fontFamily: 'monospace' }}>
                           {p.code}

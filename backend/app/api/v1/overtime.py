@@ -17,6 +17,7 @@ from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, UserRole
 from app.repositories import audit as audit_repo, organization as org_repo, overtime as overtime_repo, user as user_repo
+from app.schemas.organization import ProjectResponse
 from app.schemas.overtime import (
     OvertimeCreate,
     OvertimeResponse,
@@ -30,6 +31,31 @@ from app.schemas.overtime import (
 from app.services import overtime as overtime_service
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
+
+
+@router.get("/last-project", response_model=Optional[ProjectResponse])
+async def get_last_project(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Optional[ProjectResponse]:
+    """
+    Получить последний проект, в котором текущий пользователь создавал переработку.
+
+    Аргументы:
+        session (AsyncSession): Асинхронная сессия базы данных.
+        current_user (User): Текущий аутентифицированный пользователь.
+
+    Возвращает:
+        Optional[ProjectResponse]: Модель проекта или None, если у пользователя нет предыдущих заявок.
+
+    Логика:
+        Используется в качестве стандартного выбора по умолчанию при создании новой заявки
+        или запуске трекера времени, исключая необходимость каждый раз вручную искать проект.
+    """
+    last_ot = await overtime_repo.get_last_user_overtime(session, current_user.id)
+    if last_ot and last_ot.project and last_ot.project.is_active:
+        return last_ot.project
+    return None
 
 
 @router.get("/active", response_model=Optional[OvertimeResponse])

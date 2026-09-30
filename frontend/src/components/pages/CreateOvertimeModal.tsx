@@ -195,16 +195,23 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
 
     const fetchLastProject = useCallback(async () => {
         try {
-            const res = await api.get('/overtimes/?page=1&page_size=1');
-            if (res.data && res.data.items && res.data.items.length > 0) {
-                const lastOt = res.data.items[0];
+            const res = await api.get('/overtimes/last-project');
+            if (res.data) {
+                setLastProject(res.data);
+                return res.data;
+            }
+            const fallbackRes = await api.get('/overtimes/?page=1&page_size=1&view=dashboard');
+            if (fallbackRes.data && fallbackRes.data.items && fallbackRes.data.items.length > 0) {
+                const lastOt = fallbackRes.data.items[0];
                 if (lastOt && lastOt.project) {
                     setLastProject(lastOt.project);
+                    return lastOt.project;
                 }
             }
         } catch (err) {
             console.error('Failed to load last project', err);
         }
+        return null;
     }, []);
 
     useEffect(() => {
@@ -235,13 +242,21 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                 }
             } else {
                 setStartTime(toLocalISOString(new Date()));
+                // Автоматический выбор предыдущего проекта как стандартного
+                const savedId = localStorage.getItem('overtime_last_project_id');
+                const targetProject = (lastProject && projects.find(p => p.id === lastProject.id))
+                    || (savedId && projects.find(p => p.id.toString() === savedId));
+                if (targetProject) {
+                    setProjectId(targetProject.id.toString());
+                    setProjectSearch(targetProject.name);
+                }
             }
         };
 
         if (projects.length > 0) {
             initForm();
         }
-    }, [editData, projects]);
+    }, [editData, projects, lastProject]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -353,6 +368,9 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
             } else {
                 await api.post('/overtimes/', data);
             }
+            try {
+                localStorage.setItem('overtime_last_project_id', targetProjId);
+            } catch (_) {}
             onCreated();
         } catch (err: unknown) {
             const axiosError = err as AxiosError<{ detail?: string }>;
@@ -439,6 +457,44 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                             />
                         </div>
 
+                        {/* Индикатор выбранного проекта / быстрое переключение на предыдущий */}
+                        {lastProject && projectId !== lastProject.id.toString() && (
+                            <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>Предыдущий проект:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setProjectId(lastProject.id.toString());
+                                        setProjectSearch(lastProject.name);
+                                        setIsProjectDropdownOpen(false);
+                                        try {
+                                            localStorage.setItem('overtime_last_project_id', lastProject.id.toString());
+                                        } catch (_) {}
+                                    }}
+                                    style={{
+                                        background: 'rgba(59, 130, 246, 0.12)',
+                                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                                        borderRadius: '6px',
+                                        color: '#60a5fa',
+                                        cursor: 'pointer',
+                                        padding: '2px 8px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 600,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    ⏮ {lastProject.name}
+                                </button>
+                            </div>
+                        )}
+                        {lastProject && projectId === lastProject.id.toString() && (
+                            <div style={{ marginTop: '6px', fontSize: '0.76rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>✓ Выбран ваш предыдущий проект</span>
+                            </div>
+                        )}
+
                         {isProjectDropdownOpen && (
                             <div className="glass-card scrollbar-hidden" style={{
                                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px',
@@ -452,6 +508,9 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                             setProjectId(lastProject.id.toString());
                                             setProjectSearch(lastProject.name);
                                             setIsProjectDropdownOpen(false);
+                                            try {
+                                                localStorage.setItem('overtime_last_project_id', lastProject.id.toString());
+                                            } catch (_) {}
                                         }}
                                         style={{
                                             padding: '10px 14px', textAlign: 'left',
@@ -460,7 +519,7 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                             borderBottom: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '8px', width: '100%'
                                         }}
                                     >
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', flexShrink: 0 }}>⏮ Предыдущий:</span>
+                                        <span style={{ color: '#60a5fa', fontSize: '0.75rem', fontWeight: 600, flexShrink: 0 }}>⏮ Предыдущий:</span>
                                         <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lastProject.name}</span>
                                     </button>
                                 )}
@@ -474,6 +533,9 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                         if (internalProj) {
                                             setProjectId(internalProj.id.toString());
                                             setProjectSearch(internalProj.name);
+                                            try {
+                                                localStorage.setItem('overtime_last_project_id', internalProj.id.toString());
+                                            } catch (_) {}
                                         } else {
                                             setProjectId('');
                                             setProjectSearch('Внутренний (Без проекта)');
@@ -487,24 +549,45 @@ const CreateOvertimeModal: React.FC<CreateOvertimeModalProps> = ({ onClose, onCr
                                 >
                                     Внутренний (Без проекта)
                                 </button>
-                                {filteredProjects.map(p => (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => {
-                                            setProjectId(p.id.toString());
-                                            setProjectSearch(p.name);
-                                            setIsProjectDropdownOpen(false);
-                                        }}
-                                        style={{
-                                            padding: '10px 14px', textAlign: 'left', background: projectId === p.id.toString() ? 'var(--bg-tertiary)' : 'transparent',
-                                            border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'
-                                        }}
-                                    >
-                                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px' }}>{p.name}</span>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>{p.code}</span>
-                                    </button>
-                                ))}
+                                {filteredProjects.map(p => {
+                                    const isPrev = lastProject && p.id === lastProject.id;
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setProjectId(p.id.toString());
+                                                setProjectSearch(p.name);
+                                                setIsProjectDropdownOpen(false);
+                                                try {
+                                                    localStorage.setItem('overtime_last_project_id', p.id.toString());
+                                                } catch (_) {}
+                                            }}
+                                            style={{
+                                                padding: '10px 14px', textAlign: 'left', background: projectId === p.id.toString() ? 'var(--bg-tertiary)' : 'transparent',
+                                                border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                                <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                                {isPrev && (
+                                                    <span style={{
+                                                        fontSize: '0.68rem',
+                                                        padding: '1px 5px',
+                                                        borderRadius: '4px',
+                                                        background: 'rgba(59, 130, 246, 0.2)',
+                                                        color: '#60a5fa',
+                                                        fontWeight: 600,
+                                                        flexShrink: 0
+                                                    }}>
+                                                        ⏮ Предыдущий
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>{p.code}</span>
+                                        </button>
+                                    );
+                                })}
                                 {filteredProjects.length === 0 && (
                                     <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Проекты не найдены</div>
                                 )}

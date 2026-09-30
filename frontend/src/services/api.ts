@@ -272,6 +272,7 @@ export const importOdooIntegrationProjects = (projects: { id: number; name?: str
 // --- OVERTIMES ---
 export const getMyOvertimes = (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Overtime>>('/overtimes/', { params }).then(r => r.data);
+export const getLastProject = () => api.get<Project | null>('/overtimes/last-project').then(r => r.data);
 export const getMyStats = () => api.get<UserStats>('/overtimes/stats/me').then(r => r.data);
 export const getActiveSession = () => api.get<Overtime | null>('/overtimes/active').then(r => r.data);
 export const startSession = (data: { project_id: number; lat?: number | null; lng?: number | null; location_name?: string | null; description?: string }) =>

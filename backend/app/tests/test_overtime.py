@@ -573,3 +573,32 @@ async def test_start_and_stop_session_comment_validation(client, normal_user_tok
     stop_data = stop_ok_resp.json()
     assert stop_data["status"] == OvertimeStatus.PENDING.value
     assert stop_data["description"] == "Настройка и монтаж оборудования в серверной"
+
+
+@pytest.mark.asyncio
+async def test_get_last_project(client: AsyncClient, normal_user_token_headers, test_project: Project):
+    """
+    Тест получения предыдущего проекта пользователя через GET /api/v1/overtimes/last-project:
+    1. До создания заявок возвращает None (так как у пользователя еще нет истории).
+    2. После создания заявки возвращает данные использованного проекта.
+    """
+    # 1. До создания заявок
+    resp = await client.get("/api/v1/overtimes/last-project", headers=normal_user_token_headers)
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+    # 2. Создаем сессию
+    start_resp = await client.post(
+        "/api/v1/overtimes/start-session",
+        json={"project_id": test_project.id},
+        headers=normal_user_token_headers,
+    )
+    assert start_resp.status_code == 200
+
+    # 3. Теперь эндпоинт возвращает test_project
+    resp_after = await client.get("/api/v1/overtimes/last-project", headers=normal_user_token_headers)
+    assert resp_after.status_code == 200
+    data = resp_after.json()
+    assert data is not None
+    assert data["id"] == test_project.id
+    assert data["name"] == test_project.name
