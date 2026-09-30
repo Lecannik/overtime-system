@@ -48,6 +48,9 @@ export const useTelegramWebApp = (): UseTelegramWebAppResult => {
       try {
         tg.ready();
         tg.expand();
+        if (typeof tg.disableVerticalSwipes === 'function') {
+          tg.disableVerticalSwipes();
+        }
       } catch (err) {
         console.warn('[TMA] Ошибка при инициализации Telegram WebApp:', err);
       }

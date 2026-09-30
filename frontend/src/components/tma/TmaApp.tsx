@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTelegramWebApp } from '../../hooks/useTelegramWebApp';
 import { useAuth } from '../../context/AuthContext';
 import { authTelegramWebApp } from '../../services/api';
@@ -27,14 +27,34 @@ export const TmaApp: React.FC = () => {
   const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'link_required' | 'guest'>('checking');
   const [activeTab, setActiveTab] = useState<'tracker' | 'review'>('tracker');
   const [pendingReviewCount, setPendingReviewCount] = useState<number>(0);
+  const authAttemptedRef = useRef(false);
+
+  const handleCountChange = useCallback((count: number) => {
+    setPendingReviewCount(count);
+  }, []);
 
   // Проверка сессии при запуске
   useEffect(() => {
     let isMounted = true;
 
+    // 1. Если пользователь уже авторизован в общем AuthContext
+    if (token && authUser) {
+      setAuthStatus('authenticated');
+      if (['admin', 'head', 'manager'].includes(authUser.role)) {
+        setActiveTab('review');
+      }
+      return;
+    }
+
+    // 2. Предотвращаем повторный запуск аутентификации в рамках текущей сессии
+    if (authAttemptedRef.current) {
+      return;
+    }
+
     const authenticate = async () => {
-      // 1. Если есть initData от Telegram — проверяем на бэкенде
+      // Если есть initData от Telegram — проверяем на бэкенде
       if (initData) {
+        authAttemptedRef.current = true;
         try {
           const res = await authTelegramWebApp(initData);
           if (!isMounted) return;
@@ -57,21 +77,18 @@ export const TmaApp: React.FC = () => {
         } catch (err) {
           console.error('[TMA] Ошибка авторизации через initData:', err);
           if (isMounted) {
-            setAuthStatus(authUser && token ? 'authenticated' : 'link_required');
-          }
-        }
-      } else {
-        // 2. Fallback для запуска вне Telegram (браузер / DevTools)
-        if (isMounted) {
-          if (authUser && token) {
-            setAuthStatus('authenticated');
-            if (['admin', 'head', 'manager'].includes(authUser.role)) {
-              setActiveTab('review');
-            }
-          } else {
             setAuthStatus('link_required');
           }
         }
+      } else {
+        // Fallback для запуска вне Telegram (браузер / DevTools)
+        const timer = setTimeout(() => {
+          if (!initData && isMounted && !authAttemptedRef.current) {
+            authAttemptedRef.current = true;
+            setAuthStatus('link_required');
+          }
+        }, 300);
+        return () => clearTimeout(timer);
       }
     };
 
@@ -80,7 +97,7 @@ export const TmaApp: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [initData, login, authUser, token]);
+  }, [initData, login, token, authUser]);
 
   const canReview = Boolean(
     authUser && ['admin', 'head', 'manager'].includes(authUser.role)
@@ -139,7 +156,7 @@ export const TmaApp: React.FC = () => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
       background: 'var(--tg-theme-bg-color, var(--bg-primary, #020617))',
       color: 'var(--tg-theme-text-color, var(--text-primary, #f8fafc))',
       fontFamily: 'Inter, -apple-system, sans-serif',
@@ -147,6 +164,7 @@ export const TmaApp: React.FC = () => {
       flexDirection: 'column',
       maxWidth: '600px',
       margin: '0 auto',
+      overscrollBehavior: 'none',
     }}>
       {/* Верхняя навигационная панель */}
       <header style={{
@@ -290,7 +308,7 @@ export const TmaApp: React.FC = () => {
         ) : (
           <TmaReviewView
             haptic={haptic}
-            onCountChange={(count) => setPendingReviewCount(count)}
+            onCountChange={handleCountChange}
           />
         )}
       </main>

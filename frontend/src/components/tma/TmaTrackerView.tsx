@@ -72,15 +72,15 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
       setStats(userStats);
       setRecentOvertimes(myOvt.items || []);
 
-      if (projs.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(projs[0].id);
+      if (projs.length > 0) {
+        setSelectedProjectId((prev) => (prev ? prev : projs[0].id));
       }
     } catch (err) {
       console.error('[TMA Tracker] Ошибка загрузки данных:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedProjectId]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -291,6 +291,7 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic }) => {
           {/* Цифровой секундомер */}
           <div style={{
             fontFamily: 'monospace, -apple-system',
+            fontVariantNumeric: 'tabular-nums',
             fontSize: '2.8rem',
             fontWeight: 800,
             letterSpacing: '2px',

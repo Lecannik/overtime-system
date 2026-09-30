@@ -402,6 +402,7 @@ export interface TelegramWebAppSDK {
     ready: () => void;
     expand: () => void;
     close: () => void;
+    disableVerticalSwipes?: () => void;
 }
 
 declare global {

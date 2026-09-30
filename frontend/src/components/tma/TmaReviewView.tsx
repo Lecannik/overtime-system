@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, XCircle, Clock,
   RefreshCw, Check, ChevronDown, ChevronUp, MapPin
@@ -36,6 +36,12 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
+  // Сохраняем актуальный коллбэк в ref, чтобы не пересоздавать loadOvertimes
+  const onCountChangeRef = useRef(onCountChange);
+  useEffect(() => {
+    onCountChangeRef.current = onCountChange;
+  }, [onCountChange]);
+
   // Состояние развернутых деталей для карточки
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // Состояние для отклонения с комментарием
@@ -56,8 +62,8 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       });
       const list = res.items || [];
       setItems(list);
-      if (onCountChange) {
-        onCountChange(list.length);
+      if (onCountChangeRef.current) {
+        onCountChangeRef.current(list.length);
       }
     } catch (err) {
       console.error('[TMA Review] Ошибка при загрузке заявок:', err);
@@ -65,7 +71,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [onCountChange]);
+  }, []);
 
   useEffect(() => {
     loadOvertimes();
@@ -83,7 +89,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       haptic.notification('success');
       setItems((prev) => {
         const updated = prev.filter((item) => item.id !== ot.id);
-        if (onCountChange) onCountChange(updated.length);
+        if (onCountChangeRef.current) onCountChangeRef.current(updated.length);
         return updated;
       });
     } catch (err) {
@@ -110,7 +116,7 @@ export const TmaReviewView: React.FC<TmaReviewViewProps> = ({
       setRejectComment('');
       setItems((prev) => {
         const updated = prev.filter((item) => item.id !== ot.id);
-        if (onCountChange) onCountChange(updated.length);
+        if (onCountChangeRef.current) onCountChangeRef.current(updated.length);
         return updated;
       });
     } catch (err) {
