@@ -248,7 +248,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({
                                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: '10px' }}>
                                         <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{entry.name}</div>
                                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                            <span className={`badge badge-${entry.status === 'APPROVED' ? 'success' : entry.status === 'REJECTED' ? 'danger' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
+                                            <span className={`badge badge-${entry.status === 'APPROVED' ? 'success' : entry.status === 'REJECTED' || entry.status === 'CANCELLED' ? 'danger' : entry.status === 'IN_PROGRESS' ? 'info' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
                                                 {entry.hours}ч
                                             </span>
                                         </div>

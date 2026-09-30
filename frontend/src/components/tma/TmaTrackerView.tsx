@@ -5,6 +5,7 @@ import {
   getProjects, getMyStats, getMyOvertimes, getLastProject, createOvertime, updateOvertime
 } from '../../services/api';
 import type { Overtime, Project, UserStats, User } from '../../types';
+import { STATUS_LABELS } from '../../constants/locale';
 
 interface TmaTrackerViewProps {
   haptic: {
@@ -1055,12 +1056,27 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
             Недавние переработки
           </div>
           {recentOvertimes.map((ot) => {
-            const isApproved = ot.status === 'APPROVED';
-            const isPending = ot.status === 'PENDING' || ot.status.includes('APPROVED');
-            const isRejected = ot.status === 'REJECTED';
-            const badgeBg = isApproved ? 'rgba(16,185,129,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
-            const badgeColor = isApproved ? '#10b981' : isRejected ? '#ef4444' : '#f59e0b';
-            const badgeText = isApproved ? 'Одобрено' : isRejected ? 'Отклонено' : isPending ? 'Ожидает' : String(ot.status);
+            const getStatusBadgeProps = (status: string) => {
+              const text = STATUS_LABELS[status] || status;
+              switch (status) {
+                case 'APPROVED':
+                  return { text, bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' };
+                case 'REJECTED':
+                case 'CANCELLED':
+                  return { text, bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' };
+                case 'IN_PROGRESS':
+                  return { text, bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' };
+                case 'MANAGER_APPROVED':
+                  return { text: 'Одобрено менеджером', bg: 'rgba(8, 145, 178, 0.15)', color: '#0891b2' };
+                case 'HEAD_APPROVED':
+                  return { text: 'Одобрено нач. отдела', bg: 'rgba(37, 99, 235, 0.15)', color: '#2563eb' };
+                case 'PENDING':
+                default:
+                  return { text, bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
+              }
+            };
+
+            const { text: badgeText, bg: badgeBg, color: badgeColor } = getStatusBadgeProps(ot.status);
 
             const canEdit =
               Boolean(currentUser) &&

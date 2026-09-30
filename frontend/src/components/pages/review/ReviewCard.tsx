@@ -32,7 +32,8 @@ const ReviewCard: React.FC<ReviewCardProps> = ({
 
     const statusBadgeClass =
         ot.status === 'APPROVED' ? 'badge-success' :
-        ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'badge-danger' : 'badge-warning';
+        ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'badge-danger' :
+        ot.status === 'IN_PROGRESS' ? 'badge-info' : 'badge-warning';
 
     // Компактный вид (для сайдбара календаря)
     if (isCompact) {

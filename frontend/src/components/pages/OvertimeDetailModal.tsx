@@ -311,9 +311,9 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                     <div style={{
                         padding: '14px 20px',
                         borderRadius: '14px',
-                        background: overtime.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.1)' : overtime.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        background: overtime.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.1)' : overtime.status === 'REJECTED' || overtime.status === 'CANCELLED' ? 'rgba(239, 68, 68, 0.1)' : overtime.status === 'IN_PROGRESS' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                         border: '1px solid',
-                        borderColor: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)',
+                        borderColor: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' || overtime.status === 'CANCELLED' ? 'var(--error)' : overtime.status === 'IN_PROGRESS' ? 'var(--primary)' : 'var(--warning)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -321,7 +321,7 @@ const OvertimeDetailModal: React.FC<OvertimeDetailModalProps> = ({
                         gap: '8px'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <ShieldCheck size={18} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' ? 'var(--error)' : 'var(--warning)', flexShrink: 0 }} />
+                            <ShieldCheck size={18} style={{ color: overtime.status === 'APPROVED' ? 'var(--success)' : overtime.status === 'REJECTED' || overtime.status === 'CANCELLED' ? 'var(--error)' : overtime.status === 'IN_PROGRESS' ? 'var(--primary)' : 'var(--warning)', flexShrink: 0 }} />
                             <span style={{ fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 {STATUS_LABELS[overtime.status] || overtime.status}
                             </span>

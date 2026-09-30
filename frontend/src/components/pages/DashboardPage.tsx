@@ -1276,7 +1276,7 @@ const DashboardPage: React.FC = () => {
                         {formatDate(ot.start_time)}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
+                        <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : ot.status === 'IN_PROGRESS' ? 'info' : 'warning'}`}>
                           {STATUS_LABELS[ot.status] || ot.status}
                         </span>
                         <span style={{ fontWeight: 800, fontSize: '0.9rem', color: isApproved ? 'var(--success)' : 'var(--primary)' }}>
@@ -1421,7 +1421,7 @@ const DashboardPage: React.FC = () => {
                       case 'status':
                         return (
                           <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                            <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : 'warning'}`}>
+                            <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : ot.status === 'IN_PROGRESS' ? 'info' : 'warning'}`}>
                               {STATUS_LABELS[ot.status] || ot.status}
                             </span>
                           </td>

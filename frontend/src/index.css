@@ -281,6 +281,11 @@ tr:hover .table-cell {
   color: #ef4444;
 }
 
+.badge-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
 /* Buttons */
 button {
   cursor: pointer;
