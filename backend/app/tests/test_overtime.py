@@ -602,3 +602,28 @@ async def test_get_last_project(client: AsyncClient, normal_user_token_headers, 
     assert data is not None
     assert data["id"] == test_project.id
     assert data["name"] == test_project.name
+
+
+@pytest.mark.asyncio
+async def test_company_overtimes_endpoints(client: AsyncClient, admin_token_headers):
+    """
+    Тест доступности эндпоинтов сводки переработок компании:
+    1. GET /api/v1/overtimes/company (множественное число)
+    2. GET /api/v1/overtime/company (единственное число, обратная совместимость для кэшированных клиентов)
+    Оба эндпоинта должны возвращать статус 200 с пагинированным ответом.
+    """
+    # 1. Запрос к /api/v1/overtimes/company
+    resp_plural = await client.get("/api/v1/overtimes/company?page=1&page_size=10", headers=admin_token_headers)
+    assert resp_plural.status_code == 200
+    data_plural = resp_plural.json()
+    assert "items" in data_plural
+    assert "total" in data_plural
+    assert isinstance(data_plural["items"], list)
+
+    # 2. Запрос к /api/v1/overtime/company (legacy singular)
+    resp_singular = await client.get("/api/v1/overtime/company?page=1&page_size=10", headers=admin_token_headers)
+    assert resp_singular.status_code == 200
+    data_singular = resp_singular.json()
+    assert "items" in data_singular
+    assert "total" in data_singular
+    assert isinstance(data_singular["items"], list)

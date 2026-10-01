@@ -5,8 +5,8 @@ import {
   Plus, Eye, RotateCcw, Edit2, Trash2, MapPin, FileDown
 } from 'lucide-react';
 import {
-  api,
   getMyOvertimes,
+  getOvertimes,
   getMyStats,
   cancelOvertime,
   restoreOvertime,
@@ -365,6 +365,7 @@ const DashboardPage: React.FC = () => {
           page: currentPage,
           page_size: 10,
           search: debouncedSearch || undefined,
+          view: 'dashboard',
         });
         setOvertimes(data.items || []);
         setTotalPages(data.pages || 1);
@@ -372,6 +373,7 @@ const DashboardPage: React.FC = () => {
         const params: any = {
           page: currentPage,
           page_size: 10,
+          view: 'all',
         };
         if (startDate) params.start_date = `${startDate}T00:00:00`;
         if (endDate) params.end_date = `${endDate}T23:59:59`;
@@ -379,9 +381,9 @@ const DashboardPage: React.FC = () => {
         if (debouncedSearch) params.search = debouncedSearch;
         if (selectedDeptId) params.department_id = selectedDeptId;
 
-        const res = await api.get('/overtime/company', { params });
-        setOvertimes(res.data.items || []);
-        setTotalPages(res.data.pages || 1);
+        const data = await getOvertimes(params);
+        setOvertimes(data.items || []);
+        setTotalPages(data.pages || 1);
       }
     } catch (err) {
       console.error('Fetch error:', err);

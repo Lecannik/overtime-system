@@ -238,6 +238,102 @@ async def list_overtimes(
     )
 
 
+@router.get("/company", response_model=PaginatedOvertimeResponse)
+async def list_company_overtimes(
+    page: int = Query(1, ge=1, description="Номер страницы (>= 1)"),
+    page_size: int = Query(15, ge=1, le=100, description="Размер страницы (1-100)"),
+    status: OvertimeStatus | None = None,
+    project_id: int | None = None,
+    department_id: Optional[int] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    search: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Получить список переработок компании (сводный дашборд) с пагинацией и фильтрами.
+
+    Аргументы:
+        page (int): Номер запрашиваемой страницы.
+        page_size (int): Количество записей на странице.
+        status (OvertimeStatus | None): Фильтр по статусу заявки.
+        project_id (int | None): Фильтр по идентификатору проекта.
+        department_id (int | None): Фильтр по отделу.
+        start_date (date | None): Начальная дата выборки.
+        end_date (date | None): Конечная дата выборки.
+        search (str | None): Строка поиска по ФИО, названию проекта или описанию.
+        session (AsyncSession): Асинхронная сессия базы данных.
+        current_user (User): Текущий аутентифицированный пользователь.
+
+    Возвращает:
+        PaginatedOvertimeResponse: Пагинированный список заявок компании (view='all').
+    """
+    return await overtime_repo.get_overtimes(
+        session,
+        current_user,
+        status=status,
+        project_id=project_id,
+        department_id=department_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+        view="all",
+        search=search,
+    )
+
+
+# Дополнительный роутер для обратной совместимости с устаревшими/кэшированными запросами к /api/v1/overtime/*
+legacy_overtime_router = APIRouter(prefix="/overtime", tags=["overtimes-legacy"])
+
+
+@legacy_overtime_router.get("/company", response_model=PaginatedOvertimeResponse, include_in_schema=False)
+async def list_legacy_singular_company_overtimes(
+    page: int = Query(1, ge=1, description="Номер страницы (>= 1)"),
+    page_size: int = Query(15, ge=1, le=100, description="Размер страницы (1-100)"),
+    status: OvertimeStatus | None = None,
+    project_id: int | None = None,
+    department_id: Optional[int] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    search: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Обратная совместимость для клиентов, вызывающих эндпоинт в единственном числе: /api/v1/overtime/company.
+
+    Аргументы:
+        page (int): Номер запрашиваемой страницы.
+        page_size (int): Количество записей на странице.
+        status (OvertimeStatus | None): Фильтр по статусу заявки.
+        project_id (int | None): Фильтр по идентификатору проекта.
+        department_id (int | None): Фильтр по отделу.
+        start_date (date | None): Начальная дата выборки.
+        end_date (date | None): Конечная дата выборки.
+        search (str | None): Строка поиска.
+        session (AsyncSession): Сессия базы данных.
+        current_user (User): Текущий пользователь.
+
+    Возвращает:
+        PaginatedOvertimeResponse: Пагинированный список заявок компании.
+    """
+    return await overtime_repo.get_overtimes(
+        session,
+        current_user,
+        status=status,
+        project_id=project_id,
+        department_id=department_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+        view="all",
+        search=search,
+    )
+
+
 @router.get("/stats/me", response_model=PersonalStats)
 async def get_my_stats(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     """

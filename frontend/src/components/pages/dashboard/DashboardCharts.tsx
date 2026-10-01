@@ -102,7 +102,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ stats }) => {
                     </div>
                 ) : (
                     <div style={{ height: '200px', position: 'relative', width: '100%', minWidth: 0 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                             <BarChart data={stats?.daily_stats || []} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
                                 <XAxis
@@ -163,7 +163,7 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({ stats }) => {
                 </h4>
                 <div className="dashboard-pie-wrap" style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: '16px' }}>
                     <div style={{ flex: '1 1 200px', height: '180px', position: 'relative', width: '100%', minWidth: 0 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180}>
                             <PieChart>
                                 <Pie
                                     data={stats?.by_project || []}
