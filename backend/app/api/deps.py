@@ -53,3 +53,17 @@ async def get_current_user(
             )
 
     return user
+
+
+async def require_telegram_configured() -> None:
+    """
+    Зависимость FastAPI для проверки готовности Telegram-интеграции.
+
+    Если TELEGRAM_BOT_TOKEN не задан, возвращает HTTP 503 с понятным сообщением об ошибке,
+    предотвращая падения обработчиков и обеспечивая Graceful Degradation.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telegram интеграция не настроена на сервере. Обратитесь к администратору.",
+        )

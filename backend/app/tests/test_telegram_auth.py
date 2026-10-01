@@ -163,3 +163,45 @@ async def test_telegram_link_endpoint_success(client, db_session, normal_user, m
     assert data["authenticated"] is True
     assert data["access_token"] is not None
     assert data["user"]["id"] == normal_user.id
+
+
+@pytest.mark.asyncio
+async def test_telegram_webapp_rate_limiting(client, monkeypatch):
+    """Тест: превышение лимита запросов (10/мин) к /auth/telegram/webapp возвращает HTTP 429."""
+    from app.core.rate_limit import tma_auth_limiter
+
+    # Очищаем состояние лимитера перед тестом
+    tma_auth_limiter.attempts.clear()
+
+    test_bot_token = "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+    monkeypatch.setattr("app.core.config.settings.TELEGRAM_BOT_TOKEN", test_bot_token)
+    init_data = generate_valid_init_data(test_bot_token, {"id": 123456789, "first_name": "RateLimited"})
+
+    # 10 разрешенных запросов
+    for _ in range(10):
+        resp = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init_data})
+        assert resp.status_code in (200, 401)
+
+    # 11-й запрос должен заблокироваться с 429
+    resp_blocked = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init_data})
+    assert resp_blocked.status_code == 429
+    assert "Слишком много запросов" in resp_blocked.json()["detail"]
+
+    # Очищаем состояние лимитера после теста
+    tma_auth_limiter.attempts.clear()
+
+
+@pytest.mark.asyncio
+async def test_health_check_tma_fields(client, monkeypatch):
+    """Тест: эндпоинт /health возвращает статус интеграции TMA и корректный frontend URL."""
+    test_bot_token = "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+    monkeypatch.setattr("app.core.config.settings.TELEGRAM_BOT_TOKEN", test_bot_token)
+    monkeypatch.setattr("app.core.config.settings.FRONTEND_BASE_URL", "https://overtime.example.com")
+
+    resp = await client.get("/api/v1/health")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "checks" in data
+    assert data["checks"]["tma_integration"] == "configured"
+    assert data["checks"]["tma_frontend_url"] == "https://overtime.example.com/tma"

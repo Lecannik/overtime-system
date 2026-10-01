@@ -5,7 +5,7 @@ import { authTelegramWebApp } from '../../services/api';
 import TmaLinkAccount from './TmaLinkAccount';
 import TmaTrackerView from './TmaTrackerView';
 import TmaReviewView from './TmaReviewView';
-import { Clock, CheckSquare } from 'lucide-react';
+import { Clock, CheckSquare, AlertTriangle, RefreshCw } from 'lucide-react';
 
 /**
  * Корневой контейнер Telegram Mini App (TMA).
@@ -24,7 +24,10 @@ export const TmaApp: React.FC = () => {
 
   const { user: authUser, login, token } = useAuth();
 
-  const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'link_required' | 'guest'>('checking');
+  const [authStatus, setAuthStatus] = useState<
+    'checking' | 'authenticated' | 'link_required' | 'guest' | 'service_unavailable'
+  >('checking');
+  const [serviceErrorMessage, setServiceErrorMessage] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'tracker' | 'review'>('tracker');
   const [pendingReviewCount, setPendingReviewCount] = useState<number>(0);
   const authAttemptedRef = useRef(false);
@@ -74,10 +77,19 @@ export const TmaApp: React.FC = () => {
             // Требуется привязка аккаунта
             setAuthStatus('link_required');
           }
-        } catch (err) {
+        } catch (err: unknown) {
           console.error('[TMA] Ошибка авторизации через initData:', err);
           if (isMounted) {
-            setAuthStatus('link_required');
+            const maybeHttpError = err as { response?: { status?: number; data?: { detail?: string } } };
+            if (maybeHttpError?.response?.status === 503) {
+              setServiceErrorMessage(
+                maybeHttpError.response.data?.detail ||
+                  'Интеграция с Telegram не настроена или временно недоступна. Пожалуйста, обратитесь к администратору.'
+              );
+              setAuthStatus('service_unavailable');
+            } else {
+              setAuthStatus('link_required');
+            }
           }
         }
       } else {
@@ -143,6 +155,80 @@ export const TmaApp: React.FC = () => {
           setAuthStatus('authenticated');
         }}
       />
+    );
+  }
+
+  // 3. Сервис недоступен (503 Service Unavailable / Telegram не настроен)
+  if (authStatus === 'service_unavailable') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+          background: 'var(--tg-theme-bg-color, var(--bg-primary, #020617))',
+          color: 'var(--tg-theme-text-color, #f8fafc)',
+          fontFamily: 'Inter, -apple-system, sans-serif',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div
+          style={{
+            width: '56px',
+            height: '56px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px',
+            color: 'var(--danger, #ef4444)',
+          }}
+        >
+          <AlertTriangle size={28} />
+        </div>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 600, margin: '0 0 8px 0' }}>
+          Интеграция недоступна
+        </h2>
+        <p
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--tg-theme-hint-color, #94a3b8)',
+            margin: '0 0 24px 0',
+            maxWidth: '300px',
+            lineHeight: 1.5,
+          }}
+        >
+          {serviceErrorMessage || 'Интеграция с Telegram не настроена на сервере. Обратитесь к администратору.'}
+        </p>
+        <button
+          onClick={() => {
+            authAttemptedRef.current = false;
+            setAuthStatus('checking');
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 20px',
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            color: '#ffffff',
+            backgroundColor: 'var(--primary, #3b82f6)',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+          }}
+        >
+          <RefreshCw size={16} />
+          <span>Повторить попытку</span>
+        </button>
+      </div>
     );
   }
 

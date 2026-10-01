@@ -28,6 +28,6 @@ class Project(Base):
     # Менеджер проекта (первый уровень согласования)
     manager_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     # Лимит переработок в часах на неделю для этого проекта (превышение триггерит уведомления)
-    weekly_limit: Mapped[int] = mapped_column(Integer, default=50)
+    weekly_limit: Mapped[int] = mapped_column(Integer, default=200)
     # Флаг активности проекта (активен/архивирован)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

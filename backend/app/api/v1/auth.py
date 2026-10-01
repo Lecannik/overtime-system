@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_telegram_configured
 from app.core.config import settings
 from app.core.database import get_session
-from app.core.rate_limit import login_limiter
+from app.core.rate_limit import login_limiter, tma_auth_limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import OTPType, User
 from app.repositories import audit as audit_repo, user as user_repo
@@ -273,15 +273,15 @@ async def microsoft_login_redirect(response: Response):
     """
     1. Генерация CSRF state токена и перенаправление пользователя на авторизацию в Authentik
     """
-    if not all([settings.AUTHENTIK_BASE_URL, settings.AUTHENTIK_CLIENT_ID, settings.AUTHENTIK_REDIRECT_URI]):
+    if not all([settings.authentik.base_url, settings.authentik.client_id, settings.authentik.redirect_uri]):
         raise HTTPException(status_code=500, detail="Настройки Authentik SSO не заданы в конфигурации бэкенда.")
 
     state_token = secrets.token_urlsafe(32)
 
     params = urlencode(
         {
-            "client_id": settings.AUTHENTIK_CLIENT_ID,
-            "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
+            "client_id": settings.authentik.client_id,
+            "redirect_uri": settings.authentik.redirect_uri,
             "response_type": "code",
             "scope": "openid email profile",
             "prompt": "select_account",
@@ -289,7 +289,7 @@ async def microsoft_login_redirect(response: Response):
         }
     )
 
-    auth_url = f"{settings.AUTHENTIK_BASE_URL}/application/o/authorize/?{params}"
+    auth_url = f"{settings.authentik.base_url}/application/o/authorize/?{params}"
     redirect_resp = RedirectResponse(auth_url)
 
     # Сохраняем state в защищенную куку для проверки на этапе callback (CSRF Protection)
@@ -315,10 +315,10 @@ async def microsoft_callback(
     """
     if not all(
         [
-            settings.AUTHENTIK_BASE_URL,
-            settings.AUTHENTIK_CLIENT_ID,
-            settings.AUTHENTIK_CLIENT_SECRET,
-            settings.AUTHENTIK_REDIRECT_URI,
+            settings.authentik.base_url,
+            settings.authentik.client_id,
+            settings.authentik.client_secret,
+            settings.authentik.redirect_uri,
         ]
     ):
         raise HTTPException(status_code=500, detail="Настройки Authentik SSO не заданы в конфигурации бэкенда.")
@@ -334,13 +334,13 @@ async def microsoft_callback(
     # Шаг 2.1: Обмен authorization code на JWT токены Authentik
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
-            f"{settings.AUTHENTIK_BASE_URL}/application/o/token/",
+            f"{settings.authentik.base_url}/application/o/token/",
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": settings.AUTHENTIK_REDIRECT_URI,
-                "client_id": settings.AUTHENTIK_CLIENT_ID,
-                "client_secret": settings.AUTHENTIK_CLIENT_SECRET,
+                "redirect_uri": settings.authentik.redirect_uri,
+                "client_id": settings.authentik.client_id,
+                "client_secret": settings.authentik.client_secret,
             },
         )
 
@@ -355,7 +355,7 @@ async def microsoft_callback(
     # Шаг 2.2: Запрос информации о пользователе (User Info) из Authentik
     async with httpx.AsyncClient() as client:
         userinfo_resp = await client.get(
-            f"{settings.AUTHENTIK_BASE_URL}/application/o/userinfo/",
+            f"{settings.authentik.base_url}/application/o/userinfo/",
             headers={"Authorization": f"Bearer {access_token}"},
         )
 
@@ -445,8 +445,10 @@ async def microsoft_callback(
 @router.post("/telegram/webapp", response_model=TelegramWebAppAuthResponse)
 async def telegram_webapp_auth(
     payload: TelegramWebAppAuthRequest,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    _tg_ready: None = Depends(require_telegram_configured),
 ):
     """
     Бесшовная аутентификация пользователя Telegram Mini App через initData.
@@ -456,12 +458,9 @@ async def telegram_webapp_auth(
     стандартный JWT access_token и данные профиля, а также устанавливает refresh_token cookie.
     Если пользователь не найден, возвращает статус 'link_required' с Telegram ID для привязки.
     """
+    tma_auth_limiter.check_limit(request)
     bot_token = settings.TELEGRAM_BOT_TOKEN
-    if not bot_token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Интеграция с Telegram не настроена на сервере (отсутствует TELEGRAM_BOT_TOKEN).",
-        )
+    assert bot_token is not None  # Гарантировано require_telegram_configured
 
     try:
         tg_data = validate_telegram_init_data(payload.init_data, bot_token)
@@ -537,6 +536,7 @@ async def telegram_link_account(
     payload: TelegramLinkAccountRequest,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    _tg_ready: None = Depends(require_telegram_configured),
 ):
     """
     Связывает аккаунт Telegram с корпоративной учетной записью OvertimePro.
@@ -544,11 +544,7 @@ async def telegram_link_account(
     После успешной привязки сохраняет telegram_chat_id и возвращает JWT access_token.
     """
     bot_token = settings.TELEGRAM_BOT_TOKEN
-    if not bot_token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Интеграция с Telegram не настроена на сервере.",
-        )
+    assert bot_token is not None  # Гарантировано require_telegram_configured
 
     try:
         tg_data = validate_telegram_init_data(payload.init_data, bot_token)

@@ -114,3 +114,82 @@ async def test_health_check_endpoint(client: AsyncClient):
     assert "telegram_bot" in data["checks"]
     assert "whisper_model" in data["checks"]
     assert "ms_graph" in data["checks"]
+
+
+@pytest.mark.asyncio
+async def test_projects_caching_and_invalidation(client: AsyncClient, admin_token_headers: dict, test_project: Project):
+    """
+    Тест in-memory кэширования списка активных проектов (TTL 5 мин) и его инвалидации.
+
+    Проверяет:
+    1. Первый запрос /api/v1/projects/ заполняет кэш;
+    2. Повторные запросы обслуживаются из кэша;
+    3. Создание нового проекта администратором сбрасывает кэш проектов (cache_clear('projects')).
+    """
+    from app.core.cache import cache_clear, cache_get
+
+    # Очищаем кэш перед началом
+    cache_clear("projects")
+
+    # 1. Первый запрос — наполнение кэша
+    res1 = await client.get("/api/v1/projects/", headers=admin_token_headers)
+    assert res1.status_code == 200
+    projects_list = res1.json()
+    assert len(projects_list) >= 1
+
+    # Проверяем, что в кэше появилось значение
+    hit, cached = cache_get("projects", only_active=True)
+    assert hit is True
+    assert len(cached) == len(projects_list)
+
+    # 2. Создание нового проекта через админку должно инвалидировать кэш
+    new_proj_payload = {
+        "name": "Cached Test Project New",
+        "code": "2026-99901",
+        "weekly_limit": 40,
+        "is_active": True,
+        "manager_id": test_project.manager_id,
+    }
+    create_res = await client.post("/api/v1/admin/projects", json=new_proj_payload, headers=admin_token_headers)
+    assert create_res.status_code == 201
+
+    # Проверяем, что кэш проектов был очищен
+    hit_after, _ = cache_get("projects", only_active=True)
+    assert hit_after is False
+
+    # 3. Следующий запрос заново наполняет кэш уже с новым проектом
+    res2 = await client.get("/api/v1/projects/", headers=admin_token_headers)
+    assert res2.status_code == 200
+    assert len(res2.json()) == len(projects_list) + 1
+
+
+def test_config_subsystems_grouping():
+    """
+    Тест группировки конфигурации по подсистемам (DatabaseSettings, MSGraphSettings, OdooSettings, AuthentikSettings).
+
+    Проверяет:
+    1. Наличие вложенных моделей со строгой валидацией типов и docstrings;
+    2. Корректное маппирование значений из настроек в подсистемы;
+    3. Синхронизацию плоских атрибутов и свойств подсистем.
+    """
+    from app.core.config import AuthentikSettings, DatabaseSettings, MSGraphSettings, OdooSettings, settings
+
+    # 1. Проверка моделей подсистем
+    assert isinstance(settings.db, DatabaseSettings)
+    assert settings.db.user == settings.POSTGRES_USER
+    assert settings.db.password == settings.POSTGRES_PASSWORD
+    assert settings.db.host == settings.POSTGRES_HOST
+    assert settings.db.port == settings.POSTGRES_PORT
+    assert settings.db.db == settings.POSTGRES_DB
+
+    assert isinstance(settings.ms_graph, MSGraphSettings)
+    assert settings.ms_graph.client_id == settings.MS_CLIENT_ID
+    assert settings.ms_graph.sender_email == settings.MS_SENDER_EMAIL
+
+    assert isinstance(settings.odoo, OdooSettings)
+    assert settings.odoo.url == settings.ODOO_URL
+    assert settings.odoo.integration_url == settings.ODOO_INTEGRATION_URL
+
+    assert isinstance(settings.authentik, AuthentikSettings)
+    assert settings.authentik.base_url == settings.AUTHENTIK_BASE_URL
+    assert settings.authentik.client_id == settings.AUTHENTIK_CLIENT_ID

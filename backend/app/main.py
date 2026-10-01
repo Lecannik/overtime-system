@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 # pyrefly: ignore [missing-import]
 from fastapi import Depends, FastAPI, HTTPException
@@ -17,11 +18,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_session
 from app.models.overtime import Overtime
 from app.models.user import User, UserRole
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+class TimezoneFormatter(logging.Formatter):
+    """Форматтер логов с принудительным выводом времени в локальном часовом поясе организации (Asia/Almaty)."""
+
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=settings.tz_info)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(TimezoneFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler])
 
 # Правильные импорты роутеров
 from app.api.v1.admin import router as admin_router
@@ -33,7 +48,6 @@ from app.api.v1.notifications import router as notifications_router
 from app.api.v1.overtime import router as overtime_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.websocket import router as websocket_router
-from app.core.config import settings
 from app.services.bot_service import run_bot_async
 
 _cleanup_logger = logging.getLogger("stale_cleanup")

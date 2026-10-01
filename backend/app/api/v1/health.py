@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_session
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ async def health_check(request: Request, session: AsyncSession = Depends(get_ses
     - Telegram Bot: запущен ли бот в app.state
     - Whisper STT: загружена ли модель (маркер-файл .models_ready)
     - MS Graph: сконфигурирован ли MSAL-клиент
+    - TMA: сконфигурирован ли Telegram токен и адрес мини-приложения
 
     Возвращает:
         dict: Статус каждой подсистемы и общий статус (ok/degraded).
@@ -53,6 +55,10 @@ async def health_check(request: Request, session: AsyncSession = Depends(get_ses
         checks["ms_graph"] = "configured" if ms_graph._app is not None else "not_configured"
     except Exception:
         checks["ms_graph"] = "not_configured"
+
+    # 5. Проверка Telegram Mini App (TMA)
+    checks["tma_integration"] = "configured" if settings.TELEGRAM_BOT_TOKEN else "not_configured"
+    checks["tma_frontend_url"] = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/tma"
 
     # Общий статус: degraded, если хотя бы одна критическая проверка упала
     overall = "ok" if checks["database"] == "ok" else "degraded"

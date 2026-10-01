@@ -5,14 +5,13 @@ Admin API
 import secrets
 from typing import List
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.config import settings
+from app.core.cache import cache_clear
 from app.core.database import get_session
 from app.core.rate_limit import admin_limiter
 from app.core.security import hash_password
@@ -32,7 +31,6 @@ from app.schemas.settings import SystemSettingSchema, SystemSettingUpdate
 from app.schemas.user import PaginatedUsersResponse, UserAdminUpdate, UserCreateByAdmin, UserResponse
 from app.services.auth import register_user
 from app.services.ms_graph import ms_graph
-from app.services.odoo_service import odoo_service
 from app.services.refresh_token import revoke_all_user_refresh_tokens
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -198,6 +196,7 @@ async def create_project(
         db, current_user.id, "CREATE_PROJECT", "project", new_project.id, {"name": new_project.name}
     )
     await db.commit()
+    cache_clear("projects")
     return new_project
 
 
@@ -268,6 +267,7 @@ async def update_project(
     updated_project = await org_repo.update_project(db, project, update_data)
     await audit_repo.create_audit_log(db, current_user.id, "UPDATE_PROJECT", "project", project_id, update_data)
     await db.commit()
+    cache_clear("projects")
     return updated_project
 
 
@@ -286,6 +286,7 @@ async def delete_project(
         raise HTTPException(status_code=404, detail="Проект не найден")
     try:
         await org_repo.delete_project(db, project)
+        cache_clear("projects")
     except IntegrityError:
         raise HTTPException(
             status_code=409,
@@ -625,307 +626,6 @@ async def test_microsoft_email(current_user: User = Depends(get_current_user)):
 
 
 # ==================== ODOO CRM INTEGRATION ====================
+from app.api.v1.admin_odoo import router as odoo_router
 
-
-@router.get("/odoo/status")
-async def odoo_integration_status(current_user: User = Depends(get_current_user)):
-    """
-    Проверить статус интеграции с Odoo CRM.
-
-    Возвращает флаг наличия настроек без попытки подключения.
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-    return {
-        "configured": odoo_service.is_configured,
-        "url": odoo_service.url or None,
-        "db": odoo_service.db or None,
-    }
-
-
-@router.get("/odoo/projects")
-async def list_odoo_projects(current_user: User = Depends(get_current_user)):
-    """
-    Получить список активных проектов из Odoo CRM.
-
-    Возвращает по каждому проекту:
-    - odoo_id: ID в Odoo
-    - name: название проекта
-    - code: номер проекта (YYYY-NNNNN, если задан в аналитическом счёте)
-    - manager_name: имя менеджера
-    - manager_email: email менеджера (для маппинга)
-
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-
-    if not odoo_service.is_configured:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Odoo CRM не настроен. Заполните ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD в .env",
-        )
-
-    try:
-        projects = await odoo_service.get_projects()
-        return {"projects": [p.to_dict() for p in projects], "total": len(projects)}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Ошибка подключения к Odoo: {str(e)}"
-        )
-
-
-class OdooImportRequest(list):
-    """Schema: список проектов для импорта."""
-
-    pass
-
-
-from pydantic import BaseModel as PydanticBaseModel
-
-
-class OdooProjectImportItem(PydanticBaseModel):
-    """
-    Один проект для импорта из Odoo.
-
-    Attributes:
-        odoo_id:       ID в Odoo (для связи и повторного импорта).
-        name:          Название проекта.
-        code:          Номер проекта (YYYY-NNNNN). Может быть None.
-        manager_email: Email менеджера для маппинга на локального User.
-    """
-
-    odoo_id: int
-    name: str
-    code: str | None = None
-    manager_email: str | None = None
-
-
-@router.post("/odoo/import")
-async def import_odoo_projects(
-    projects_to_import: List[OdooProjectImportItem],
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Импортировать выбранные проекты из Odoo CRM в локальную БД.
-
-    Логика импорта:
-    1. Если проект с таким номером (code) уже есть — пропускаем (skip).
-    2. Если нет кода — проверяем по названию.
-    3. Менеджер маппируется по email из локальной БД Users.
-    4. все действия логируются в аудит-лог.
-
-    Returns:
-        JSON с количеством импортированных и пропущенных проектов.
-
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-
-    imported = 0
-    skipped = 0
-    errors: list[str] = []
-
-    for item in projects_to_import:
-        try:
-            # Проверяем существование проекта с таким code
-            if item.code:
-                existing = await db.execute(select(Project).where(Project.code == item.code))
-                if existing.scalar_one_or_none():
-                    skipped += 1
-                    continue
-
-            # Маппинг менеджера по email
-            manager_id: int | None = None
-            if item.manager_email:
-                manager_user = await get_user_by_email(db, item.manager_email)
-                if manager_user:
-                    manager_id = manager_user.id
-                else:
-                    errors.append(
-                        f"Менеджер '{item.manager_email}' не найден в системе — проект '{item.name}' создан без менеджера"
-                    )
-
-            # Создаём проект
-            new_project = Project(
-                name=item.name,
-                code=item.code,
-                manager_id=manager_id,
-            )
-            db.add(new_project)
-            await db.flush()  # получаем ID до commit
-
-            await audit_repo.create_audit_log(
-                db,
-                current_user.id,
-                "IMPORT_PROJECT_ODOO",
-                "project",
-                new_project.id,
-                {
-                    "name": item.name,
-                    "code": item.code,
-                    "odoo_id": item.odoo_id,
-                    "manager_email": item.manager_email,
-                },
-            )
-            imported += 1
-
-        except Exception as e:
-            errors.append(f"Ошибка при импорте '{item.name}': {str(e)}")
-            skipped += 1
-
-    await db.commit()
-
-    return {
-        "status": "success",
-        "imported": imported,
-        "skipped": skipped,
-        "errors": errors,
-    }
-
-
-# ==================== ODOO INTEGRATION MICROSERVICE (API) ====================
-
-
-@router.get("/odoo-integration/status")
-async def odoo_integration_status_api(current_user: User = Depends(get_current_user)):
-    """
-    Проверить статус интеграции с микросервисом Odoo CRM.
-
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-    return {
-        "configured": bool(settings.ODOO_INTEGRATION_URL and settings.ODOO_INTEGRATION_KEY),
-        "url": settings.ODOO_INTEGRATION_URL or None,
-    }
-
-
-@router.get("/odoo-integration/projects")
-async def list_odoo_integration_projects(
-    fields: List[str] = Query(None, description="Список полей, запрашиваемых из Odoo"),
-    name: str = Query(None, description="Фильтр по названию проекта (частичное совпадение)"),
-    code: str = Query(None, description="Фильтр по коду проекта (частичное совпадение)"),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Получить проекты из Odoo через микросервис-коннектор.
-
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-
-    if not settings.ODOO_INTEGRATION_URL or not settings.ODOO_INTEGRATION_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Микросервис Odoo CRM не настроен. Заполните ODOO_INTEGRATION_URL and ODOO_INTEGRATION_KEY в .env",
-        )
-
-    params = {}
-    if fields:
-        params["fields"] = fields
-    if name:
-        params["name"] = name
-    if code:
-        params["code"] = code
-
-    headers = {"X-API-Key": settings.ODOO_INTEGRATION_KEY}
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            response = await client.get(
-                f"{settings.ODOO_INTEGRATION_URL.rstrip('/')}/api/v1/projects", params=params, headers=headers
-            )
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code, detail=f"Ошибка сервиса интеграции Odoo: {response.text}"
-                )
-            return response.json()
-        except httpx.RequestError as e:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Ошибка соединения с сервисом интеграции Odoo: {str(e)}",
-            )
-
-
-class OdooIntegrationImportItem(PydanticBaseModel):
-    """Схема проекта для импорта из микросервиса Odoo."""
-
-    id: int
-    name: str | None = None
-    code: str | None = None
-    status: str | None = None
-
-
-@router.post("/odoo-integration/import")
-async def import_odoo_integration_projects(
-    projects_to_import: List[OdooIntegrationImportItem],
-    db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Импортировать выбранные проекты из микросервиса Odoo в локальную БД.
-
-    Доступно только администраторам.
-    """
-    require_admin(current_user)
-
-    imported = 0
-    skipped = 0
-    errors: List[str] = []
-
-    for item in projects_to_import:
-        try:
-            name = item.name or f"Odoo Project {item.id}"
-
-            # Проверяем существование проекта с таким code
-            if item.code:
-                existing = await db.execute(select(Project).where(Project.code == item.code))
-                if existing.scalar_one_or_none():
-                    skipped += 1
-                    continue
-            else:
-                # Проверяем существование по имени
-                existing = await db.execute(select(Project).where(Project.name == name))
-                if existing.scalar_one_or_none():
-                    skipped += 1
-                    continue
-
-            # Определяем активность по статусу
-            is_active = True
-            if item.status and item.status not in ("active", "worked", "draft"):
-                is_active = False
-
-            new_project = Project(name=name, code=item.code, is_active=is_active, weekly_limit=50)
-            db.add(new_project)
-            await db.flush()
-
-            await audit_repo.create_audit_log(
-                db,
-                current_user.id,
-                "IMPORT_PROJECT_ODOO_INTEGRATION",
-                "project",
-                new_project.id,
-                {
-                    "name": name,
-                    "code": item.code,
-                    "odoo_id": item.id,
-                    "status": item.status,
-                },
-            )
-            imported += 1
-
-        except Exception as e:
-            errors.append(f"Ошибка при импорте '{item.id}': {str(e)}")
-            skipped += 1
-
-    await db.commit()
-
-    return {
-        "status": "success",
-        "imported": imported,
-        "skipped": skipped,
-        "errors": errors,
-    }
+router.include_router(odoo_router)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.core.rate_limit import overtime_create_limiter
+from app.core.rate_limit import overtime_create_limiter, tma_session_limiter
 from app.models.organization import Department
 from app.models.overtime import Overtime, OvertimeStatus
 from app.models.user import User, UserRole
@@ -73,12 +73,14 @@ async def get_active_session(
 @router.post("/start-session", response_model=OvertimeResponse)
 async def start_session(
     payload: StartSessionRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
     """
     Запустить активную сессию переработки (IN_PROGRESS).
     """
+    tma_session_limiter.check_limit(request)
     existing = await overtime_repo.get_active_session(session, current_user.id)
     if existing:
         raise HTTPException(
@@ -110,6 +112,7 @@ async def start_session(
 @router.post("/stop-session", response_model=OvertimeResponse)
 async def stop_session(
     payload: StopSessionRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -117,6 +120,7 @@ async def stop_session(
     Завершить активную сессию переработки, зафиксировать время и перевести в PENDING.
     Комментарий по фактически выполненным работам обязателен.
     """
+    tma_session_limiter.check_limit(request)
     active = await overtime_repo.get_active_session(session, current_user.id)
     if not active:
         raise HTTPException(

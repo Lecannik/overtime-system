@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 
 class MSGraphService:
     def __init__(self):
-        self.client_id = settings.MS_CLIENT_ID
-        self.secret = settings.MS_CLIENT_SECRET
-        self.tenant_id = settings.MS_TENANT_ID
+        self.client_id = settings.ms_graph.client_id
+        self.secret = settings.ms_graph.client_secret
+        self.tenant_id = settings.ms_graph.tenant_id
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}" if self.tenant_id else None
         self.scope = ["https://graph.microsoft.com/.default"]
 
@@ -77,7 +77,7 @@ class MSGraphService:
     async def send_email(self, recipient: str, subject: str, body_content: str):
         """Отправляет письмо через Microsoft Graph API."""
         token = await self._get_access_token()
-        if not token or not settings.MS_SENDER_EMAIL:
+        if not token or not settings.ms_graph.sender_email:
             logger.error("MS Graph Send Email Config/Token missing")
             return False
 
@@ -90,7 +90,7 @@ class MSGraphService:
             "saveToSentItems": "false",
         }
 
-        url = f"https://graph.microsoft.com/v1.0/users/{settings.MS_SENDER_EMAIL}/sendMail"
+        url = f"https://graph.microsoft.com/v1.0/users/{settings.ms_graph.sender_email}/sendMail"
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(

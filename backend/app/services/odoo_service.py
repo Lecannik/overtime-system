@@ -79,10 +79,10 @@ class OdooService:
     """
 
     def __init__(self):
-        self.url = settings.ODOO_URL
-        self.db = settings.ODOO_DB
-        self.username = settings.ODOO_USER
-        self.password = settings.ODOO_PASSWORD
+        self.url = settings.odoo.url
+        self.db = settings.odoo.db
+        self.username = settings.odoo.user
+        self.password = settings.odoo.password
 
     @property
     def is_configured(self) -> bool:

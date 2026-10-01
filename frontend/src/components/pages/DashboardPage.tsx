@@ -2,33 +2,32 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Clock, AlertCircle, TrendingUp,
-  MapPin, Trash2, Edit2, Search, ChevronLeft, ChevronRight, FileDown,
-  Settings, ChevronUp, ChevronDown, RotateCcw, Eye, LayoutGrid, List
+  Plus, Eye, RotateCcw, Edit2, Trash2, MapPin, FileDown
 } from 'lucide-react';
-import { api, getMyOvertimes, getMyStats, cancelOvertime, restoreOvertime, exportMyAnalytics, exportAnalytics, getAnalyticsSummary } from '../../services/api';
+import {
+  api,
+  getMyOvertimes,
+  getMyStats,
+  cancelOvertime,
+  restoreOvertime,
+  exportMyAnalytics,
+  exportAnalytics,
+  getAnalyticsSummary
+} from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
 import CreateOvertimeModal from './CreateOvertimeModal';
 import OvertimeDetailModal from './OvertimeDetailModal';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts';
-import { STATUS_LABELS, formatDate, formatTime } from '../../constants/locale';
 import LoadingOverlay from '../atoms/LoadingOverlay';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
 import { Russian } from 'flatpickr/dist/l10n/ru.js';
 import type { User, Overtime, UserStats, Department, AnalyticsSummary } from '../../types';
 import { AxiosError } from 'axios';
-
-interface ColumnConfig {
-  id: string;
-  label: string;
-  visible: boolean;
-  width?: number;
-}
+import { DashboardStatsCards } from './dashboard/DashboardStatsCards';
+import { DashboardCharts } from './dashboard/DashboardCharts';
+import { DashboardTableControls, type ColumnConfig } from './dashboard/DashboardTableControls';
+import { DashboardOvertimesTable } from './dashboard/DashboardOvertimesTable';
 
 const formatToYmd = (d: Date) => {
   const year = d.getFullYear();
@@ -52,10 +51,6 @@ const parseToDate = (str: string) => {
 
 /**
  * Безопасно парсит строку даты, предотвращая исключения во flatpickr при некорректном ручном вводе.
- *
- * @param {string} datestr - Входная строка даты.
- * @param {string} format - Формат даты.
- * @returns {Date} Объект даты. При ошибке возвращает невалидную дату new Date(NaN).
  */
 const safeParseDate = (datestr: string, _format: string): Date => {
   if (!datestr) return new Date(NaN);
@@ -87,6 +82,14 @@ const safeParseDate = (datestr: string, _format: string): Date => {
   }
 };
 
+type SortKey = 'date' | 'user' | 'project' | 'hours' | 'status' | '';
+
+/**
+ * Главный экран дашборда системы:
+ * - Отображает личные переработки пользователя либо сводные данные компании (для администраторов).
+ * - Поддерживает фильтрацию по статусу, отделу, диапазону дат flatpickr, текстовый поиск.
+ * - Включает KPI-карточки, аналитические графики и настраиваемую таблицу.
+ */
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user: authUser, token, refreshUser } = useAuth();
@@ -98,530 +101,411 @@ const DashboardPage: React.FC = () => {
   const [editOvertime, setEditOvertime] = useState<Overtime | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [isColConfigOpen, setIsColConfigOpen] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selectedOvertimeDetail, setSelectedOvertimeDetail] = useState<Overtime | null>(null);
+
   const [activeTab, setActiveTab] = useState<'my' | 'all'>('my');
   const [companyStats, setCompanyStats] = useState<AnalyticsSummary | null>(null);
-  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
+
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [selectedOvertimeDetail, setSelectedOvertimeDetail] = useState<Overtime | null>(null);
-  const [mobileView, setMobileView] = useState<'cards' | 'table'>('cards');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
 
-  // Debounce поиска — 350мс
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-      setCurrentPage(1);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Сортировка: ключ поля и направление
-  type SortKey = 'date' | 'user' | 'project' | 'hours' | 'status' | null;
-  type SortDir = 'asc' | 'desc';
-  const [sortKey, setSortKey] = useState<SortKey>(null);
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
-
-  /** Переключить сортировку по полю — повторный клик меняет направление */
-  const handleSort = (key: SortKey) => {
-    if (key === null) return;
-    setSortKey(prev => {
-      if (prev === key) {
-        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-        return prev;
-      }
-      setSortDir('asc');
-      return key;
-    });
-  };
-
-  const DEFAULT_COLUMN_WIDTHS: Record<string, number> = useMemo(() => ({
-    date: 110,
-    user: 220,
-    project: 200,
-    hours: 120,
-    approved_hours: 130,
-    status: 140,
-    description: 250,
-    start_time: 110,
-    end_time: 110,
-    actions: 160
-  }), []);
-
-  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
-    const defaultCols: ColumnConfig[] = [
-      { id: 'date', label: 'Дата', visible: true, width: 110 },
-      { id: 'user', label: 'Автор', visible: true, width: 220 },
-      { id: 'project', label: 'Проект', visible: true, width: 200 },
-      { id: 'hours', label: 'Часов запрошено', visible: true, width: 120 },
-      { id: 'approved_hours', label: 'Одобрено часов', visible: true, width: 130 },
-      { id: 'status', label: 'Статус', visible: true, width: 140 },
-      { id: 'description', label: 'Описание', visible: false, width: 250 },
-      { id: 'start_time', label: 'Начало', visible: false, width: 110 },
-      { id: 'end_time', label: 'Окончание', visible: false, width: 110 },
-      { id: 'actions', label: 'Действия', visible: true, width: 160 }
-    ];
-    const saved = localStorage.getItem('dashboard_columns');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as ColumnConfig[];
-        const merged = [...parsed];
-        defaultCols.forEach(dCol => {
-          const existingIdx = merged.findIndex(c => c.id === dCol.id);
-          if (existingIdx === -1) {
-            // Новая колонка — добавить перед «Действиями»
-            const actionsIdx = merged.findIndex(c => c.id === 'actions');
-            if (actionsIdx !== -1) {
-              merged.splice(actionsIdx, 0, dCol);
-            } else {
-              merged.push(dCol);
-            }
-          } else {
-            // Колонка уже есть — синхронизировать label и width при отсутствии
-            merged[existingIdx] = {
-              ...merged[existingIdx],
-              label: dCol.label,
-              width: merged[existingIdx].width || dCol.width
-            };
-          }
-        });
-        return merged;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return defaultCols;
+  const [mobileView, setMobileView] = useState<'cards' | 'table'>(() => {
+    return (localStorage.getItem('dashboard_mobile_view') as 'cards' | 'table') || 'cards';
   });
 
   useEffect(() => {
-    localStorage.setItem('dashboard_columns', JSON.stringify(columns));
-  }, [columns]);
+    localStorage.setItem('dashboard_mobile_view', mobileView);
+  }, [mobileView]);
 
-  const toggleColumnVisibility = (id: string) => {
-    setColumns(prev => prev.map(col => col.id === id ? { ...col, visible: !col.visible } : col));
-  };
+  const [sortKey, setSortKey] = useState<SortKey>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  const moveColumn = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= columns.length) return;
-    const newCols = [...columns];
-    const [removed] = newCols.splice(fromIndex, 1);
-    newCols.splice(toIndex, 0, removed);
-    setColumns(newCols);
-  };
-
+  const [isColConfigOpen, setIsColConfigOpen] = useState(false);
   const [draggedColId, setDraggedColId] = useState<string | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
+  const DEFAULT_COLUMN_WIDTHS: Record<string, number> = useMemo(() => ({
+    date: 110,
+    user: 200,
+    project: 180,
+    hours: 80,
+    approved_hours: 100,
+    status: 140,
+    description: 240,
+    start_time: 90,
+    end_time: 90,
+    actions: 130,
+  }), []);
+
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
+    const saved = localStorage.getItem('dashboard_columns_config_v2');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse columns config', e);
+      }
     }
-    setDraggedColId(id);
+    return [
+      { id: 'date', label: 'Дата', visible: true, width: 110 },
+      { id: 'user', label: 'Сотрудник', visible: false, width: 200 },
+      { id: 'project', label: 'Проект', visible: true, width: 180 },
+      { id: 'hours', label: 'Часы', visible: true, width: 80 },
+      { id: 'approved_hours', label: 'Одобрено', visible: true, width: 100 },
+      { id: 'status', label: 'Статус', visible: true, width: 140 },
+      { id: 'description', label: 'Описание', visible: true, width: 240 },
+      { id: 'start_time', label: 'Начало', visible: false, width: 90 },
+      { id: 'end_time', label: 'Конец', visible: false, width: 90 },
+      { id: 'actions', label: 'Действия', visible: true, width: 130 },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_columns_config_v2', JSON.stringify(columns));
+  }, [columns]);
+
+  const [resizingColId, setResizingColId] = useState<string | null>(null);
+  const resizeStartXRef = useRef<number>(0);
+  const resizeStartWidthRef = useRef<number>(0);
+
+  const handleResizeStart = (e: React.MouseEvent, colId: string, currentWidth: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingColId(colId);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = currentWidth;
   };
 
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    if (id) {
-      e.preventDefault();
-    }
+  useEffect(() => {
+    if (!resizingColId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - resizeStartXRef.current;
+      const newWidth = Math.max(60, resizeStartWidthRef.current + delta);
+      setColumns(prev => prev.map(c => (c.id === resizingColId ? { ...c, width: newWidth } : c)));
+    };
+
+    const handleMouseUp = () => {
+      setResizingColId(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColId]);
+
+  const resetSingleColumnWidth = (colId: string) => {
+    const defaultW = DEFAULT_COLUMN_WIDTHS[colId] || 150;
+    setColumns(prev => prev.map(c => (c.id === colId ? { ...c, width: defaultW } : c)));
+  };
+
+  const resetColumnWidths = () => {
+    setColumns(prev =>
+      prev.map(c => ({
+        ...c,
+        width: DEFAULT_COLUMN_WIDTHS[c.id] || 150,
+      }))
+    );
+  };
+
+  const toggleColumnVisibility = (id: string) => {
+    setColumns(prev => prev.map(col => (col.id === id ? { ...col, visible: !col.visible } : col)));
+  };
+
+  const moveColumn = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= columns.length) return;
+    setColumns(prev => {
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, moved);
+      return copy;
+    });
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedColId(id);
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, _id: string) => {
+    e.preventDefault();
   };
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     if (!draggedColId || draggedColId === targetId) return;
 
-    const draggedIdx = columns.findIndex(c => c.id === draggedColId);
-    const targetIdx = columns.findIndex(c => c.id === targetId);
-
-    const newCols = [...columns];
-    const [removed] = newCols.splice(draggedIdx, 1);
-    newCols.splice(targetIdx, 0, removed);
-
-    setColumns(newCols);
+    setColumns(prev => {
+      const fromIdx = prev.findIndex(c => c.id === draggedColId);
+      const toIdx = prev.findIndex(c => c.id === targetId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, moved);
+      return copy;
+    });
     setDraggedColId(null);
   };
 
-  // Ресайз колонок таблицы
-  const [resizingColId, setResizingColId] = useState<string | null>(null);
-  const resizeStateRef = useRef<{
-    colId: string;
-    startX: number;
-    startWidth: number;
-  } | null>(null);
-
-  const handleResizeStart = (e: React.MouseEvent, colId: string, currentWidth: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    resizeStateRef.current = {
-      colId,
-      startX: e.clientX,
-      startWidth: currentWidth,
-    };
-    setResizingColId(colId);
-
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      if (!resizeStateRef.current) return;
-      const { colId: activeId, startX, startWidth: sw } = resizeStateRef.current;
-      const deltaX = moveEvent.clientX - startX;
-      const newWidth = Math.max(70, Math.round(sw + deltaX));
-
-      setColumns(prev =>
-        prev.map(c => (c.id === activeId ? { ...c, width: newWidth } : c))
-      );
-    };
-
-    const onMouseUp = () => {
-      resizeStateRef.current = null;
-      setResizingColId(null);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
-
-  const resetColumnWidths = () => {
-    setColumns(prev =>
-      prev.map(col => ({
-        ...col,
-        width: DEFAULT_COLUMN_WIDTHS[col.id] || 150,
-      }))
-    );
-  };
-
-  const resetSingleColumnWidth = (colId: string) => {
-    setColumns(prev =>
-      prev.map(col =>
-        col.id === colId
-          ? { ...col, width: DEFAULT_COLUMN_WIDTHS[colId] || 150 }
-          : col
-      )
-    );
-  };
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(12);
-
-  // Filters
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-
-  const startFpRef = useRef<any>(null);
-  const endFpRef = useRef<any>(null);
-
-  const startInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
-    if (node) {
-      if (!startFpRef.current) {
-        startFpRef.current = flatpickr(node, {
-          dateFormat: "d/m/Y",
-          locale: Russian,
-          allowInput: true,
-          disableMobile: true,
-          parseDate: safeParseDate,
-          onClose: (selectedDates) => {
-            if (selectedDates[0]) {
-              setStartDate(formatToYmd(selectedDates[0]));
-            } else {
-              setStartDate('');
-            }
-            setCurrentPage(1);
-          }
-        });
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else {
+        setSortKey('');
+        setSortDir('asc');
       }
     } else {
-      if (startFpRef.current) {
-        startFpRef.current.destroy();
-        startFpRef.current = null;
-      }
+      setSortKey(key);
+      setSortDir('asc');
     }
+  };
+
+  const startPickerRef = useRef<flatpickr.Instance | null>(null);
+  const endPickerRef = useRef<flatpickr.Instance | null>(null);
+  const startElRef = useRef<HTMLInputElement | null>(null);
+  const endElRef = useRef<HTMLInputElement | null>(null);
+
+  const initPickers = useCallback(() => {
+    if (startPickerRef.current) startPickerRef.current.destroy();
+    if (endPickerRef.current) endPickerRef.current.destroy();
+
+    const commonConfig: flatpickr.Options.Options = {
+      locale: Russian,
+      dateFormat: 'd.m.Y',
+      allowInput: true,
+      parseDate: safeParseDate,
+      disableMobile: true,
+    };
+
+    if (startElRef.current) {
+      startPickerRef.current = flatpickr(startElRef.current, {
+        ...commonConfig,
+        defaultDate: parseToDate(startDate) || undefined,
+        onChange: (selectedDates) => {
+          if (selectedDates.length > 0) {
+            const ymd = formatToYmd(selectedDates[0]);
+            setStartDate(ymd);
+            if (endPickerRef.current) endPickerRef.current.set('minDate', selectedDates[0]);
+          } else {
+            setStartDate('');
+            if (endPickerRef.current) endPickerRef.current.set('minDate', undefined as any);
+          }
+          setCurrentPage(1);
+        },
+      });
+    }
+
+    if (endElRef.current) {
+      endPickerRef.current = flatpickr(endElRef.current, {
+        ...commonConfig,
+        defaultDate: parseToDate(endDate) || undefined,
+        minDate: parseToDate(startDate) || undefined,
+        onChange: (selectedDates) => {
+          if (selectedDates.length > 0) {
+            const ymd = formatToYmd(selectedDates[0]);
+            setEndDate(ymd);
+          } else {
+            setEndDate('');
+          }
+          setCurrentPage(1);
+        },
+      });
+    }
+  }, [startDate, endDate]);
+
+  const startInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
+    startElRef.current = el;
+    if (el) initPickers();
+  }, [initPickers]);
+
+  const endInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
+    endElRef.current = el;
+    if (el) initPickers();
+  }, [initPickers]);
+
+  useEffect(() => {
+    return () => {
+      if (startPickerRef.current) startPickerRef.current.destroy();
+      if (endPickerRef.current) endPickerRef.current.destroy();
+    };
   }, []);
 
-  const endInputCallbackRef = useCallback((node: HTMLInputElement | null) => {
-    if (node) {
-      if (!endFpRef.current) {
-        endFpRef.current = flatpickr(node, {
-          dateFormat: "d/m/Y",
-          locale: Russian,
-          allowInput: true,
-          disableMobile: true,
-          parseDate: safeParseDate,
-          onClose: (selectedDates) => {
-            if (selectedDates[0]) {
-              setEndDate(formatToYmd(selectedDates[0]));
-            } else {
-              setEndDate('');
-            }
-            setCurrentPage(1);
-          }
+  const handleDateRangeReset = () => {
+    setStartDate('');
+    setEndDate('');
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const fetchTableData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      if (activeTab === 'my') {
+        const data = await getMyOvertimes({
+          start_date: startDate ? `${startDate}T00:00:00` : undefined,
+          end_date: endDate ? `${endDate}T23:59:59` : undefined,
+          status: filterStatus || undefined,
+          page: currentPage,
+          page_size: 10,
+          search: debouncedSearch || undefined,
         });
+        setOvertimes(data.items || []);
+        setTotalPages(data.pages || 1);
+      } else {
+        const params: any = {
+          page: currentPage,
+          page_size: 10,
+        };
+        if (startDate) params.start_date = `${startDate}T00:00:00`;
+        if (endDate) params.end_date = `${endDate}T23:59:59`;
+        if (filterStatus) params.status = filterStatus;
+        if (debouncedSearch) params.search = debouncedSearch;
+        if (selectedDeptId) params.department_id = selectedDeptId;
+
+        const res = await api.get('/overtime/company', { params });
+        setOvertimes(res.data.items || []);
+        setTotalPages(res.data.pages || 1);
       }
-    } else {
-      if (endFpRef.current) {
-        endFpRef.current.destroy();
-        endFpRef.current = null;
-      }
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [activeTab, startDate, endDate, filterStatus, currentPage, debouncedSearch, selectedDeptId]);
 
   const fetchUserAndStats = useCallback(async () => {
     try {
-      if (!token) { navigate('/login'); return; }
-
       const curUser = authUser || (await refreshUser());
       if (curUser) {
         setUser(curUser);
-      }
+        const statsData = await getMyStats();
+        setStats(statsData);
 
-      const statsRes = await getMyStats();
-      setStats(statsRes);
-
-      if (curUser?.role === 'admin') {
-        const [deptsRes, compStatsRes] = await Promise.all([
-          api.get('/admin/departments').then(r => r.data),
-          getAnalyticsSummary()
-        ]);
-        setDepartments(deptsRes || []);
-        setCompanyStats(compStatsRes);
+        if (curUser.role === 'admin') {
+          const compData = await getAnalyticsSummary();
+          setCompanyStats(compData);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch user and stats:', err);
+      console.error(err);
     }
-  }, [navigate, token, authUser, refreshUser]);
+  }, [authUser, refreshUser]);
 
-  const fetchTableData = useCallback(async (showLoader = false) => {
-    try {
-      if (showLoader) setLoading(true);
-      if (!token) { navigate('/login'); return; }
-
-      const params: any = {
-        page: currentPage,
-        page_size: pageSize,
-        status: filterStatus || undefined,
-        start_date: startDate || undefined,
-        end_date: endDate || undefined,
-        search: debouncedSearch || undefined,
-      };
-
-      if (user?.role === 'admin' && activeTab === 'all') {
-        params.view = 'admin_dashboard';
-        if (selectedDeptId) {
-          params.department_id = parseInt(selectedDeptId);
-        }
-      } else {
-        params.view = 'dashboard';
-      }
-
-      const ovRes = await getMyOvertimes(params);
-      setOvertimes(ovRes.items || []);
-      setTotalPages(ovRes.pages || 1);
-    } catch (err) {
-      console.error('Failed to fetch table data:', err);
-    } finally {
-      if (showLoader) setLoading(false);
+  useEffect(() => {
+    if (!token) {
+      navigate('/login');
+      return;
     }
-  }, [currentPage, pageSize, filterStatus, startDate, endDate, debouncedSearch, navigate, user, activeTab, selectedDeptId]);
+    fetchUserAndStats();
+  }, [token, navigate, fetchUserAndStats]);
 
-  // 1. Загружаем общие данные при монтировании
   useEffect(() => {
-    const init = async () => {
-      await fetchUserAndStats();
-    };
-    init();
-  }, [fetchUserAndStats]);
-
-  // 2. Загрузка таблицы при смене страницы, статуса, поиска, вкладки или отдела (с лоадером)
-  useEffect(() => {
-    const init = async () => {
-      await fetchTableData(true);
-    };
-    init();
-  }, [currentPage, filterStatus, debouncedSearch, activeTab, selectedDeptId, fetchTableData]);
-
-  // 3. Загрузка таблицы при смене дат (без лоадера)
-  useEffect(() => {
-    const update = async () => {
-      await fetchTableData(false);
-    };
-    update();
-  }, [startDate, endDate, activeTab, selectedDeptId, fetchTableData]);
-
-
-
-  // 5. Подписка на внешние обновления (overtime_update)
-  useEffect(() => {
-    const handleUpdate = () => {
-      fetchTableData(false);
-      fetchUserAndStats();
-    };
-    window.addEventListener('overtime_update', handleUpdate);
-    return () => {
-      window.removeEventListener('overtime_update', handleUpdate);
-    };
-  }, [fetchTableData, fetchUserAndStats]);
-
-  // 6. Синхронизация стейта во flatpickr
-  useEffect(() => {
-    if (startFpRef.current) {
-      const currentFpDate = startFpRef.current.selectedDates[0];
-      const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
-      if (formattedCurrent !== startDate) {
-        const parsed = parseToDate(startDate);
-        if (parsed) {
-          startFpRef.current.setDate(parsed, false);
-        } else {
-          startFpRef.current.clear();
-        }
-      }
+    if (user?.role === 'admin') {
+      api.get('/departments/')
+        .then(res => setDepartments(res.data || []))
+        .catch(err => console.error('Failed to load departments', err));
     }
-  }, [startDate]);
+  }, [user]);
 
   useEffect(() => {
-    if (endFpRef.current) {
-      const currentFpDate = endFpRef.current.selectedDates[0];
-      const formattedCurrent = currentFpDate ? formatToYmd(currentFpDate) : '';
-      if (formattedCurrent !== endDate) {
-        const parsed = parseToDate(endDate);
-        if (parsed) {
-          endFpRef.current.setDate(parsed, false);
-        } else {
-          endFpRef.current.clear();
-        }
-      }
-    }
-  }, [endDate]);
+    fetchTableData();
+  }, [fetchTableData]);
 
   const handleCancel = async (id: number) => {
-    if (window.confirm('Отменить заявку?')) {
-      try {
-        await cancelOvertime(id);
-        fetchTableData(false);
-        fetchUserAndStats();
-      } catch (err: unknown) {
-        const axiosError = err as AxiosError<{ detail?: string }>;
-        console.error(axiosError);
-        alert(axiosError.response?.data?.detail || 'Ошибка при отмене заявки');
-      }
+    if (!window.confirm('Вы уверены, что хотите отменить эту заявку?')) return;
+    setLoading(true);
+    try {
+      await cancelOvertime(id);
+      await fetchTableData(false);
+      await fetchUserAndStats();
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка при отмене заявки');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleRestore = async (id: number) => {
-    if (window.confirm('Восстановить заявку? Она вернётся в статус «Ожидает согласования».')) {
-      try {
-        await restoreOvertime(id);
-        fetchTableData(false);
-        fetchUserAndStats();
-      } catch (err: unknown) {
-        const axiosError = err as AxiosError<{ detail?: string }>;
-        console.error(axiosError);
-        alert(axiosError.response?.data?.detail || 'Ошибка при восстановлении заявки');
-      }
+    if (!window.confirm('Восстановить эту заявку? Она вернется в статус проверки.')) return;
+    setLoading(true);
+    try {
+      await restoreOvertime(id);
+      await fetchTableData(false);
+      await fetchUserAndStats();
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка при восстановлении заявки');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const downloadFile = (data: Blob, defaultName: string) => {
+    const url = window.URL.createObjectURL(new Blob([data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', defaultName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const handleExport = async () => {
     try {
       setLoading(true);
-      const blob = await exportMyAnalytics();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      link.setAttribute('download', `personal_report_${dateStr}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const data = await exportMyAnalytics({
+        start_date: startDate ? `${startDate}T00:00:00` : undefined,
+        end_date: endDate ? `${endDate}T23:59:59` : undefined,
+      });
+      downloadFile(data, `my_overtimes_${startDate || 'all'}_${endDate || 'all'}.xlsx`);
     } catch (err: unknown) {
       const axiosError = err as AxiosError<{ detail?: string }>;
-      console.error('Export error:', axiosError);
-      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте отчета');
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleExportMonth = async (month: 'current' | 'previous') => {
+  const handleExportMonth = async (monthType: 'current' | 'previous') => {
     try {
       setLoading(true);
       const now = new Date();
-      let startStr = '';
-      let endStr = '';
+      let start: Date;
+      let end: Date;
 
-      if (month === 'current') {
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        startStr = formatToYmd(start);
-        endStr = formatToYmd(end);
+      if (monthType === 'current') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
       } else {
-        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const end = new Date(now.getFullYear(), now.getMonth(), 0);
-        startStr = formatToYmd(start);
-        endStr = formatToYmd(end);
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
       }
 
-      const blob = await exportMyAnalytics({ start_date: startStr, end_date: endStr });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      const sStr = formatToYmd(start) + 'T00:00:00';
+      const eStr = formatToYmd(end) + 'T23:59:59';
 
-      const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
-      link.setAttribute('download', `personal_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const data = await exportMyAnalytics({ start_date: sStr, end_date: eStr });
+      downloadFile(data, `my_overtimes_${monthType}_month.xlsx`);
     } catch (err: unknown) {
-      console.error('Export month error:', err);
       const axiosError = err as AxiosError<{ detail?: string }>;
-      alert(axiosError.response?.data?.detail || 'Не удалось экспортировать отчет за выбранный месяц');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExportCompanyMonth = async (month: 'current' | 'previous') => {
-    try {
-      setLoading(true);
-      const now = new Date();
-      let startStr = '';
-      let endStr = '';
-
-      if (month === 'current') {
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        startStr = formatToYmd(start);
-        endStr = formatToYmd(end);
-      } else {
-        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const end = new Date(now.getFullYear(), now.getMonth(), 0);
-        startStr = formatToYmd(start);
-        endStr = formatToYmd(end);
-      }
-
-      const blob = await exportAnalytics({ start_date: startStr, end_date: endStr });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
-      const fileSuffix = month === 'current' ? 'current_month' : 'previous_month';
-      link.setAttribute('download', `company_report_${fileSuffix}_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err: unknown) {
-      console.error('Export company month error:', err);
-      const axiosError = err as AxiosError<{ detail?: string }>;
-      alert(axiosError.response?.data?.detail || 'Не удалось экспортировать отчет компании за выбранный месяц');
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте за месяц');
     } finally {
       setLoading(false);
     }
@@ -630,22 +514,42 @@ const DashboardPage: React.FC = () => {
   const handleExportCompanyAll = async () => {
     try {
       setLoading(true);
-      const blob = await exportAnalytics();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      link.setAttribute('download', `company_report_${dateStr}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const data = await exportAnalytics({
+        start_date: startDate ? `${startDate}T00:00:00` : undefined,
+        end_date: endDate ? `${endDate}T23:59:59` : undefined,
+      });
+      downloadFile(data, `company_overtimes_${startDate || 'all'}_${endDate || 'all'}.xlsx`);
     } catch (err: unknown) {
-      console.error('Export company error:', err);
       const axiosError = err as AxiosError<{ detail?: string }>;
-      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте отчета компании');
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте компании');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCompanyMonth = async (monthType: 'current' | 'previous') => {
+    try {
+      setLoading(true);
+      const now = new Date();
+      let start: Date;
+      let end: Date;
+
+      if (monthType === 'current') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      }
+
+      const sStr = formatToYmd(start) + 'T00:00:00';
+      const eStr = formatToYmd(end) + 'T23:59:59';
+
+      const data = await exportAnalytics({ start_date: sStr, end_date: eStr });
+      downloadFile(data, `company_overtimes_${monthType}_month.xlsx`);
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      alert(axiosError.response?.data?.detail || 'Ошибка при экспорте компании за месяц');
     } finally {
       setLoading(false);
     }
@@ -653,7 +557,6 @@ const DashboardPage: React.FC = () => {
 
   const filteredOvertimes = Array.isArray(overtimes) ? overtimes : [];
 
-  /** Отсортированный массив, применяется поверх фильтра */
   const sortedOvertimes = useMemo(() => {
     if (!sortKey) return filteredOvertimes;
     return [...filteredOvertimes].sort((a, b) => {
@@ -697,7 +600,6 @@ const DashboardPage: React.FC = () => {
 
   const renderActionButtons = (ot: Overtime) => (
     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
-      {/* Просмотр деталей */}
       <button
         onClick={() => setSelectedOvertimeDetail(ot)}
         className="action-button-modern"
@@ -706,7 +608,6 @@ const DashboardPage: React.FC = () => {
       >
         <Eye size={16} />
       </button>
-      {/* Кнопка восстановления для отменённых заявок */}
       {ot.status === 'CANCELLED' && (
         <button
           onClick={() => handleRestore(ot.id)}
@@ -717,19 +618,19 @@ const DashboardPage: React.FC = () => {
           <RotateCcw size={16} />
         </button>
       )}
-      {/* Редактирование: для администратора доступно в любом статусе, для остальных — только в активных */}
       {(user?.role === 'admin' ||
         (ot.status !== 'APPROVED' && ot.status !== 'REJECTED' && ot.status !== 'CANCELLED')) && (
-          <button
-            onClick={() => { setEditOvertime(ot); setIsCreateModalOpen(true); }}
-            className="action-button-modern"
-            title="Редактировать"
-          >
-            <Edit2 size={16} />
-          </button>
+        <button
+          onClick={() => {
+            setEditOvertime(ot);
+            setIsCreateModalOpen(true);
+          }}
+          className="action-button-modern"
+          title="Редактировать"
+        >
+          <Edit2 size={16} />
+        </button>
       )}
-
-      {/* Отмена: для не-отмененных заявок (администратор может отменить даже APPROVED, обычный сотрудник — только нетерминальные) */}
       {ot.status !== 'CANCELLED' &&
         (user?.role === 'admin' ||
           (ot.status !== 'APPROVED' && ot.status !== 'REJECTED')) && (
@@ -741,7 +642,7 @@ const DashboardPage: React.FC = () => {
           >
             <Trash2 size={16} />
           </button>
-      )}
+        )}
       {ot.start_lat && ot.start_lng && (
         <a
           href={`https://www.google.com/maps?q=${ot.start_lat},${ot.start_lng}`}
@@ -788,7 +689,17 @@ const DashboardPage: React.FC = () => {
       {loading && <LoadingOverlay />}
       {user && <Header user={user} />}
 
-      <div className="dashboard-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+      <div
+        className="dashboard-page-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+          marginBottom: '24px',
+        }}
+      >
         <div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             {activeTab === 'my' ? 'Дашборд сотрудника' : 'Сводный дашборд компании'}
@@ -801,26 +712,60 @@ const DashboardPage: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           {activeTab === 'my' && (
-            <button onClick={() => setIsCreateModalOpen(true)} className="primary" style={{ padding: '10px 20px', minHeight: '42px', fontWeight: 700 }}>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="primary"
+              style={{ padding: '10px 20px', minHeight: '42px', fontWeight: 700 }}
+            >
               <Plus size={20} /> НОВАЯ ЗАЯВКА
             </button>
           )}
-          <button onClick={() => activeTab === 'my' ? handleExportMonth('previous') : handleExportCompanyMonth('previous')} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
-          }} className="btn-secondary">
+          <button
+            onClick={() => (activeTab === 'my' ? handleExportMonth('previous') : handleExportCompanyMonth('previous'))}
+            style={{
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 14px',
+              fontSize: '0.8rem',
+            }}
+            className="btn-secondary"
+          >
             <FileDown size={16} /> Прошлый месяц
           </button>
-          <button onClick={() => activeTab === 'my' ? handleExportMonth('current') : handleExportCompanyMonth('current')} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
-          }} className="btn-secondary">
+          <button
+            onClick={() => (activeTab === 'my' ? handleExportMonth('current') : handleExportCompanyMonth('current'))}
+            style={{
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 14px',
+              fontSize: '0.8rem',
+            }}
+            className="btn-secondary"
+          >
             <FileDown size={16} /> Текущий месяц
           </button>
-          <button onClick={() => activeTab === 'my' ? handleExport() : handleExportCompanyAll()} style={{
-            background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', fontSize: '0.8rem'
-          }} className="btn-secondary">
+          <button
+            onClick={() => (activeTab === 'my' ? handleExport() : handleExportCompanyAll())}
+            style={{
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 14px',
+              fontSize: '0.8rem',
+            }}
+            className="btn-secondary"
+          >
             <FileDown size={16} /> Общий отчет
           </button>
         </div>
@@ -828,9 +773,22 @@ const DashboardPage: React.FC = () => {
 
       {/* Переключатель вкладок (только для админа) */}
       {user?.role === 'admin' && (
-        <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '12px', width: 'fit-content', border: '1px solid var(--border)', marginBottom: '32px' }}>
+        <div
+          style={{
+            display: 'flex',
+            background: 'var(--bg-secondary)',
+            padding: '4px',
+            borderRadius: '12px',
+            width: 'fit-content',
+            border: '1px solid var(--border)',
+            marginBottom: '32px',
+          }}
+        >
           <button
-            onClick={() => { setActiveTab('my'); setCurrentPage(1); }}
+            onClick={() => {
+              setActiveTab('my');
+              setCurrentPage(1);
+            }}
             style={{
               padding: '8px 24px',
               borderRadius: '8px',
@@ -846,7 +804,10 @@ const DashboardPage: React.FC = () => {
             Мои переработки
           </button>
           <button
-            onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+            onClick={() => {
+              setActiveTab('all');
+              setCurrentPage(1);
+            }}
             style={{
               padding: '8px 24px',
               borderRadius: '8px',
@@ -864,631 +825,83 @@ const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Stats Overview */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '40px' }}>
-        {activeTab === 'my' ? (
-          [
-            { label: 'Часов одобрено в этом месяце', value: `${stats?.current_month_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'В текущем месяце' },
-            { label: 'Часов одобрено в прошлом месяце', value: `${stats?.last_month_hours || 0}ч`, icon: Clock, color: 'var(--info)', sub: 'В прошлом месяце' },
-            { label: 'Всего заявок', value: stats?.total_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'За всё время' },
-            { label: 'Активных заявок', value: stats?.active_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
-          ].map((stat, i) => (
-            <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
-              </div>
-              <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
-                <stat.icon size={24} />
-              </div>
-            </div>
-          ))
-        ) : (
-          [
-            { label: 'Часов согласовано в компании', value: `${companyStats?.total_hours || 0}ч`, icon: Clock, color: 'var(--primary)', sub: 'По всем проектам' },
-            { label: 'Всего заявок в компании', value: companyStats?.total_requests || 0, icon: TrendingUp, color: 'var(--info)', sub: 'Зарегистрировано' },
-            { label: 'Согласовано заявок', value: companyStats?.approved_requests || 0, icon: TrendingUp, color: 'var(--success)', sub: 'Одобрено руководителями' },
-            { label: 'Ожидают согласования', value: companyStats?.pending_requests || 0, icon: AlertCircle, color: 'var(--warning)', sub: 'В процессе проверки' },
-          ].map((stat, i) => (
-            <div key={i} className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{stat.label}</p>
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{stat.value}</h3>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{stat.sub}</p>
-              </div>
-              <div className="icon-shape" style={{ background: 'var(--bg-tertiary)', color: stat.color, width: '48px', height: '48px', borderRadius: '16px' }}>
-                <stat.icon size={24} />
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      {/* Stats KPI Overview */}
+      <DashboardStatsCards
+        activeTab={activeTab}
+        stats={stats}
+        companyStats={companyStats}
+      />
 
       {/* Charts Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <div className="glass-card" style={{ padding: '24px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          {(() => {
-            const hasActivityData = stats?.daily_stats?.some(
-              (d: any) => (Number(d.hours || 0) > 0 || Number(d.pending_hours || 0) > 0)
-            ) ?? false;
-
-            return (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                    Активность за 30 дней (часы)
-                  </h4>
-                  {hasActivityData && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--primary)' }} />
-                        <span style={{ color: 'var(--text-secondary)' }}>Согласовано</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }} />
-                        <span style={{ color: 'var(--text-secondary)' }}>На проверке</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {!hasActivityData ? (
-                  <div style={{
-                    height: '200px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: '12px',
-                    border: '1px dashed var(--border)',
-                    padding: '16px',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '12px',
-                      background: 'var(--bg-tertiary)',
-                      color: 'var(--text-muted)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: '10px'
-                    }}>
-                      <Clock size={20} />
-                    </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                      Нет активности за последние 30 дней
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', maxWidth: '300px', lineHeight: 1.4 }}>
-                      {stats?.active_requests && stats.active_requests > 0
-                        ? `У вас есть ${stats.active_requests} активн. заявок в других периодах или ожидающих проверку.`
-                        : 'За последние 30 дней нет согласованных или ожидающих проверку переработок.'}
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ height: '200px', position: 'relative', width: '100%', minWidth: 0 }}>
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                      <BarChart data={stats?.daily_stats || []} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.4} />
-                        <XAxis
-                          dataKey="date"
-                          axisLine={false}
-                          tickLine={false}
-                          interval={4}
-                          tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                          tickFormatter={(val: string) => {
-                            if (!val) return '';
-                            const parts = val.split('-');
-                            return parts.length === 3 ? `${parts[2]}.${parts[1]}` : val;
-                          }}
-                        />
-                        <YAxis
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
-                          tickFormatter={(value) => `${value}ч`}
-                          allowDecimals={false}
-                        />
-                        <RechartsTooltip
-                          contentStyle={{
-                            background: 'var(--bg-secondary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            boxShadow: 'var(--card-shadow)',
-                            fontSize: '0.78rem'
-                          }}
-                          labelFormatter={(label) => {
-                            if (!label) return '';
-                            const parts = label.split('-');
-                            if (parts.length === 3) {
-                              return `Дата: ${parts[2]}.${parts[1]}.${parts[0]}`;
-                            }
-                            return `Дата: ${label}`;
-                          }}
-                          formatter={(value: any, name: any) => {
-                            const valNum = Number(value || 0);
-                            if (name === 'hours') return [`${valNum} ч.`, 'Согласовано'];
-                            if (name === 'pending_hours') return [`${valNum} ч.`, 'На проверке'];
-                            return [`${valNum} ч.`, name];
-                          }}
-                        />
-                        <Bar dataKey="hours" name="hours" fill="var(--primary)" stackId="dailyStack" radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="pending_hours" name="pending_hours" fill="#f59e0b" stackId="dailyStack" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-
-        <div className="glass-card" style={{ padding: '24px', minWidth: 0 }}>
-          <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>Распределение по проектам</h4>
-          <div className="dashboard-pie-wrap" style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: '16px' }}>
-            <div style={{ flex: '1 1 200px', height: '180px', position: 'relative', width: '100%', minWidth: 0 }}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <PieChart>
-                  <Pie
-                    data={stats?.by_project || []}
-                    dataKey="hours"
-                    nameKey="project_name"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={5}
-                  >
-                    {(stats?.by_project || []).map((_entry: any, index: number) => (
-                      <Cell key={`cell-${index}`} fill={[
-                        'var(--primary)', 'var(--success)', 'var(--warning)', 'var(--info)', '#8b5cf6', '#ec4899'
-                      ][index % 6]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip
-                    contentStyle={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', boxShadow: 'var(--card-shadow)' }}
-                    formatter={(value: any, name: any) => {
-                      return [`${value} ч.`, name];
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="dashboard-pie-legend" style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {(stats?.by_project || []).slice(0, 4).map((p: any, i: number) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
-                  <div style={{
-                    width: '8px', height: '8px', borderRadius: '2px', flexShrink: 0, background: [
-                      'var(--primary)', 'var(--success)', 'var(--warning)', 'var(--info)', '#8b5cf6', '#ec4899'
-                    ][i % 6]
-                  }} />
-                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.project_name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardCharts stats={stats} />
 
       {/* Table Card (Full Width) */}
-      <div className="glass-card" style={{ padding: '0', display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
-        <div className="dashboard-card-header" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1.15rem' }}>{activeTab === 'my' ? 'Мои переработки' : 'Все переработки'}</h3>
-          <div className="dashboard-filters-wrap" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', flexGrow: 1, justifyContent: 'flex-end' }}>
-            {/* Фильтр по отделам */}
-            {user?.role === 'admin' && activeTab === 'all' && (
-              <select
-                value={selectedDeptId}
-                onChange={e => { setSelectedDeptId(e.target.value); setCurrentPage(1); }}
-                style={{ height: '36px', padding: '0 10px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', flex: '1 1 130px', minWidth: '120px' }}
-              >
-                <option value="">Все отделы</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.id.toString()}>{d.name}</option>
-                ))}
-              </select>
-            )}
+      <div
+        className="glass-card"
+        style={{ padding: '0', display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}
+      >
+        <DashboardTableControls
+          activeTab={activeTab}
+          user={user}
+          departments={departments}
+          selectedDeptId={selectedDeptId}
+          onSelectDeptId={(id) => {
+            setSelectedDeptId(id);
+            setCurrentPage(1);
+          }}
+          filterStatus={filterStatus}
+          onFilterStatusChange={(status) => {
+            setFilterStatus(status);
+            setCurrentPage(1);
+          }}
+          startDate={startDate}
+          endDate={endDate}
+          onDateRangeReset={handleDateRangeReset}
+          startInputCallbackRef={startInputCallbackRef}
+          endInputCallbackRef={endInputCallbackRef}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          mobileView={mobileView}
+          onToggleMobileView={() => setMobileView((v) => (v === 'cards' ? 'table' : 'cards'))}
+          isColConfigOpen={isColConfigOpen}
+          onToggleColConfig={() => setIsColConfigOpen(!isColConfigOpen)}
+          columns={columns}
+          onToggleColumnVisibility={toggleColumnVisibility}
+          onMoveColumn={moveColumn}
+          onResetColumnWidths={resetColumnWidths}
+        />
 
-            {/* Фильтр по статусу */}
-            <select
-              value={filterStatus}
-              onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}
-              style={{ height: '36px', padding: '0 10px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', flex: '1 1 130px', minWidth: '120px' }}
-            >
-              <option value="">Все статусы</option>
-              <option value="PENDING">На согласовании</option>
-              <option value="HEAD_APPROVED">Утверждено рук.</option>
-              <option value="MANAGER_APPROVED">Утверждено мен.</option>
-              <option value="APPROVED">Одобрено</option>
-              <option value="REJECTED">Отклонено</option>
-              <option value="CANCELLED">Отменено</option>
-              <option value="IN_PROGRESS">В процессе</option>
-            </select>
-
-            {/* Диапазон дат — адаптивный блок, не вылезает за экран */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 210px', minWidth: '190px' }}>
-              <input
-                ref={startInputCallbackRef}
-                type="text"
-                placeholder="дд/мм/гггг"
-                style={{ height: '36px', flex: 1, minWidth: 0, width: '100%', padding: '0 6px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
-                title="Начало периода"
-              />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', flexShrink: 0 }}>—</span>
-              <input
-                ref={endInputCallbackRef}
-                type="text"
-                placeholder="дд/мм/гггг"
-                style={{ height: '36px', flex: 1, minWidth: 0, width: '100%', padding: '0 6px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
-                title="Конец периода"
-              />
-              {(startDate || endDate) && (
-                <button
-                  onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
-                  className="action-button-modern"
-                  title="Сбросить даты"
-                  style={{ height: '36px', width: '36px', minWidth: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-
-            {/* Поиск */}
-            <div style={{ position: 'relative', flex: '1 1 180px', minWidth: '150px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-              <input
-                placeholder="Найти по описанию..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', width: '100%' }}
-              />
-            </div>
-
-            {/* Переключатель вида на мобильных: Карточки / Таблица */}
-            <div className="show-on-mobile" style={{ gap: '6px' }}>
-              <button
-                onClick={() => setMobileView(v => v === 'cards' ? 'table' : 'cards')}
-                className="action-button-modern"
-                title={mobileView === 'cards' ? 'Показать таблицу' : 'Показать карточки'}
-                style={{ height: '36px', width: '36px', minWidth: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}
-              >
-                {mobileView === 'cards' ? <List size={18} /> : <LayoutGrid size={18} />}
-              </button>
-            </div>
-
-            {/* Настройка колонок */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <button
-                onClick={() => setIsColConfigOpen(!isColConfigOpen)}
-                className="action-button-modern"
-                title="Настройка колонок"
-                style={{ height: '36px', width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Settings size={18} />
-              </button>
-              {isColConfigOpen && (
-                <div style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: '42px',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  boxShadow: 'var(--card-shadow)',
-                  zIndex: 100,
-                  width: '240px',
-                  padding: '12px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px'
-                }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '6px', marginBottom: '4px' }}>
-                    Настройка колонок
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-                    {columns.map((col, idx) => (
-                      <div
-                        key={col.id}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}
-                      >
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-primary)' }}>
-                          <input
-                            type="checkbox"
-                            checked={col.visible}
-                            disabled={col.id === 'date' || col.id === 'actions'}
-                            onChange={() => toggleColumnVisibility(col.id)}
-                          />
-                          <span>{col.label}</span>
-                        </label>
-                        <div style={{ display: 'flex', gap: '2px' }}>
-                          <button
-                            disabled={idx === 0}
-                            onClick={() => moveColumn(idx, idx - 1)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === 0 ? 0.3 : 1, color: 'var(--text-primary)' }}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            disabled={idx === columns.length - 1}
-                            onClick={() => moveColumn(idx, idx + 1)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', opacity: idx === columns.length - 1 ? 0.3 : 1, color: 'var(--text-primary)' }}
-                          >
-                            ↓
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={resetColumnWidths}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      background: 'transparent',
-                      border: '1px dashed var(--border)',
-                      borderRadius: '6px',
-                      padding: '6px 8px',
-                      fontSize: '0.75rem',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      marginTop: '4px',
-                      width: '100%',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)';
-                      (e.currentTarget as HTMLElement).style.color = 'var(--primary)';
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
-                      (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
-                    }}
-                  >
-                    <RotateCcw size={13} />
-                    <span>Сбросить ширину колонок</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Мобильный карточный режим (для экранов смартфонов) */}
-        {mobileView === 'cards' && (
-          <div className="show-on-mobile" style={{ flexDirection: 'column', gap: '10px', padding: '12px' }}>
-            {sortedOvertimes.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                Ничего не найдено
-              </div>
-            ) : (
-              sortedOvertimes.map((ot: Overtime) => {
-                const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
-                return (
-                  <div key={ot.id} className="mobile-overtime-card">
-                    {/* Верхняя строка: Дата, Статус, Часы */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                        {formatDate(ot.start_time)}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : ot.status === 'IN_PROGRESS' ? 'info' : 'warning'}`}>
-                          {STATUS_LABELS[ot.status] || ot.status}
-                        </span>
-                        <span style={{ fontWeight: 800, fontSize: '0.9rem', color: isApproved ? 'var(--success)' : 'var(--primary)' }}>
-                          {isApproved && ot.approved_hours != null ? `${ot.approved_hours}ч` : `${ot.hours}ч`}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Проект и Автор */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {ot.project?.name || 'Внутренний'}
-                      </div>
-                      {activeTab === 'all' && ot.user && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {ot.user.full_name} ({ot.user.email})
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Описание */}
-                    {ot.description && (
-                      <div className="line-clamp-2" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                        {ot.description}
-                      </div>
-                    )}
-
-                    {/* Время и кнопки действий */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '2px', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {formatTime(ot.start_time)}{ot.end_time && ` - ${formatTime(ot.end_time)}`}
-                      </div>
-                      {renderActionButtons(ot)}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* Табличный режим (для десктопа и при переключении на мобилках) */}
-        <div className={`table-scroll-container ${mobileView === 'cards' ? 'hide-on-mobile' : ''}`} style={{ flex: 1, borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-          <table className="table-container" style={{ minWidth: `${Math.max(850, totalTableWidth)}px`, width: '100%', tableLayout: 'fixed' }}>
-            <thead>
-              <tr>
-                {visibleColumns.map(col => {
-                  const isSortable = ['date', 'user', 'project', 'hours', 'status'].includes(col.id);
-                  const isActive = sortKey === col.id;
-                  const colWidth = col.width || DEFAULT_COLUMN_WIDTHS[col.id] || 150;
-                  return (
-                    <th
-                      key={col.id}
-                      className="table-header"
-                      draggable={col.id !== 'actions' && !resizingColId}
-                      onDragStart={e => handleDragStart(e, col.id)}
-                      onDragOver={e => handleDragOver(e, col.id)}
-                      onDrop={e => handleDrop(e, col.id)}
-                      onClick={() => isSortable ? handleSort(col.id as SortKey) : undefined}
-                      style={{
-                        cursor: col.id === 'actions' ? 'default' : isSortable ? 'pointer' : 'grab',
-                        textAlign: col.id === 'actions' ? 'right' : 'left',
-                        opacity: draggedColId === col.id ? 0.5 : 1,
-                        borderLeft: draggedColId && draggedColId !== col.id ? '2px dashed var(--primary)' : undefined,
-                        transition: resizingColId ? 'none' : 'background-color 0.2s ease, opacity 0.2s ease',
-                        width: `${colWidth}px`,
-                        minWidth: `${colWidth}px`,
-                        maxWidth: `${colWidth}px`,
-                        userSelect: 'none',
-                        color: isActive ? 'var(--primary)' : undefined,
-                        whiteSpace: 'nowrap',
-                        position: 'relative',
-                        boxSizing: 'border-box',
-                      }}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 'calc(100% - 12px)' }}>
-                        {col.label}
-                        {isSortable && (
-                          isActive
-                            ? (sortDir === 'asc'
-                              ? <ChevronUp size={13} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                              : <ChevronDown size={13} style={{ color: 'var(--primary)', flexShrink: 0 }} />)
-                            : <ChevronUp size={13} style={{ opacity: 0.25, flexShrink: 0 }} />
-                        )}
-                      </span>
-                      {col.id !== 'actions' && (
-                        <div
-                          className={`column-resizer ${resizingColId === col.id ? 'resizing' : ''}`}
-                          onMouseDown={e => handleResizeStart(e, col.id, colWidth)}
-                          onClick={e => e.stopPropagation()}
-                          onDoubleClick={e => {
-                            e.stopPropagation();
-                            resetSingleColumnWidth(col.id);
-                          }}
-                          title="Потяните для изменения ширины (двойной клик для сброса)"
-                        />
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedOvertimes.map((ot: Overtime) => (
-                <tr key={ot.id}>
-                  {visibleColumns.map(col => {
-                    const colWidth = col.width || DEFAULT_COLUMN_WIDTHS[col.id] || 150;
-                    const cellStyle: React.CSSProperties = {
-                      width: `${colWidth}px`,
-                      minWidth: `${colWidth}px`,
-                      maxWidth: `${colWidth}px`,
-                      boxSizing: 'border-box',
-                    };
-                    switch (col.id) {
-                      case 'date':
-                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{formatDate(ot.start_time)}</td>;
-                      case 'user':
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.user?.full_name || '-'}>{ot.user?.full_name || '-'}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.user?.email || ''}>{ot.user?.email}</div>
-                          </td>
-                        );
-                      case 'project':
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={ot.project?.name || 'Внутренний'}>{ot.project?.name || 'Внутренний'}</div>
-                          </td>
-                        );
-                      case 'hours':
-                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{ot.hours}ч</td>;
-                      case 'approved_hours': {
-                        const isApproved = ot.status === 'APPROVED' || ot.status === 'MANAGER_APPROVED' || ot.status === 'HEAD_APPROVED';
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                            {isApproved && ot.approved_hours != null
-                              ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{ot.approved_hours}ч</span>
-                              : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                          </td>
-                        );
-                      }
-                      case 'status':
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                            <span className={`badge badge-${ot.status === 'APPROVED' ? 'success' : ot.status === 'REJECTED' || ot.status === 'CANCELLED' ? 'danger' : ot.status === 'IN_PROGRESS' ? 'info' : 'warning'}`}>
-                              {STATUS_LABELS[ot.status] || ot.status}
-                            </span>
-                          </td>
-                        );
-                      case 'description':
-                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ot.description}>{ot.description || '-'}</td>;
-                      case 'start_time':
-                        return <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>{formatTime(ot.start_time)}</td>;
-                      case 'end_time': {
-                        const isEndEpoch = ot.end_time && new Date(ot.end_time).getFullYear() <= 1970;
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, whiteSpace: 'nowrap' }}>
-                            {ot.status === 'IN_PROGRESS' || !ot.end_time || isEndEpoch
-                              ? '-'
-                              : formatTime(ot.end_time)}
-                          </td>
-                        );
-                      }
-                      case 'actions':
-                        return (
-                          <td key={col.id} className="table-cell" style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {renderActionButtons(ot)}
-                          </td>
-                        );
-                      default:
-                        return null;
-                    }
-                  })}
-                </tr>
-              ))}
-              {sortedOvertimes.length === 0 && (
-                <tr><td colSpan={visibleColumns.length} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Ничего не найдено</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination UI */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Страница <b>{currentPage}</b> из <b>{totalPages}</b>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="action-button-modern"
-              style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="action-button-modern"
-              style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
+        <DashboardOvertimesTable
+          mobileView={mobileView}
+          activeTab={activeTab}
+          overtimes={sortedOvertimes}
+          columns={columns}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={(k) => handleSort(k as SortKey)}
+          draggedColId={draggedColId}
+          resizingColId={resizingColId}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onResizeStart={handleResizeStart}
+          onResetSingleColumnWidth={resetSingleColumnWidth}
+          defaultColumnWidths={DEFAULT_COLUMN_WIDTHS}
+          totalTableWidth={totalTableWidth}
+          renderActionButtons={renderActionButtons}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {isCreateModalOpen && (
         <CreateOvertimeModal
           editData={editOvertime}
-          onClose={() => { setIsCreateModalOpen(false); setEditOvertime(null); }}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setEditOvertime(null);
+          }}
           onCreated={() => {
             setIsCreateModalOpen(false);
             setEditOvertime(null);

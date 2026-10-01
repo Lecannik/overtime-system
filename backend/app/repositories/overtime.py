@@ -260,32 +260,35 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
     result = await session.execute(approved_query)
     approved_overtimes = result.scalars().all()
 
-    now = datetime.now(timezone.utc)
-    this_month_start = date(now.year, now.month, 1)
+    now_local = datetime.now(settings.tz_info)
+    this_month_start = date(now_local.year, now_local.month, 1)
 
-    first_this_month = date(now.year, now.month, 1)
-    last_month_end = first_this_month - timedelta(days=1)
+    last_month_end = this_month_start - timedelta(days=1)
     last_month_start = date(last_month_end.year, last_month_end.month, 1)
 
     this_month_hours = 0.0
     last_month_hours = 0.0
     total_approved_hours = 0.0
     project_map = defaultdict(float)
-    daily_map = defaultdict(float)
 
     # Статистика за последние 30 дней (непрерывный календарный диапазон ровно из 30 дней)
-    today = now.date()
+    today = now_local.date()
     thirty_days_ago = today - timedelta(days=29)
     daily_map = {
         (thirty_days_ago + timedelta(days=i)).isoformat(): {"hours": 0.0, "pending_hours": 0.0} for i in range(30)
     }
+
+    def _get_local_date(dt: datetime) -> date:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(settings.tz_info).date()
 
     for ot in approved_overtimes:
         h = ot.approved_hours if ot.approved_hours is not None else ot.hours
         total_approved_hours += h
         project_map[ot.project.name] += h
 
-        ot_date = ot.start_time.date()
+        ot_date = _get_local_date(ot.start_time)
         if ot_date >= this_month_start:
             this_month_hours += h
         elif last_month_start <= ot_date <= last_month_end:
@@ -293,7 +296,7 @@ async def get_personal_stats(session: AsyncSession, user_id: int):
 
     # Учитываем как согласованные, так и ожидающие проверки переработки за последние 30 дней
     for ot in all_overtimes:
-        ot_date = ot.start_time.date()
+        ot_date = _get_local_date(ot.start_time)
         iso_date = ot_date.isoformat()
         if iso_date in daily_map:
             if ot.status == OvertimeStatus.APPROVED:
@@ -363,18 +366,24 @@ async def check_overlapping_overtimes(
 
 
 async def get_weekly_overtime_hours(
-    session: AsyncSession, user_id: int, project_id: int, target_date: datetime | None = None
+    session: AsyncSession,
+    user_id: int | None = None,
+    project_id: int | None = None,
+    target_date: datetime | None = None,
+    per_user: bool = False,
 ) -> float:
     """
-    Подсчет часов за календарную неделю (с понедельника по воскресенье),
-    в которую попадает target_date (по умолчанию — текущий момент времени).
+    Подсчет часов за календарную неделю (с понедельника по воскресенье) по проекту
+    для всей команды проекта (или конкретного пользователя при per_user=True).
+    Границы недели определяются в локальном часовом поясе организации (Asia/Almaty).
     Исключает временной перекос (Time Skew), когда переработка подается за прошедшую неделю.
 
     Args:
         session (AsyncSession): Асинхронная сессия SQLAlchemy.
-        user_id (int): ID сотрудника.
+        user_id (int, optional): ID сотрудника (учитывается только если per_user=True).
         project_id (int): ID проекта.
         target_date (datetime, optional): Дата переработки для определения целевой недели.
+        per_user (bool, optional): Если True, фильтрует только по конкретному сотруднику. По умолчанию False (вся команда).
 
     Returns:
         float: Сумма часов переработок за целевую календарную неделю.
@@ -383,16 +392,25 @@ async def get_weekly_overtime_hours(
     if ref_date.tzinfo is None:
         ref_date = ref_date.replace(tzinfo=timezone.utc)
 
-    monday = (ref_date - timedelta(days=ref_date.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    sunday_end = monday + timedelta(days=7)
+    # Приводим к часовому поясу организации (Asia/Almaty) для точного расчета понедельника 00:00
+    local_ref = ref_date.astimezone(settings.tz_info)
+    local_monday = (local_ref - timedelta(days=local_ref.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    local_sunday_end = local_monday + timedelta(days=7)
 
-    query = select(Overtime).where(
-        Overtime.user_id == user_id,
+    # Конвертируем обратно в UTC для точного фильтра в базе данных
+    monday_utc = local_monday.astimezone(timezone.utc)
+    sunday_end_utc = local_sunday_end.astimezone(timezone.utc)
+
+    filters = [
         Overtime.project_id == project_id,
         Overtime.status.notin_([OvertimeStatus.CANCELLED, OvertimeStatus.REJECTED]),
-        Overtime.start_time >= monday,
-        Overtime.start_time < sunday_end,
-    )
+        Overtime.start_time >= monday_utc,
+        Overtime.start_time < sunday_end_utc,
+    ]
+    if per_user and user_id is not None:
+        filters.append(Overtime.user_id == user_id)
+
+    query = select(Overtime).where(*filters)
     result = await session.execute(query)
     overtimes = result.scalars().all()
 

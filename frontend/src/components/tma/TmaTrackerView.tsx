@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Play, Square, AlertCircle, Check, Search, Edit2, ChevronDown, Folder, X } from 'lucide-react';
+import { Play, AlertCircle, Check } from 'lucide-react';
 import {
-  getActiveSession, startSession, stopSession,
-  getProjects, getMyStats, getMyOvertimes, getLastProject, createOvertime, updateOvertime
+  getActiveSession,
+  startSession,
+  stopSession,
+  getProjects,
+  getMyStats,
+  getMyOvertimes,
+  getLastProject,
+  createOvertime,
+  updateOvertime,
 } from '../../services/api';
 import type { Overtime, Project, UserStats, User } from '../../types';
-import { STATUS_LABELS } from '../../constants/locale';
+import { TmaActiveSessionCard } from './TmaActiveSessionCard';
+import { TmaProjectSelector } from './TmaProjectSelector';
+import { TmaRecentOvertimesList } from './TmaRecentOvertimesList';
 
 interface TmaTrackerViewProps {
   haptic: {
@@ -28,9 +37,6 @@ interface TmaTrackerViewProps {
  * - Быстрый запуск и остановку с автоматической фиксацией геопозиции;
  * - Возможность ручной подачи заявки за прошедшее время;
  * - Сводку личной статистики часов и ленту последних заявок.
- *
- * @param {TmaTrackerViewProps} props - Свойства компонента.
- * @returns {JSX.Element} Экран персонального трекера переработок.
  */
 export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentUser, backButton }) => {
   const [activeSession, setActiveSession] = useState<Overtime | null>(null);
@@ -95,7 +101,6 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     }
   }, [editingOt, isManualMode, isProjectPickerOpen, isManualProjectPickerOpen, backButton]);
 
-  // Форматирование даты в локальный ISO формат для <input type="datetime-local">
   const formatDateTimeLocal = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -111,48 +116,58 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     return formatDateTimeLocal(d);
   }, []);
 
-  // Безопасное сохранение ID последнего выбранного проекта
-  const saveLastProjectId = (id: number | string) => {
-    try {
-      localStorage.setItem('overtime_last_project_id', String(id));
-    } catch {
-      // Игнорируем ошибку квоты или приватного режима webview
+  const saveLastProjectId = (id: number | '') => {
+    if (id) {
+      localStorage.setItem('tma_last_project_id', id.toString());
     }
   };
 
-  // Загрузка начальных данных
   const loadData = useCallback(async () => {
     try {
-      const [active, projs, userStats, myOvt, lastProj] = await Promise.all([
-        getActiveSession().catch(() => null),
-        getProjects().catch(() => []),
-        getMyStats().catch(() => null),
-        getMyOvertimes({ page_size: 5, view: 'dashboard' }).catch(() => ({ items: [] })),
+      const [session, projectList, myStats, overtimesRes, lastProjRes] = await Promise.allSettled([
+        getActiveSession(),
+        getProjects(),
+        getMyStats(),
+        getMyOvertimes({ page_size: 5 }),
         getLastProject().catch(() => null),
       ]);
 
-      setActiveSession(active);
-      setProjects(projs);
-      setStats(userStats);
-      setRecentOvertimes(myOvt.items || []);
+      if (session.status === 'fulfilled') {
+        setActiveSession(session.value);
+      }
 
-      // Определение предыдущего проекта пользователя для стандартного выбора по умолчанию
-      const savedProjectId = localStorage.getItem('overtime_last_project_id');
-      const resolvedPrev = (lastProj && projs.find((p) => p.id === lastProj.id))
-        || (savedProjectId && projs.find((p) => String(p.id) === savedProjectId))
-        || (myOvt.items?.[0]?.project_id && projs.find((p) => p.id === myOvt.items[0].project_id))
-        || (myOvt.items?.[0]?.project?.id && projs.find((p) => p.id === myOvt.items?.[0]?.project?.id))
-        || null;
+      let loadedProjects: Project[] = [];
+      if (projectList.status === 'fulfilled') {
+        loadedProjects = projectList.value;
+        setProjects(loadedProjects);
+      }
 
-      if (resolvedPrev) {
-        setPreviousProject(resolvedPrev);
-        setSelectedProjectId((prev) => (prev ? prev : resolvedPrev.id));
-        saveLastProjectId(resolvedPrev.id);
-      } else if (projs.length > 0) {
-        setSelectedProjectId((prev) => (prev ? prev : projs[0].id));
+      if (myStats.status === 'fulfilled') {
+        setStats(myStats.value);
+      }
+
+      if (overtimesRes.status === 'fulfilled') {
+        setRecentOvertimes(overtimesRes.value.items || []);
+      }
+
+      let detectedPreviousProject: Project | null = null;
+      if (lastProjRes.status === 'fulfilled' && lastProjRes.value) {
+        detectedPreviousProject = lastProjRes.value;
+      } else {
+        const savedId = localStorage.getItem('tma_last_project_id');
+        if (savedId) {
+          detectedPreviousProject = loadedProjects.find((p) => p.id === Number(savedId)) || null;
+        }
+      }
+
+      if (detectedPreviousProject) {
+        setPreviousProject(detectedPreviousProject);
+        setSelectedProjectId(detectedPreviousProject.id);
+      } else if (loadedProjects.length > 0) {
+        setSelectedProjectId(loadedProjects[0].id);
       }
     } catch (err) {
-      console.error('[TMA Tracker] Ошибка загрузки данных:', err);
+      console.error('[TMA Tracker] Ошибка при первичной загрузке данных:', err);
     } finally {
       setLoading(false);
     }
@@ -162,13 +177,14 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     loadData();
   }, [loadData]);
 
-  // Управление живым секундомером
+  // Секундомер активной сессии
   useEffect(() => {
-    if (activeSession && activeSession.start_time) {
+    if (activeSession) {
+      const startMs = new Date(activeSession.start_time).getTime();
       const updateTimer = () => {
-        const startMs = new Date(activeSession.start_time).getTime();
-        const diffSecs = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
-        setElapsedSeconds(diffSecs);
+        const nowMs = Date.now();
+        const diffSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+        setElapsedSeconds(diffSec);
       };
 
       updateTimer();
@@ -183,20 +199,16 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     }
   }, [activeSession]);
 
-  const formatElapsedTime = (totalSecs: number) => {
-    const hours = Math.floor(totalSecs / 3600);
-    const minutes = Math.floor((totalSecs % 3600) / 60);
-    const seconds = totalSecs % 60;
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  const formatElapsedTime = (totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
-  const getGeoLocation = (): Promise<{ lat: number; lng: number } | null> => {
+  const getGeoLocation = async (): Promise<{ lat: number; lng: number } | null> => {
+    if (!navigator.geolocation) return null;
     return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        resolve(null);
-        return;
-      }
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(null),
@@ -230,8 +242,9 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
       setActiveSession(created);
       setSessionDesc('');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        || 'Ошибка запуска сессии переработки.';
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Ошибка запуска сессии переработки.';
       setStartError(msg);
       haptic.notification('error');
     } finally {
@@ -263,12 +276,12 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
       setActiveSession(null);
       setStopComment('');
       setStopError('');
-      // Перезагружаем статистику и список
       await loadData();
     } catch (err: unknown) {
       console.error('[TMA Tracker] Ошибка остановки сессии:', err);
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        || 'Ошибка завершения переработки.';
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Ошибка завершения переработки.';
       setStopError(msg);
       haptic.notification('error');
     } finally {
@@ -296,7 +309,6 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     const end = new Date(manualEndTime);
     const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
 
-    // Запрет будущего времени для переработки
     if (start > nowWithGrace) {
       setManualError('Время начала не может быть в будущем. Переработка подается за фактически отработанное время.');
       haptic.notification('warning');
@@ -339,8 +351,9 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
       await loadData();
     } catch (err: unknown) {
       console.error('[TMA Tracker] Ошибка создания ручной заявки:', err);
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        || 'Ошибка создания заявки на переработку.';
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Ошибка создания заявки на переработку.';
       setManualError(msg);
       haptic.notification('error');
     } finally {
@@ -348,457 +361,120 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
     }
   };
 
-  const filteredProjects = projects.filter((p) =>
-    p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
-    (p.code && p.code.toLowerCase().includes(projectSearch.toLowerCase()))
-  );
+  const handleUpdateSubmit = async () => {
+    if (!editingOt) return;
+    if (!editProjectId) {
+      setUpdateError('Пожалуйста, выберите проект');
+      haptic.notification('warning');
+      return;
+    }
+    if (!editStartTime) {
+      setUpdateError('Пожалуйста, укажите время начала');
+      haptic.notification('warning');
+      return;
+    }
 
-  /**
-   * Отрисовывает кастомный селектор проектов для мобильного интерфейса TMA
-   * с живым поиском и мгновенной фиксацией выбора.
-   *
-   * @param {boolean} isManual Флаг ручного режима подачи заявки.
-   * @returns {JSX.Element} Интерактивный компонент выбора проекта.
-   */
-  const renderProjectSelector = (isManual: boolean) => {
-    const isOpen = isManual ? isManualProjectPickerOpen : isProjectPickerOpen;
-    const setIsOpen = isManual ? setIsManualProjectPickerOpen : setIsProjectPickerOpen;
-    const currentProject = projects.find((p) => p.id === Number(selectedProjectId));
+    const startD = new Date(editStartTime);
+    const endD = editEndTime ? new Date(editEndTime) : null;
+    const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
 
-    return (
-      <div style={{ position: 'relative' }}>
-        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
-          Проект <span style={{ color: '#ef4444' }}>*</span>
-        </label>
+    if (startD > nowWithGrace) {
+      setUpdateError('Время начала не может быть в будущем');
+      haptic.notification('warning');
+      return;
+    }
+    if (endD && endD > nowWithGrace) {
+      setUpdateError('Время окончания не может быть в будущем');
+      haptic.notification('warning');
+      return;
+    }
+    if (endD && endD <= startD) {
+      setUpdateError('Время окончания должно быть позже времени начала');
+      haptic.notification('warning');
+      return;
+    }
 
-        {/* Кнопка-карточка выбранного проекта */}
-        <div
-          onClick={() => {
-            haptic.selection();
-            setIsOpen(!isOpen);
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '11px 14px',
-            borderRadius: '12px',
-            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-            border: !selectedProjectId && (startError || manualError)
-              ? '1px solid #ef4444'
-              : '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              background: 'rgba(59, 130, 246, 0.15)',
-              color: 'var(--primary, #3b82f6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <Folder size={17} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  color: currentProject ? 'var(--tg-theme-text-color, #f8fafc)' : 'var(--tg-theme-hint-color, #94a3b8)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {currentProject ? currentProject.name : 'Выберите проект...'}
-                </span>
-                {currentProject && previousProject && currentProject.id === previousProject.id && (
-                  <span style={{
-                    fontSize: '0.68rem',
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                    background: 'rgba(59, 130, 246, 0.22)',
-                    color: '#60a5fa',
-                    fontWeight: 600,
-                    flexShrink: 0
-                  }}>
-                    ⏮ Предыдущий
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-            {currentProject?.code && (
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 6px',
-                borderRadius: '6px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: 'var(--tg-theme-hint-color, #94a3b8)',
-                fontFamily: 'monospace'
-              }}>
-                {currentProject.code}
-              </span>
-            )}
-            <ChevronDown size={18} style={{
-              color: 'var(--tg-theme-hint-color, #94a3b8)',
-              transform: isOpen ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.2s ease'
-            }} />
-          </div>
-        </div>
+    setIsUpdating(true);
+    setUpdateError('');
+    try {
+      await updateOvertime(editingOt.id, {
+        project_id: Number(editProjectId),
+        start_time: startD.toISOString(),
+        end_time: endD ? endD.toISOString() : undefined,
+        description: editDesc.trim() || undefined,
+      });
 
-        {/* Выпадающий список проектов с поиском */}
-        {isOpen && (
-          <div style={{
-            marginTop: '8px',
-            padding: '10px',
-            borderRadius: '14px',
-            background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.35)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            maxHeight: '260px',
-            zIndex: 10,
-          }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{
-                position: 'absolute',
-                left: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--tg-theme-hint-color, #94a3b8)'
-              }} />
-              <input
-                type="text"
-                autoFocus
-                value={projectSearch}
-                onChange={(e) => setProjectSearch(e.target.value)}
-                placeholder="Поиск по названию или коду..."
-                style={{
-                  width: '100%',
-                  padding: '8px 28px 8px 30px',
-                  borderRadius: '8px',
-                  background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  color: 'var(--tg-theme-text-color, #f8fafc)',
-                  fontSize: '0.84rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-              {projectSearch && (
-                <button
-                  type="button"
-                  onClick={() => setProjectSearch('')}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--tg-theme-hint-color, #94a3b8)',
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            {/* Быстрый выбор предыдущего проекта, если сейчас выбран другой */}
-            {previousProject && Number(selectedProjectId) !== previousProject.id && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedProjectId(previousProject.id);
-                  setIsOpen(false);
-                  setProjectSearch('');
-                  setStartError('');
-                  setManualError('');
-                  haptic.selection();
-                  saveLastProjectId(previousProject.id);
-                }}
-                style={{
-                  padding: '7px 10px',
-                  borderRadius: '8px',
-                  background: 'rgba(59, 130, 246, 0.14)',
-                  border: '1px dashed rgba(59, 130, 246, 0.4)',
-                  color: '#60a5fa',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  textAlign: 'left'
-                }}
-              >
-                <span>⏮ Предыдущий проект:</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {previousProject.name}
-                </span>
-              </button>
-            )}
-
-            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-              {filteredProjects.map((p) => {
-                const isSelected = p.id === Number(selectedProjectId);
-                const isPrev = previousProject && p.id === previousProject.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => {
-                      setSelectedProjectId(p.id);
-                      setIsOpen(false);
-                      setProjectSearch('');
-                      setStartError('');
-                      setManualError('');
-                      haptic.selection();
-                      saveLastProjectId(p.id);
-                    }}
-                    style={{
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: isSelected ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-                      border: isSelected ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
-                      color: 'var(--tg-theme-text-color, #f8fafc)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: isSelected ? 700 : 500, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {p.name}
-                        </span>
-                        {isPrev && (
-                          <span style={{
-                            fontSize: '0.68rem',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: 'rgba(59, 130, 246, 0.25)',
-                            color: '#60a5fa',
-                            fontWeight: 600,
-                            flexShrink: 0
-                          }}>
-                            ⏮ Предыдущий
-                          </span>
-                        )}
-                      </div>
-                      {p.code && (
-                        <span style={{ fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', fontFamily: 'monospace' }}>
-                          {p.code}
-                        </span>
-                      )}
-                    </div>
-                    {isSelected && <Check size={16} color="var(--primary, #3b82f6)" />}
-                  </div>
-                );
-              })}
-              {filteredProjects.length === 0 && (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--tg-theme-hint-color, #94a3b8)', fontSize: '0.82rem' }}>
-                  Проекты не найдены
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
+      haptic.notification('success');
+      setEditingOt(null);
+      await loadData();
+    } catch (err: unknown) {
+      console.error('[TMA Tracker] Ошибка обновления переработки:', err);
+      haptic.notification('error');
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Не удалось сохранить изменения.';
+      setUpdateError(msg);
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
-  if (loading && !stats && !activeSession) {
+  if (loading) {
     return (
-      <div style={{
-        padding: '60px 20px',
-        textAlign: 'center',
-        color: 'var(--tg-theme-hint-color, #94a3b8)',
-        fontSize: '0.92rem',
-      }}>
+      <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
         Загрузка трекера...
       </div>
     );
   }
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '16px',
-      padding: '12px 14px 28px',
-      fontFamily: 'Inter, -apple-system, sans-serif',
-      color: 'var(--tg-theme-text-color, var(--text-primary, #f8fafc))',
-    }}>
-      {/* ================= БЛОК АКТИВНОЙ СЕССИИ / СТАРТА ================= */}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+        padding: '16px 14px 80px',
+        fontFamily: 'Inter, -apple-system, sans-serif',
+        color: 'var(--tg-theme-text-color, var(--text-primary, #f8fafc))',
+      }}
+    >
+      {/* Приветствие */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
+        <div>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
+            Привет, {currentUser?.full_name?.split(' ')[0] || 'Коллега'} 👋
+          </h2>
+          <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
+            Учет времени сверхурочной работы
+          </p>
+        </div>
+      </div>
+
+      {/* Основная карточка трекера */}
       {activeSession ? (
-        /* КАРТОЧКА АКТИВНОЙ СЕССИИ (ТАЙМЕР) */
-        <div style={{
-          background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-          borderRadius: '20px',
-          padding: '24px 20px',
-          border: '1px solid rgba(16, 185, 129, 0.4)',
-          boxShadow: '0 8px 30px rgba(16, 185, 129, 0.15)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          gap: '14px',
-        }}>
-          {/* Пульсирующий бейдж */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
+        <TmaActiveSessionCard
+          activeSession={activeSession}
+          elapsedSeconds={elapsedSeconds}
+          stopComment={stopComment}
+          onStopCommentChange={setStopComment}
+          stopError={stopError}
+          isStopping={isStopping}
+          onStopSession={handleStopSession}
+          formatElapsedTime={formatElapsedTime}
+        />
+      ) : (
+        <div
+          style={{
+            background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
             borderRadius: '20px',
-            padding: '4px 12px',
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            color: '#10b981',
-          }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#10b981',
-              boxShadow: '0 0 10px #10b981',
-              display: 'inline-block',
-            }} />
-            Сессия активна
-          </div>
-
-          {/* Цифровой секундомер */}
-          <div style={{
-            fontFamily: 'monospace, -apple-system',
-            fontVariantNumeric: 'tabular-nums',
-            fontSize: '2.8rem',
-            fontWeight: 800,
-            letterSpacing: '2px',
-            color: 'var(--tg-theme-text-color, #f8fafc)',
-            margin: '4px 0',
-          }}>
-            {formatElapsedTime(elapsedSeconds)}
-          </div>
-
-          {/* Детали сессии */}
-          <div style={{
-            width: '100%',
-            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-            borderRadius: '12px',
-            padding: '10px 14px',
-            fontSize: '0.86rem',
+            padding: '20px 18px',
+            border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '4px',
-            textAlign: 'left',
-          }}>
-            <div style={{ fontWeight: 600 }}>
-              📁 {activeSession.project?.name || 'Проект'}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
-              Начало: {new Date(activeSession.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          </div>
-
-          {/* Поле комментария к закрытию */}
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{
-              display: 'block',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              color: stopError ? '#ef4444' : 'var(--tg-theme-text-color, #f8fafc)'
-            }}>
-              Отчет о выполненных работах <span style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <textarea
-              rows={3}
-              value={stopComment}
-              onChange={(e) => {
-                setStopComment(e.target.value);
-                if (stopError) setStopError('');
-              }}
-              placeholder="Подробно опишите, какие задачи были выполнены за смену (обязательно для завершения)..."
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: '12px',
-                background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                border: stopError ? '1px solid #ef4444' : '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-                color: 'var(--tg-theme-text-color, #f8fafc)',
-                fontSize: '0.88rem',
-                outline: 'none',
-                resize: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-            {stopError && (
-              <div style={{
-                color: '#ef4444',
-                fontSize: '0.78rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontWeight: 500,
-              }}>
-                <AlertCircle size={14} style={{ flexShrink: 0 }} />
-                <span>{stopError}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Большая кнопка завершения */}
-          <button
-            type="button"
-            onClick={handleStopSession}
-            disabled={isStopping}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: '14px',
-              border: 'none',
-              background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-              color: '#ffffff',
-              fontSize: '1.05rem',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              cursor: isStopping ? 'not-allowed' : 'pointer',
-              opacity: isStopping ? 0.7 : 1,
-              boxShadow: '0 6px 20px rgba(239, 68, 68, 0.35)',
-            }}
-          >
-            <Square size={20} fill="#ffffff" />
-            <span>{isStopping ? 'Завершение...' : 'Завершить переработку'}</span>
-          </button>
-        </div>
-      ) : (
-        /* КАРТОЧКА ЗАПУСКА СЕССИИ (ТАЙМЕР НЕ АКТИВЕН) */
-        <div style={{
-          background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-          borderRadius: '20px',
-          padding: '20px 18px',
-          border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '14px',
-        }}>
+            gap: '14px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>
               {isManualMode ? 'Подача за прошедшее время' : 'Таймер переработки'}
@@ -809,7 +485,6 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                 haptic.selection();
                 setManualError('');
                 if (!isManualMode) {
-                  // Инициализируем актуальным временем: окончание - сейчас, начало - 2 часа назад
                   const now = new Date();
                   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
                   setManualEndTime(formatDateTimeLocal(now));
@@ -832,42 +507,65 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
           </div>
 
           {startError && (
-            <div style={{
-              background: 'rgba(239, 68, 68, 0.12)',
-              borderRadius: '10px',
-              padding: '10px 12px',
-              color: '#ef4444',
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}>
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                color: '#ef4444',
+                fontSize: '0.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
               <AlertCircle size={16} />
               <span>{startError}</span>
             </div>
           )}
 
           {isManualMode ? (
-            /* ФОРМА РУЧНОЙ ПОДАЧИ */
             <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {manualError && (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.12)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: '#ef4444',
-                  fontSize: '0.82rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
+                <div
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    color: '#ef4444',
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
                   <AlertCircle size={16} style={{ flexShrink: 0 }} />
                   <span>{manualError}</span>
                 </div>
               )}
 
-              {renderProjectSelector(true)}
+              <TmaProjectSelector
+                isOpen={isManualProjectPickerOpen}
+                onToggleOpen={() => {
+                  haptic.selection();
+                  setIsManualProjectPickerOpen(!isManualProjectPickerOpen);
+                }}
+                onClose={() => setIsManualProjectPickerOpen(false)}
+                selectedProjectId={selectedProjectId}
+                onSelectProject={(id) => {
+                  setSelectedProjectId(id);
+                  setIsManualProjectPickerOpen(false);
+                  setProjectSearch('');
+                  setManualError('');
+                  saveLastProjectId(id);
+                }}
+                projects={projects}
+                previousProject={previousProject}
+                projectSearch={projectSearch}
+                onProjectSearchChange={setProjectSearch}
+                haptic={haptic}
+              />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
@@ -978,9 +676,28 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
               </button>
             </form>
           ) : (
-            /* ФОРМА БЫСТРОГО СТАРТА ТАЙМЕРА */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {renderProjectSelector(false)}
+              <TmaProjectSelector
+                isOpen={isProjectPickerOpen}
+                onToggleOpen={() => {
+                  haptic.selection();
+                  setIsProjectPickerOpen(!isProjectPickerOpen);
+                }}
+                onClose={() => setIsProjectPickerOpen(false)}
+                selectedProjectId={selectedProjectId}
+                onSelectProject={(id) => {
+                  setSelectedProjectId(id);
+                  setIsProjectPickerOpen(false);
+                  setProjectSearch('');
+                  setStartError('');
+                  saveLastProjectId(id);
+                }}
+                projects={projects}
+                previousProject={previousProject}
+                projectSearch={projectSearch}
+                onProjectSearchChange={setProjectSearch}
+                haptic={haptic}
+              />
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>
@@ -1003,12 +720,18 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
                     boxSizing: 'border-box',
                   }}
                 />
-                <span style={{ fontSize: '0.72rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginTop: '4px', display: 'block' }}>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--tg-theme-hint-color, #94a3b8)',
+                    marginTop: '4px',
+                    display: 'block',
+                  }}
+                >
                   ℹ️ Подробный отчет о выполненной работе заполняется при завершении переработки
                 </span>
               </div>
 
-              {/* Большая зеленая кнопка старта */}
               <button
                 type="button"
                 onClick={handleStartSession}
@@ -1039,19 +762,17 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         </div>
       )}
 
-      {/* ================= СВОДКА СТАТИСТИКИ ================= */}
+      {/* Сводка статистики */}
       {stats && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '10px',
-        }}>
-          <div style={{
-            background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-            borderRadius: '16px',
-            padding: '14px',
-            border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-          }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div
+            style={{
+              background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+              borderRadius: '16px',
+              padding: '14px',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+            }}
+          >
             <div style={{ fontSize: '0.76rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
               В этом месяце
             </div>
@@ -1060,12 +781,14 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
             </div>
           </div>
 
-          <div style={{
-            background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-            borderRadius: '16px',
-            padding: '14px',
-            border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-          }}>
+          <div
+            style={{
+              background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
+              borderRadius: '16px',
+              padding: '14px',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+            }}
+          >
             <div style={{ fontSize: '0.76rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
               Всего одобрено
             </div>
@@ -1076,364 +799,34 @@ export const TmaTrackerView: React.FC<TmaTrackerViewProps> = ({ haptic, currentU
         </div>
       )}
 
-      {/* ================= ПОСЛЕДНИЕ ЗАЯВКИ ================= */}
-      {recentOvertimes.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, padding: '0 4px', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
-            Недавние переработки
-          </div>
-          {recentOvertimes.map((ot) => {
-            const getStatusBadgeProps = (status: string) => {
-              const text = STATUS_LABELS[status] || status;
-              switch (status) {
-                case 'APPROVED':
-                  return { text, bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' };
-                case 'REJECTED':
-                case 'CANCELLED':
-                  return { text, bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' };
-                case 'IN_PROGRESS':
-                  return { text, bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' };
-                case 'MANAGER_APPROVED':
-                  return { text: 'Одобрено менеджером', bg: 'rgba(8, 145, 178, 0.15)', color: '#0891b2' };
-                case 'HEAD_APPROVED':
-                  return { text: 'Одобрено нач. отдела', bg: 'rgba(37, 99, 235, 0.15)', color: '#2563eb' };
-                case 'PENDING':
-                default:
-                  return { text, bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
-              }
-            };
-
-            const { text: badgeText, bg: badgeBg, color: badgeColor } = getStatusBadgeProps(ot.status);
-
-            const canEdit =
-              Boolean(currentUser) &&
-              (currentUser?.role === 'admin' ||
-                (ot.user_id === currentUser?.id && (ot.status === 'PENDING' || ot.status === 'IN_PROGRESS')));
-
-            const isBeingEdited = editingOt?.id === ot.id;
-
-            return (
-              <div
-                key={ot.id}
-                style={{
-                  background: 'var(--tg-theme-secondary-bg-color, var(--bg-secondary, #0f172a))',
-                  borderRadius: '14px',
-                  padding: '12px 14px',
-                  border: isBeingEdited ? '1px solid #3b82f6' : '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                }}
-              >
-                {/* Верхняя строка карточки */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
-                      {ot.project?.name || 'Проект'}
-                    </div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--tg-theme-hint-color, #94a3b8)' }}>
-                      {new Date(ot.start_time).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} • {ot.hours || ot.raw_hours || 0} ч
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{
-                      background: badgeBg,
-                      color: badgeColor,
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      padding: '4px 8px',
-                      borderRadius: '8px',
-                    }}>
-                      {badgeText}
-                    </span>
-
-                    {canEdit && !isBeingEdited && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          haptic.selection();
-                          setEditingOt(ot);
-                          setEditProjectId((ot.project_id || '').toString());
-                          setEditStartTime(ot.start_time ? formatDateTimeLocal(new Date(ot.start_time)) : '');
-                          setEditEndTime(ot.end_time ? formatDateTimeLocal(new Date(ot.end_time)) : '');
-                          setEditDesc(ot.description || '');
-                          setUpdateError('');
-                        }}
-                        style={{
-                          background: 'rgba(59, 130, 246, 0.12)',
-                          border: '1px solid rgba(59, 130, 246, 0.25)',
-                          color: '#60a5fa',
-                          padding: '5px 8px',
-                          borderRadius: '8px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontSize: '0.74rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Edit2 size={12} />
-                        <span>Изменить</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Описание заявки если есть и не редактируется */}
-                {!isBeingEdited && ot.description && (
-                  <div style={{
-                    fontSize: '0.8rem',
-                    color: 'var(--tg-theme-text-color, var(--text-secondary, #cbd5e1))',
-                    lineHeight: 1.35,
-                  }}>
-                    💬 {ot.description}
-                  </div>
-                )}
-
-                {/* Форма редактирования */}
-                {isBeingEdited && (
-                  <div style={{
-                    marginTop: '4px',
-                    paddingTop: '10px',
-                    borderTop: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                  }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#60a5fa' }}>
-                      Редактирование заявки #{ot.id}
-                    </div>
-
-                    {updateError && (
-                      <div style={{
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        color: '#ef4444',
-                        fontSize: '0.78rem',
-                      }}>
-                        {updateError}
-                      </div>
-                    )}
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
-                        Проект
-                      </label>
-                      <select
-                        value={editProjectId}
-                        onChange={(e) => setEditProjectId(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
-                          color: 'var(--tg-theme-text-color, #f8fafc)',
-                          fontSize: '0.82rem',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        <option value="" style={{ background: '#1e293b', color: '#f8fafc' }}>Выберите проект...</option>
-                        {projects.map((p) => (
-                          <option key={p.id} value={p.id.toString()} style={{ background: '#1e293b', color: '#f8fafc' }}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
-                          Начало
-                        </label>
-                        <input
-                          type="datetime-local"
-                          value={editStartTime}
-                          max={maxAllowedDateTime}
-                          onChange={(e) => setEditStartTime(e.target.value)}
-                          style={{
-                            width: '100%',
-                            maxWidth: '100%',
-                            boxSizing: 'border-box',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
-                            color: 'var(--tg-theme-text-color, #f8fafc)',
-                            fontSize: '0.82rem',
-                            outline: 'none',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
-                          Окончание
-                        </label>
-                        <input
-                          type="datetime-local"
-                          value={editEndTime}
-                          min={editStartTime || undefined}
-                          max={maxAllowedDateTime}
-                          onChange={(e) => setEditEndTime(e.target.value)}
-                          style={{
-                            width: '100%',
-                            maxWidth: '100%',
-                            boxSizing: 'border-box',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                            border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
-                            color: 'var(--tg-theme-text-color, #f8fafc)',
-                            fontSize: '0.82rem',
-                            outline: 'none',
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--tg-theme-hint-color, #94a3b8)', marginBottom: '4px' }}>
-                        Описание работ
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={editDesc}
-                        onChange={(e) => setEditDesc(e.target.value)}
-                        placeholder="Что было сделано..."
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: 'var(--tg-theme-bg-color, var(--bg-tertiary, #1e293b))',
-                          border: '1px solid var(--border, rgba(255, 255, 255, 0.15))',
-                          color: 'var(--tg-theme-text-color, #f8fafc)',
-                          fontSize: '0.82rem',
-                          outline: 'none',
-                          resize: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!editProjectId) {
-                            setUpdateError('Пожалуйста, выберите проект');
-                            haptic.notification('warning');
-                            return;
-                          }
-                          if (!editStartTime) {
-                            setUpdateError('Пожалуйста, укажите время начала');
-                            haptic.notification('warning');
-                            return;
-                          }
-                          if (!editEndTime) {
-                            setUpdateError('Пожалуйста, укажите время окончания');
-                            haptic.notification('warning');
-                            return;
-                          }
-                          if (!editDesc.trim()) {
-                            setUpdateError('Пожалуйста, подробно укажите описание выполненных работ');
-                            haptic.notification('warning');
-                            return;
-                          }
-
-                          const startD = new Date(editStartTime);
-                          const endD = new Date(editEndTime);
-                          const nowWithGrace = new Date(Date.now() + 5 * 60 * 1000);
-
-                          if (startD > nowWithGrace) {
-                            setUpdateError('Время начала не может быть в будущем');
-                            haptic.notification('warning');
-                            return;
-                          }
-                          if (endD > nowWithGrace) {
-                            setUpdateError('Время окончания не может быть в будущем');
-                            haptic.notification('warning');
-                            return;
-                          }
-                          if (endD <= startD) {
-                            setUpdateError('Время окончания должно быть позже времени начала');
-                            haptic.notification('warning');
-                            return;
-                          }
-
-                          setIsUpdating(true);
-                          setUpdateError('');
-                          haptic.impact('medium');
-
-                          try {
-                            await updateOvertime(ot.id, {
-                              project_id: Number(editProjectId),
-                              start_time: startD.toISOString(),
-                              end_time: endD.toISOString(),
-                              description: editDesc.trim(),
-                            });
-                            haptic.notification('success');
-                            setEditingOt(null);
-                            await loadData();
-                          } catch (err: unknown) {
-                            const msg =
-                              (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-                              'Не удалось обновить заявку';
-                            setUpdateError(msg);
-                            haptic.notification('error');
-                          } finally {
-                            setIsUpdating(false);
-                          }
-                        }}
-                        disabled={isUpdating}
-                        style={{
-                          flex: 1,
-                          padding: '9px',
-                          borderRadius: '8px',
-                          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontWeight: 700,
-                          fontSize: '0.82rem',
-                          cursor: isUpdating ? 'not-allowed' : 'pointer',
-                          opacity: isUpdating ? 0.7 : 1,
-                        }}
-                      >
-                        {isUpdating ? 'Сохранение...' : 'Сохранить изменения'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          haptic.selection();
-                          setEditingOt(null);
-                          setUpdateError('');
-                        }}
-                        disabled={isUpdating}
-                        style={{
-                          padding: '9px 12px',
-                          borderRadius: '8px',
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          color: 'var(--tg-theme-text-color, #f8fafc)',
-                          border: 'none',
-                          fontSize: '0.82rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Отмена
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Последние заявки с возможностью редактирования */}
+      <TmaRecentOvertimesList
+        recentOvertimes={recentOvertimes}
+        editingOt={editingOt}
+        onStartEdit={(ot) => {
+          setEditingOt(ot);
+          setEditProjectId((ot.project_id || '').toString());
+          setEditStartTime(ot.start_time ? formatDateTimeLocal(new Date(ot.start_time)) : '');
+          setEditEndTime(ot.end_time ? formatDateTimeLocal(new Date(ot.end_time)) : '');
+          setEditDesc(ot.description || '');
+          setUpdateError('');
+        }}
+        onCancelEdit={() => setEditingOt(null)}
+        editProjectId={editProjectId}
+        onEditProjectIdChange={setEditProjectId}
+        editStartTime={editStartTime}
+        onEditStartTimeChange={setEditStartTime}
+        editEndTime={editEndTime}
+        onEditEndTimeChange={setEditEndTime}
+        editDesc={editDesc}
+        onEditDescChange={setEditDesc}
+        isUpdating={isUpdating}
+        updateError={updateError}
+        onSubmitUpdate={handleUpdateSubmit}
+        projects={projects}
+        maxAllowedDateTime={maxAllowedDateTime}
+        haptic={haptic}
+      />
     </div>
   );
 };

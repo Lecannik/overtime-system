@@ -5,11 +5,11 @@ from app.core.config import settings
 
 DATABASE_URL = (
     f"postgresql+asyncpg://"
-    f"{settings.POSTGRES_USER}:"
-    f"{settings.POSTGRES_PASSWORD}@"
-    f"{settings.POSTGRES_HOST}:"
-    f"{settings.POSTGRES_PORT}/"
-    f"{settings.POSTGRES_DB}"
+    f"{settings.db.user}:"
+    f"{settings.db.password}@"
+    f"{settings.db.host}:"
+    f"{settings.db.port}/"
+    f"{settings.db.db}"
 )
 
 

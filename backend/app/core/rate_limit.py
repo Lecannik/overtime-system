@@ -64,3 +64,9 @@ overtime_create_limiter = IPRateLimiter(max_attempts=20, window_seconds=60)
 
 # Admin мутации (create/update/delete/reset): 30 в минуту с одного IP
 admin_limiter = IPRateLimiter(max_attempts=30, window_seconds=60)
+
+# TMA WebApp авторизация: 10 запросов в минуту с одного IP
+tma_auth_limiter = IPRateLimiter(max_attempts=10, window_seconds=60)
+
+# TMA сессии таймера (start/stop): 5 запросов в минуту с одного IP
+tma_session_limiter = IPRateLimiter(max_attempts=5, window_seconds=60)

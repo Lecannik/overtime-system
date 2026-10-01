@@ -15,6 +15,8 @@ const AnalyticsPage = React.lazy(() => import('./components/pages/AnalyticsPage'
 const ChangePasswordPage = React.lazy(() => import('./components/pages/ChangePasswordPage'));
 const AuthSuccessPage = React.lazy(() => import('./components/pages/AuthSuccessPage'));
 const TmaApp = React.lazy(() => import('./components/tma/TmaApp'));
+import TmaErrorBoundary from './components/tma/TmaErrorBoundary';
+
 
 
 /**
@@ -99,7 +101,14 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/success" element={<AuthSuccessPage />} />
-        <Route path="/tma" element={<TmaApp />} />
+        <Route
+          path="/tma"
+          element={
+            <TmaErrorBoundary>
+              <TmaApp />
+            </TmaErrorBoundary>
+          }
+        />
 
         {/* Защищенные маршруты */}
         <Route
