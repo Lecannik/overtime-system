@@ -18,6 +18,8 @@ services:
     container_name: overtime_postgres
     restart: always
     env_file: [.env]
+    environment:
+      - TZ=Asia/Almaty
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,6 +37,7 @@ services:
     env_file: [.env]
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Almaty
     depends_on:
       postgres: { condition: service_healthy }
     volumes:

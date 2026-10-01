@@ -196,6 +196,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
         if (!dateStr) return '—';
         try {
             const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
             return d.toLocaleString('ru-RU', {
                 day: '2-digit',
                 month: '2-digit',
@@ -899,19 +900,19 @@ export const AuditTab: React.FC<AuditTabProps> = ({ searchQuery, onSearchChange 
                                             <tr style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '8px 0', fontWeight: 600 }}>Начало</td>
                                                 <td style={{ padding: '8px 0', color: 'var(--danger)' }}>
-                                                    {String(selectedLog.details.old_start || '—')}
+                                                    {formatDateTimeLocal(selectedLog.details.old_start as string)}
                                                 </td>
                                                 <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>
-                                                    {String(selectedLog.details.new_start || '—')}
+                                                    {formatDateTimeLocal(selectedLog.details.new_start as string)}
                                                 </td>
                                             </tr>
                                             <tr style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '8px 0', fontWeight: 600 }}>Окончание</td>
                                                 <td style={{ padding: '8px 0', color: 'var(--danger)' }}>
-                                                    {String(selectedLog.details.old_end || '—')}
+                                                    {formatDateTimeLocal(selectedLog.details.old_end as string)}
                                                 </td>
                                                 <td style={{ padding: '8px 0', color: 'var(--success)', fontWeight: 600 }}>
-                                                    {String(selectedLog.details.new_end || '—')}
+                                                    {formatDateTimeLocal(selectedLog.details.new_end as string)}
                                                 </td>
                                             </tr>
                                             <tr style={{ borderBottom: '1px solid var(--border)' }}>

@@ -112,6 +112,24 @@ def format_dt_local(dt: datetime | None) -> str:
     return local_dt.strftime("%d.%m.%Y %H:%M:%S")
 
 
+def _format_iso_to_local_str(iso_val: object) -> str:
+    """
+    Конвертирует ISO-строку времени аудита в локальное время организации (Asia/Almaty).
+    Формат: ДД.ММ.ГГГГ ЧЧ:ММ.
+    """
+    if not iso_val:
+        return "-"
+    iso_str = str(iso_val)
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_dt = dt.astimezone(settings.tz_info)
+        return local_dt.strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        return iso_str[:16]
+
+
 def format_details_to_text(action: str, details: dict | None) -> str:
     """
     Формирует понятное человекочитаемое текстовое описание деталей события аудита.
@@ -141,9 +159,9 @@ def format_details_to_text(action: str, details: dict | None) -> str:
         if old_h is not None and new_h is not None:
             parts.append(f"Часы: было {old_h} ч. → стало {new_h} ч.")
         if old_s and new_s:
-            parts.append(f"Начало: {old_s[:16]} → {new_s[:16]}")
+            parts.append(f"Начало: {_format_iso_to_local_str(old_s)} → {_format_iso_to_local_str(new_s)}")
         if old_e and new_e:
-            parts.append(f"Окончание: {old_e[:16]} → {new_e[:16]}")
+            parts.append(f"Окончание: {_format_iso_to_local_str(old_e)} → {_format_iso_to_local_str(new_e)}")
         changes = details.get("changes")
         if isinstance(changes, dict):
             for field, val in changes.items():
