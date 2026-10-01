@@ -12,7 +12,8 @@ import {
   restoreOvertime,
   exportMyAnalytics,
   exportAnalytics,
-  getAnalyticsSummary
+  getAnalyticsSummary,
+  getDepartments
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
@@ -417,8 +418,8 @@ const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     if (user?.role === 'admin') {
-      api.get('/departments/')
-        .then(res => setDepartments(res.data || []))
+      getDepartments()
+        .then(data => setDepartments(data || []))
         .catch(err => console.error('Failed to load departments', err));
     }
   }, [user]);

@@ -5,7 +5,7 @@ import {
     CheckCircle2, Search, Filter, ShieldCheck, ChevronDown,
     ChevronLeft, ChevronRight, LayoutGrid, Calendar, AlignLeft
 } from 'lucide-react';
-import { api, getOvertimes, reviewOvertime } from '../../services/api';
+import { getOvertimes, reviewOvertime, getDepartments } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import Header from '../layout/Header';
 import LoadingOverlay from '../atoms/LoadingOverlay';
@@ -202,7 +202,7 @@ const ReviewPage: React.FC = () => {
                 setUser(curUser);
 
                 if (curUser.role === 'admin') {
-                    const deptsRes = await api.get('/admin/departments').then(r => r.data);
+                    const deptsRes = await getDepartments();
                     setDepartments(deptsRes || []);
                 }
             } catch (err) {

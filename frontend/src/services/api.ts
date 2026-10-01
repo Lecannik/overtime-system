@@ -234,7 +234,8 @@ export const resetUserPassword = (id: number) => api.post<{ detail: string }>(`/
 export const updateMyPreferences = (data: Partial<User>) => api.patch<User>('/auth/me', data).then(r => r.data);
 
 // --- DEPARTMENTS ---
-export const getDepartments = () => api.get<Department[]>('/admin/departments').then(r => r.data);
+export const getDepartments = () => api.get<Department[]>('/departments/').then(r => r.data);
+export const getAdminDepartments = () => api.get<Department[]>('/admin/departments').then(r => r.data);
 export const createDepartment = (data: { name: string }) => api.post<Department>('/admin/departments', data).then(r => r.data);
 export const updateDepartment = (id: number, data: Partial<Department>) => api.patch<Department>(`/admin/departments/${id}`, data).then(r => r.data);
 export const deleteDepartment = (id: number) => api.delete(`/admin/departments/${id}`).then(r => r.data);

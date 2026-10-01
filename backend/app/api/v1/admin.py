@@ -72,6 +72,7 @@ async def create_department(
             db, current_user.id, "CREATE_DEPT", "department", new_dept.id, {"name": new_dept.name}
         )
         await db.commit()
+        cache_clear("departments")
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -140,6 +141,7 @@ async def update_department(
         updated_dept = await org_repo.update_department(db, dept, update_data)
         await audit_repo.create_audit_log(db, current_user.id, "UPDATE_DEPT", "department", dept_id, update_data)
         await db.commit()
+        cache_clear("departments")
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -164,6 +166,7 @@ async def delete_department(
         raise HTTPException(status_code=404, detail="Отдел не найден")
     try:
         await org_repo.delete_department(db, dept)
+        cache_clear("departments")
     except IntegrityError:
         raise HTTPException(
             status_code=409, detail="Невозможно удалить отдел, так как с ним связаны сотрудники или другие записи."
