@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Building2, Edit2, Trash2, LayoutGrid, Table, Users as UsersIcon, Plus } from 'lucide-react';
+import { Building2, Edit2, Trash2, LayoutGrid, Table, Users as UsersIcon, Plus, Search, X } from 'lucide-react';
 import type { Department, User } from '../../../types';
 import { updateDepartment } from '../../../services/api';
 
@@ -8,6 +8,7 @@ interface DepartmentsTabProps {
     departments: Department[];
     users: User[];
     searchQuery: string;
+    onSearchChange: (query: string) => void;
     onRefresh: () => void;
     onEdit: (dept: Department) => void;
     onDelete: (id: number) => void;
@@ -23,6 +24,7 @@ export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
     departments,
     users,
     searchQuery,
+    onSearchChange,
     onRefresh,
     onEdit,
     onDelete,
@@ -211,16 +213,66 @@ export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
                 </div>
 
                 {/* Дополнительные фильтры и счетчик */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1, minWidth: 'min(100%, 300px)' }}>
+                    {/* Поиск по названию или руководителю */}
+                    <div style={{ position: 'relative', flex: 1, minWidth: 'min(100%, 220px)' }}>
+                        <Search
+                            size={18}
+                            style={{
+                                position: 'absolute',
+                                left: '14px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: 'var(--text-muted)',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Поиск по названию или руководителю..."
+                            value={searchQuery}
+                            onChange={e => onSearchChange(e.target.value)}
+                            style={{
+                                paddingLeft: '42px',
+                                paddingRight: searchQuery ? '36px' : '14px',
+                                height: '40px',
+                                borderRadius: '10px',
+                                width: '100%',
+                            }}
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => onSearchChange('')}
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'var(--text-muted)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: 0,
+                                }}
+                                title="Очистить поиск"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+
                     <select
                         value={headFilter}
                         onChange={e => setHeadFilter(e.target.value as 'ALL' | 'WITH_HEAD' | 'WITHOUT_HEAD')}
                         style={{
-
-
                             padding: '8px 16px',
                             fontSize: '0.85rem',
                             borderRadius: '10px',
+                            height: '40px',
                             width: 'auto',
                             minWidth: '180px',
                         }}

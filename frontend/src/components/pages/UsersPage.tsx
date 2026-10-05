@@ -445,6 +445,10 @@ const UsersPage: React.FC = () => {
                         departments={departments}
                         users={users}
                         searchQuery={searchQuery}
+                        onSearchChange={(q) => {
+                            setSearchQuery(q);
+                            setSearchInput(q);
+                        }}
                         onRefresh={refreshData}
                         onEdit={(d) => {
                             setEditDeptId(d.id);
@@ -460,6 +464,10 @@ const UsersPage: React.FC = () => {
                         projects={projects}
                         users={users}
                         searchQuery={searchQuery}
+                        onSearchChange={(q) => {
+                            setSearchQuery(q);
+                            setSearchInput(q);
+                        }}
                         isOdooConfigured={isOdooConfigured}
                         isOdooIntConfigured={isOdooIntConfigured}
                         onOpenOdooModal={() => setIsOdooModalOpen(true)}

@@ -8,8 +8,33 @@ import type {
 
 let inMemoryToken: string | null = null;
 
+type TokenChangeListener = (token: string | null) => void;
+const tokenChangeListeners = new Set<TokenChangeListener>();
+
+/**
+ * Подписывает слушателя на изменение Access Token в памяти.
+ * Позволяет React контекстам и WebSocket сервисам моментально синхронизировать токен
+ * при фоновом рефреше или выходе из системы.
+ *
+ * @param listener Функция обратного вызова при смене токена
+ * @returns Функция отписки
+ */
+export const onTokenChange = (listener: TokenChangeListener): (() => void) => {
+    tokenChangeListeners.add(listener);
+    return () => {
+        tokenChangeListeners.delete(listener);
+    };
+};
+
 export const setAccessToken = (token: string | null) => {
     inMemoryToken = token;
+    tokenChangeListeners.forEach((listener) => {
+        try {
+            listener(token);
+        } catch (e) {
+            console.error("[API] Ошибка в слушателе изменения токена:", e);
+        }
+    });
 };
 
 export const getAccessToken = () => {

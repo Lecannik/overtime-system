@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check } from 'lucide-react';
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/api';
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getAccessToken, refreshAccessToken } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { formatTime } from '../../constants/locale';
 import type { Notification } from '../../types';
@@ -25,8 +25,8 @@ const NotificationBell: React.FC = () => {
     useEffect(() => {
         if (!token) return;
 
-        // Use an IIFE or just call it directly if it's async, but we want to avoid
-        // synchronous execution in the effect body that triggers state updates.
+        let isCleanClose = false;
+
         const initFetch = async () => {
             await fetchNotifications();
         };
@@ -39,29 +39,32 @@ const NotificationBell: React.FC = () => {
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
-        const connectWebSocket = () => {
-            if (!token) return;
+        const connectWebSocket = async () => {
+            if (isCleanClose) return;
+
+            // Всегда используем самый актуальный токен из памяти или контекста
+            const currentToken = getAccessToken() || token;
+            if (!currentToken) return;
 
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                console.warn('WebSocket maximum reconnect attempts reached. Notification polling is active.');
+                console.warn('[WebSocket] Достигнут лимит попыток подключения. Активен резервный HTTP-опрос.');
                 return;
             }
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${token}`;
+            const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?token=${encodeURIComponent(currentToken)}`;
 
             try {
                 ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
-                    console.log('WebSocket connected successfully');
-                    reconnectAttempts = 0; // Сбрасываем попытки при успешном подключении
+                    console.log('[WebSocket] Подключение успешно установлено');
+                    reconnectAttempts = 0;
                 };
 
                 ws.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        console.log('WebSocket event received:', data);
                         if (
                             data.type === 'NEW_NOTIFICATION' ||
                             data.type === 'OVERTIME_UPDATED' ||
@@ -76,25 +79,48 @@ const NotificationBell: React.FC = () => {
                             }
                         }
                     } catch (e) {
-                        console.error('WebSocket message error:', e);
+                        console.error('[WebSocket] Ошибка обработки входящего события:', e);
                     }
                 };
 
-                ws.onclose = () => {
+                ws.onclose = async (event: CloseEvent) => {
+                    if (isCleanClose) return;
+
+                    // Код 1008 (Policy Violation) сигнализирует об истечении или невалидности JWT
+                    if (event.code === 1008) {
+                        console.warn('[WebSocket] Соединение отклонено (1008, токен истек). Запрашиваем обновление токена...');
+                        try {
+                            const freshToken = await refreshAccessToken();
+                            if (!freshToken) {
+                                console.warn('[WebSocket] Не удалось обновить токен. Переход в фоновый режим HTTP-опроса.');
+                                return;
+                            }
+                            // Токен успешно обновлен - сбрасываем счетчик и сразу переподключаемся со свежим токеном
+                            reconnectAttempts = 0;
+                            reconnectTimeout = setTimeout(connectWebSocket, 500);
+                            return;
+                        } catch {
+                            console.warn('[WebSocket] Ошибка сессии при обновлении токена. Переход в фоновый режим HTTP-опроса.');
+                            return;
+                        }
+                    }
+
                     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                         const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), 30000);
-                        console.log(`WebSocket closed. Reconnecting in ${delay / 1000}s (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+                        console.log(`[WebSocket] Соединение закрыто (код ${event.code}). Повтор через ${delay / 1000}с (попытка ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
                         reconnectAttempts++;
                         reconnectTimeout = setTimeout(connectWebSocket, delay);
                     }
                 };
 
                 ws.onerror = (err) => {
-                    console.error('WebSocket error:', err);
+                    // Браузер генерирует пустое событие ошибки перед onclose.
+                    // Избегаем агрессивного console.error, чтобы не засорять консоль разработчика.
+                    console.debug('[WebSocket] Зафиксировано событие ошибки, ожидается обработка в onclose:', err);
                     ws?.close();
                 };
             } catch (err) {
-                console.error('Failed to create WebSocket:', err);
+                console.error('[WebSocket] Ошибка создания сокета:', err);
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), 30000);
                     reconnectAttempts++;
@@ -106,6 +132,7 @@ const NotificationBell: React.FC = () => {
         connectWebSocket();
 
         return () => {
+            isCleanClose = true;
             clearInterval(interval);
             if (ws) {
                 ws.onclose = null;

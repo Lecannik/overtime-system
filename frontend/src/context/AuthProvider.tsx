@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import api, { getAccessToken, setAccessToken, refreshAccessToken, logout as apiLogout } from '../services/api';
+import api, { getAccessToken, setAccessToken, refreshAccessToken, onTokenChange, logout as apiLogout } from '../services/api';
 import { AuthContext } from './AuthContext';
 import type { User } from '../types';
 
@@ -52,6 +52,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshUser = useCallback(async () => {
     return await fetchUser();
   }, [fetchUser]);
+
+  useEffect(() => {
+    const unsubscribe = onTokenChange((newToken) => {
+      setTokenState(newToken);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;

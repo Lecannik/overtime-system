@@ -9,7 +9,9 @@ import {
     Globe,
     Plus,
     CheckCircle2,
-    Archive
+    Archive,
+    Search,
+    X
 } from 'lucide-react';
 import type { Project, User } from '../../../types';
 import { updateProject } from '../../../services/api';
@@ -19,6 +21,7 @@ interface ProjectsTabProps {
     projects: Project[];
     users: User[];
     searchQuery: string;
+    onSearchChange: (query: string) => void;
     isOdooConfigured: boolean;
     isOdooIntConfigured: boolean;
     onOpenOdooModal: () => void;
@@ -39,6 +42,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
     projects,
     users,
     searchQuery,
+    onSearchChange,
     isOdooConfigured,
     isOdooIntConfigured,
     onOpenOdooModal,
@@ -312,7 +316,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                 </div>
             </div>
 
-            {/* Панель фильтров: статус, менеджер и счетчик */}
+            {/* Панель фильтров: поиск, статус, менеджер и счетчик */}
             <div
                 style={{
                     display: 'flex',
@@ -322,15 +326,65 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                     padding: '0 4px',
                 }}
             >
+                {/* Поиск по коду, названию или менеджеру */}
+                <div style={{ position: 'relative', flex: 1, minWidth: 'min(100%, 260px)' }}>
+                    <Search
+                        size={18}
+                        style={{
+                            position: 'absolute',
+                            left: '14px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--text-muted)',
+                            pointerEvents: 'none',
+                        }}
+                    />
+                    <input
+                        type="text"
+                        placeholder="Поиск по коду, названию или менеджеру..."
+                        value={searchQuery}
+                        onChange={e => onSearchChange(e.target.value)}
+                        style={{
+                            paddingLeft: '42px',
+                            paddingRight: searchQuery ? '36px' : '14px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            width: '100%',
+                        }}
+                    />
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => onSearchChange('')}
+                            style={{
+                                position: 'absolute',
+                                right: '12px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: 'var(--text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 0,
+                            }}
+                            title="Очистить поиск"
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                </div>
+
                 <select
                     value={statusFilter}
                     onChange={e => setStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'ARCHIVED')}
                     style={{
-
-
                         padding: '8px 16px',
                         fontSize: '0.85rem',
                         borderRadius: '10px',
+                        height: '40px',
                         width: 'auto',
                         minWidth: '170px',
                     }}
@@ -347,6 +401,7 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                         padding: '8px 16px',
                         fontSize: '0.85rem',
                         borderRadius: '10px',
+                        height: '40px',
                         width: 'auto',
                         minWidth: '200px',
                     }}
