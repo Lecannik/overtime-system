@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     Briefcase,
     Edit2,
@@ -20,8 +20,8 @@ import { updateProject } from '../../../services/api';
 interface ProjectsTabProps {
     projects: Project[];
     users: User[];
-    searchQuery: string;
-    onSearchChange: (query: string) => void;
+    searchQuery?: string;
+    onSearchChange?: (query: string) => void;
     isOdooConfigured: boolean;
     isOdooIntConfigured: boolean;
     onOpenOdooModal: () => void;
@@ -41,7 +41,7 @@ interface ProjectsTabProps {
 export const ProjectsTab: React.FC<ProjectsTabProps> = ({
     projects,
     users,
-    searchQuery,
+    searchQuery: initialSearchQuery = '',
     onSearchChange,
     isOdooConfigured,
     isOdooIntConfigured,
@@ -52,6 +52,13 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
     onDelete,
     onRefresh,
 }) => {
+    // Локальное состояние поиска для мгновенной фильтрации без сетевых запросов и мигания экрана
+    const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+
+    useEffect(() => {
+        setSearchQuery(initialSearchQuery);
+    }, [initialSearchQuery]);
+
     // Режим отображения (Таблица / Карточки) с сохранением в localStorage
     const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
         return (localStorage.getItem('admin_project_view_mode') as 'table' | 'cards') || 'table';
@@ -343,7 +350,11 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                         type="text"
                         placeholder="Поиск по коду, названию или менеджеру..."
                         value={searchQuery}
-                        onChange={e => onSearchChange(e.target.value)}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setSearchQuery(val);
+                            onSearchChange?.(val);
+                        }}
                         style={{
                             paddingLeft: '42px',
                             paddingRight: searchQuery ? '36px' : '14px',
@@ -355,7 +366,10 @@ export const ProjectsTab: React.FC<ProjectsTabProps> = ({
                     {searchQuery && (
                         <button
                             type="button"
-                            onClick={() => onSearchChange('')}
+                            onClick={() => {
+                                setSearchQuery('');
+                                onSearchChange?.('');
+                            }}
                             style={{
                                 position: 'absolute',
                                 right: '12px',

@@ -47,7 +47,7 @@ const UsersPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchInput, setSearchInput] = useState('');
     const [authChecked, setAuthChecked] = useState(false);
@@ -103,7 +103,6 @@ const UsersPage: React.FC = () => {
     };
 
     const refreshData = useCallback(async () => {
-        setLoading(true);
         try {
             if (activeTab === 'users') {
                 const res = await getUsers({
@@ -138,7 +137,7 @@ const UsersPage: React.FC = () => {
         } catch (err) {
             console.error('Refresh error:', err);
         } finally {
-            setLoading(false);
+            setInitialLoading(false);
         }
     }, [activeTab, currentPage, pageSize, searchQuery, roleFilter, deptFilter, companyFilter, sortBy, sortOrder]);
 
@@ -277,7 +276,7 @@ const UsersPage: React.FC = () => {
         setIsConfirmOpen(true);
     };
 
-    if (loading && currentPage === 1) {
+    if (initialLoading) {
         return (
             <div className="page-container">
                 <Skeleton height={800} />
@@ -444,11 +443,6 @@ const UsersPage: React.FC = () => {
                     <DepartmentsTab
                         departments={departments}
                         users={users}
-                        searchQuery={searchQuery}
-                        onSearchChange={(q) => {
-                            setSearchQuery(q);
-                            setSearchInput(q);
-                        }}
                         onRefresh={refreshData}
                         onEdit={(d) => {
                             setEditDeptId(d.id);
@@ -463,11 +457,6 @@ const UsersPage: React.FC = () => {
                     <ProjectsTab
                         projects={projects}
                         users={users}
-                        searchQuery={searchQuery}
-                        onSearchChange={(q) => {
-                            setSearchQuery(q);
-                            setSearchInput(q);
-                        }}
                         isOdooConfigured={isOdooConfigured}
                         isOdooIntConfigured={isOdooIntConfigured}
                         onOpenOdooModal={() => setIsOdooModalOpen(true)}

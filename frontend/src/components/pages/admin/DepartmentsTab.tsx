@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Building2, Edit2, Trash2, LayoutGrid, Table, Users as UsersIcon, Plus, Search, X } from 'lucide-react';
 import type { Department, User } from '../../../types';
 import { updateDepartment } from '../../../services/api';
@@ -7,8 +7,8 @@ import { updateDepartment } from '../../../services/api';
 interface DepartmentsTabProps {
     departments: Department[];
     users: User[];
-    searchQuery: string;
-    onSearchChange: (query: string) => void;
+    searchQuery?: string;
+    onSearchChange?: (query: string) => void;
     onRefresh: () => void;
     onEdit: (dept: Department) => void;
     onDelete: (id: number) => void;
@@ -23,13 +23,20 @@ interface DepartmentsTabProps {
 export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
     departments,
     users,
-    searchQuery,
+    searchQuery: initialSearchQuery = '',
     onSearchChange,
     onRefresh,
     onEdit,
     onDelete,
     onAdd,
 }) => {
+    // Локальное состояние поиска для мгновенной фильтрации без сетевых запросов и мигания экрана
+    const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+
+    useEffect(() => {
+        setSearchQuery(initialSearchQuery);
+    }, [initialSearchQuery]);
+
     // Режим отображения (Таблица / Карточки) с сохранением в localStorage
     const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
         return (localStorage.getItem('admin_dept_view_mode') as 'table' | 'cards') || 'table';
@@ -231,7 +238,11 @@ export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
                             type="text"
                             placeholder="Поиск по названию или руководителю..."
                             value={searchQuery}
-                            onChange={e => onSearchChange(e.target.value)}
+                            onChange={e => {
+                                const val = e.target.value;
+                                setSearchQuery(val);
+                                onSearchChange?.(val);
+                            }}
                             style={{
                                 paddingLeft: '42px',
                                 paddingRight: searchQuery ? '36px' : '14px',
@@ -243,7 +254,10 @@ export const DepartmentsTab: React.FC<DepartmentsTabProps> = ({
                         {searchQuery && (
                             <button
                                 type="button"
-                                onClick={() => onSearchChange('')}
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    onSearchChange?.('');
+                                }}
                                 style={{
                                     position: 'absolute',
                                     right: '12px',
