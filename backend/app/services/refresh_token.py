@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -14,23 +15,45 @@ from app.models.user import RefreshToken, User
 logger = logging.getLogger(__name__)
 
 
+def hash_refresh_token(token: str) -> str:
+    """
+    Вычисляет криптографический SHA-256 хеш refresh-токена для безопасного хранения в БД.
+
+    Args:
+        token (str): Исходный открытый refresh-токен.
+
+    Returns:
+        str: Hex-строка SHA-256 дайджеста (64 символа).
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 async def create_refresh_token(session: AsyncSession, user_id: int) -> str:
     """
-    Генерирует и сохраняет новый Refresh Token в базе данных.
+    Генерирует новый Refresh Token, сохраняет его SHA-256 хеш в базе данных
+    и возвращает открытый токен для установки в защищенную куку клиенту.
+
+    Args:
+        session (AsyncSession): Асинхронная сессия SQLAlchemy.
+        user_id (int): Идентификатор пользователя.
+
+    Returns:
+        str: Открытый токен для передачи клиенту в cookie.
     """
-    token = secrets.token_urlsafe(64)
+    raw_token = secrets.token_urlsafe(64)
+    token_hash = hash_refresh_token(raw_token)
     expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
-    db_token = RefreshToken(user_id=user_id, token=token, expires_at=expires_at, revoked=False)
+    db_token = RefreshToken(user_id=user_id, token=token_hash, expires_at=expires_at, revoked=False)
     session.add(db_token)
-    return token
+    return raw_token
 
 
 # Кэш в памяти для недавно отозванных и обновляемых токенов.
 # Предотвращает race condition при параллельных запросах со стороны клиента.
 # Структура:
 # {
-#     token_str: {
+#     token_hash: {
 #         "event": asyncio.Event,            # Асинхронное событие для ожидания завершения транзакции
 #         "grace_expires_at": datetime,     # Время жизни записи в кэше
 #         "result": tuple[str, User] | Exception | None  # Результат ротации (токен, пользователь) или ошибка
@@ -51,7 +74,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
 
     Аргументы:
         session (AsyncSession): Асинхронная сессия SQLAlchemy для работы с БД.
-        token (str): Проверяемый refresh-токен в виде строки.
+        token (str): Проверяемый открытый refresh-токен в виде строки.
 
     Возвращает:
         tuple[str, User]: Кортеж из нового refresh-токена (строка) и объекта пользователя.
@@ -60,10 +83,11 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
         HTTPException (401): Если токен недействителен, просрочен, отозван или пользователь не найден/неактивен.
     """
     now = datetime.now(timezone.utc)
+    token_hash = hash_refresh_token(token)
 
-    # 1. Проверяем Grace Period / состояние ротации в памяти
-    if token in _rotated_tokens_grace_cache:
-        entry = _rotated_tokens_grace_cache[token]
+    # 1. Проверяем Grace Period / состояние ротации в памяти по хешу токена
+    if token_hash in _rotated_tokens_grace_cache:
+        entry = _rotated_tokens_grace_cache[token_hash]
         if now < entry["grace_expires_at"]:
             logger.info(
                 "verify_and_rotate_refresh_token: Обнаружен параллельный запрос или недавняя ротация токена %s... Ожидаем результат.",
@@ -83,7 +107,7 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
                 )
                 return entry["result"]
         else:
-            _rotated_tokens_grace_cache.pop(token, None)
+            _rotated_tokens_grace_cache.pop(token_hash, None)
 
     # Очищаем устаревшие записи из кэша (чтобы избежать утечек памяти)
     expired_keys = [k for k, v in _rotated_tokens_grace_cache.items() if now >= v["grace_expires_at"]]
@@ -93,11 +117,11 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
     # Инициализируем событие блокировки для текущего токена в кэше до начала асинхронных операций
     event = asyncio.Event()
     grace_expires = now + timedelta(seconds=10)
-    _rotated_tokens_grace_cache[token] = {"event": event, "grace_expires_at": grace_expires, "result": None}
+    _rotated_tokens_grace_cache[token_hash] = {"event": event, "grace_expires_at": grace_expires, "result": None}
 
     try:
-        # Ищем токен в базе
-        result = await session.execute(select(RefreshToken).where(RefreshToken.token == token))
+        # Ищем токен в базе по SHA-256 хешу
+        result = await session.execute(select(RefreshToken).where(RefreshToken.token == token_hash))
         db_token = result.scalar_one_or_none()
 
         if not db_token:
@@ -161,25 +185,30 @@ async def verify_and_rotate_refresh_token(session: AsyncSession, token: str) -> 
         await session.commit()
 
         # Сохраняем успешный результат ротации в кэш для параллельных запросов
-        _rotated_tokens_grace_cache[token]["result"] = (new_token, user)
+        _rotated_tokens_grace_cache[token_hash]["result"] = (new_token, user)
         return new_token, user
 
     except Exception as exc:
         # Сохраняем исключение в кэш, чтобы параллельные запросы тоже получили его
-        if token in _rotated_tokens_grace_cache:
-            _rotated_tokens_grace_cache[token]["result"] = exc
+        if token_hash in _rotated_tokens_grace_cache:
+            _rotated_tokens_grace_cache[token_hash]["result"] = exc
         raise
     finally:
         # Сигнализируем всем ожидающим корутинам, что обработка завершена
-        if token in _rotated_tokens_grace_cache:
-            _rotated_tokens_grace_cache[token]["event"].set()
+        if token_hash in _rotated_tokens_grace_cache:
+            _rotated_tokens_grace_cache[token_hash]["event"].set()
 
 
 async def revoke_refresh_token(session: AsyncSession, token: str) -> None:
     """
     Отзывает указанный Refresh Token (например, при логауте).
+
+    Args:
+        session (AsyncSession): Асинхронная сессия SQLAlchemy.
+        token (str): Исходный открытый токен из cookie.
     """
-    result = await session.execute(select(RefreshToken).where(RefreshToken.token == token))
+    token_hash = hash_refresh_token(token)
+    result = await session.execute(select(RefreshToken).where(RefreshToken.token == token_hash))
     db_token = result.scalar_one_or_none()
     if db_token:
         db_token.revoked = True

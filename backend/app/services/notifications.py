@@ -10,7 +10,7 @@ from app.models.user import NotificationLevel, User, UserRole
 from app.repositories import notification as notif_repo
 from app.services.ms_graph import ms_graph
 from app.services.telegram import send_telegram_message
-from app.services.websocket import ws_manager
+from app.services.websocket import broadcast_overtime_event, ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +97,7 @@ async def notify_new_overtime(
             NotificationLevel.TELEGRAM_ONLY,
         ):
             await send_telegram_message(session, head.telegram_chat_id, msg_html, reply_markup=review_reply_markup)
-
-    await ws_manager.broadcast_to_all({"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
+    await broadcast_overtime_event(session, overtime, {"type": "OVERTIME_CREATED", "overtime_id": overtime.id})
 
 
 async def notify_overtime_review(session: AsyncSession, overtime: Overtime, reviewer: User):
@@ -169,8 +168,8 @@ async def notify_overtime_review(session: AsyncSession, overtime: Overtime, revi
     await ws_manager.broadcast_to_user(
         employee.id, {"type": "NEW_NOTIFICATION", "title": status_text, "message": msg_plain}
     )
-    await ws_manager.broadcast_to_all(
-        {"type": "OVERTIME_UPDATED", "overtime_id": overtime.id, "status": overtime.status}
+    await broadcast_overtime_event(
+        session, overtime, {"type": "OVERTIME_UPDATED", "overtime_id": overtime.id, "status": overtime.status}
     )
 
     # 2. Telegram — с фильтром по уровню

@@ -19,7 +19,7 @@ from app.models.user import User, UserRole
 from app.repositories import audit as audit_repo, organization as org_repo, overtime as overtime_repo, user as user_repo
 from app.schemas.overtime import OvertimeCreate, OvertimeReview, OvertimeUpdate
 from app.services import notifications
-from app.services.websocket import ws_manager
+from app.services.websocket import broadcast_overtime_event
 
 logger = logging.getLogger(__name__)
 
@@ -138,12 +138,14 @@ async def create_new_overtime(session: AsyncSession, overtime_in: OvertimeCreate
 
     cache_clear()
     try:
-        await ws_manager.broadcast_to_all(
+        await broadcast_overtime_event(
+            session,
+            created_overtimes[0],
             {
                 "type": "OVERTIME_CREATED",
                 "overtime_id": created_overtimes[0].id,
                 "employee_name": created_overtimes[0].user.full_name if created_overtimes[0].user else "",
-            }
+            },
         )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in create_new_overtime: {e}")
@@ -324,7 +326,9 @@ async def review_overtime(session: AsyncSession, overtime_id: int, review: Overt
     await notifications.notify_overtime_review(session, overtime, current_user)
 
     try:
-        await ws_manager.broadcast_to_all(
+        await broadcast_overtime_event(
+            session,
+            overtime,
             {
                 "type": "OVERTIME_STATUS_CHANGED",
                 "overtime_id": overtime.id,
@@ -332,7 +336,7 @@ async def review_overtime(session: AsyncSession, overtime_id: int, review: Overt
                 "reviewer_name": current_user.full_name,
                 "approved": review.approved,
                 "employee_name": overtime.user.full_name if overtime.user else "",
-            }
+            },
         )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in review_overtime: {e}")
@@ -397,7 +401,9 @@ async def cancel_overtime(session: AsyncSession, overtime_id: int, current_user:
     cache_clear()
 
     try:
-        await ws_manager.broadcast_to_all(
+        await broadcast_overtime_event(
+            session,
+            overtime,
             {
                 "type": "OVERTIME_STATUS_CHANGED",
                 "overtime_id": overtime.id,
@@ -405,7 +411,7 @@ async def cancel_overtime(session: AsyncSession, overtime_id: int, current_user:
                 "reviewer_name": current_user.full_name,
                 "action": "cancel",
                 "employee_name": overtime.user.full_name if overtime.user else "",
-            }
+            },
         )
     except Exception as e:
         logger.error(f"WebSocket broadcast error in cancel_overtime: {e}")
@@ -488,7 +494,9 @@ async def restore_overtime(session: AsyncSession, overtime_id: int, current_user
     cache_clear()
 
     # WebSocket broadcast об изменении статуса заявки
-    await ws_manager.broadcast_to_all(
+    await broadcast_overtime_event(
+        session,
+        overtime,
         {
             "type": "OVERTIME_STATUS_CHANGED",
             "overtime_id": overtime.id,
@@ -496,7 +504,7 @@ async def restore_overtime(session: AsyncSession, overtime_id: int, current_user
             "reviewer_name": current_user.full_name,
             "action": "restore",
             "employee_name": overtime.user.full_name if overtime.user else "",
-        }
+        },
     )
 
     return overtime
@@ -665,7 +673,9 @@ async def update_overtime(session: AsyncSession, overtime_id: int, overtime_in: 
     cache_clear()
 
     # WebSocket broadcast об изменении параметров заявки
-    await ws_manager.broadcast_to_all(
+    await broadcast_overtime_event(
+        session,
+        reloaded or result,
         {
             "type": "OVERTIME_STATUS_CHANGED",
             "overtime_id": result.id,
@@ -673,7 +683,7 @@ async def update_overtime(session: AsyncSession, overtime_id: int, overtime_in: 
             "reviewer_name": current_user.full_name,
             "action": "update",
             "employee_name": reloaded.user.full_name if (reloaded and reloaded.user) else "",
-        }
+        },
     )
 
     return reloaded or result

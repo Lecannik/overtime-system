@@ -2,6 +2,7 @@
 Тесты модуля аутентификации, авторизации и управления сессиями (Auth & SSO).
 """
 
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,7 +12,8 @@ from sqlalchemy.future import select
 
 from app.core.security import hash_password
 from app.models.user import OTPType, RefreshToken, User, UserCompany, UserOTP, UserRole
-from app.services.refresh_token import create_refresh_token
+from app.services.otp import hash_otp_code
+from app.services.refresh_token import create_refresh_token, hash_refresh_token
 
 
 @pytest.mark.asyncio
@@ -94,18 +96,23 @@ async def test_login_with_2fa(client: AsyncClient, db_session: AsyncSession):
         assert data["status"] == "2fa_required"
         assert data["email"] == user.email
         assert mock_send_email.called
+        sent_body = mock_send_email.call_args.kwargs.get("body_content", "")
+        otp_match = re.search(r"\b\d{6}\b", sent_body)
+        assert otp_match is not None
+        otp_code = otp_match.group(0)
 
     # 2. Неверный OTP код
     invalid_verify_resp = await client.post("/api/v1/auth/verify-2fa", json={"email": user.email, "code": "000000"})
     assert invalid_verify_resp.status_code == 400
 
-    # Получаем сгенерированный в базе OTP
+    # Получаем сгенерированный в базе OTP (проверяем сохранение SHA-256 хеша вместо открытого кода)
     otp_res = await db_session.execute(select(UserOTP).where(UserOTP.user_id == user.id, UserOTP.type == OTPType.login))
     otp_entry = otp_res.scalars().first()
     assert otp_entry is not None
+    assert otp_entry.code == hash_otp_code(otp_code)
 
     # 3. Корректный OTP код
-    valid_verify_resp = await client.post("/api/v1/auth/verify-2fa", json={"email": user.email, "code": otp_entry.code})
+    valid_verify_resp = await client.post("/api/v1/auth/verify-2fa", json={"email": user.email, "code": otp_code})
     assert valid_verify_resp.status_code == 200
     res_data = valid_verify_resp.json()
     assert res_data["status"] == "success"
@@ -138,7 +145,9 @@ async def test_refresh_token_rotation(client: AsyncClient, normal_user: User, db
     assert new_cookie_token != initial_token
 
     # Проверяем, что старый токен в БД помечен как revoked=True
-    old_token_res = await db_session.execute(select(RefreshToken).where(RefreshToken.token == initial_token))
+    old_token_res = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token == hash_refresh_token(initial_token))
+    )
     old_token_record = old_token_res.scalar_one_or_none()
     assert old_token_record is not None
     assert old_token_record.revoked is True
@@ -156,7 +165,9 @@ async def test_refresh_token_reuse_detection(client: AsyncClient, normal_user: U
     await db_session.commit()
 
     # Помечаем первый токен как отозванный вручную
-    token_res = await db_session.execute(select(RefreshToken).where(RefreshToken.token == revoked_token))
+    token_res = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token == hash_refresh_token(revoked_token))
+    )
     t_obj = token_res.scalar_one()
     t_obj.revoked = True
     await db_session.commit()
@@ -168,7 +179,9 @@ async def test_refresh_token_reuse_detection(client: AsyncClient, normal_user: U
     assert "скомпрометирована" in response.json()["detail"]
 
     # Проверяем, что активный токен тоже был отозван
-    active_res = await db_session.execute(select(RefreshToken).where(RefreshToken.token == active_token))
+    active_res = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token == hash_refresh_token(active_token))
+    )
     active_record = active_res.scalar_one()
     assert active_record.revoked is True
 
@@ -187,7 +200,7 @@ async def test_logout_revokes_token(client: AsyncClient, normal_user: User, db_s
     assert response.status_code == 200
 
     # Проверяем отзыв токена в БД
-    token_res = await db_session.execute(select(RefreshToken).where(RefreshToken.token == token))
+    token_res = await db_session.execute(select(RefreshToken).where(RefreshToken.token == hash_refresh_token(token)))
     token_entry = token_res.scalar_one()
     assert token_entry.revoked is True
 
@@ -233,18 +246,23 @@ async def test_password_reset_flow(client: AsyncClient, normal_user: User, db_se
         req_resp = await client.post("/api/v1/auth/password-reset/request", json={"email": normal_user.email})
         assert req_resp.status_code == 200
         assert mock_send.called
+        sent_body = mock_send.call_args.kwargs.get("body_content", "")
+        otp_match = re.search(r"\b\d{6}\b", sent_body)
+        assert otp_match is not None
+        otp_code = otp_match.group(0)
 
-    # Находим OTP в базе
+    # Находим OTP в базе (проверяем сохранение SHA-256 хеша)
     otp_res = await db_session.execute(
         select(UserOTP).where(UserOTP.user_id == normal_user.id, UserOTP.type == OTPType.password_reset)
     )
     otp_entry = otp_res.scalars().first()
     assert otp_entry is not None
+    assert otp_entry.code == hash_otp_code(otp_code)
 
     # 2. Подтверждение сброса с новым паролем
     confirm_resp = await client.post(
         "/api/v1/auth/password-reset/confirm",
-        json={"email": normal_user.email, "code": otp_entry.code, "new_password": "brand_new_pass_999"},
+        json={"email": normal_user.email, "code": otp_code, "new_password": "brand_new_pass_999"},
     )
     assert confirm_resp.status_code == 200
 
@@ -287,3 +305,53 @@ async def test_get_me(client: AsyncClient, normal_user_token_headers, normal_use
     data = response.json()
     assert data["email"] == normal_user.email
     assert data["full_name"] == normal_user.full_name
+
+
+@pytest.mark.asyncio
+async def test_otp_attempts_persistence_and_brute_force_prevention(
+    client: AsyncClient, normal_user: User, db_session: AsyncSession
+):
+    """
+    Тест P1-1: Проверка персистентности счетчика попыток ввода OTP и защиты от брутфорса.
+
+    Убеждаемся, что:
+    1. Неудачная попытка ввода OTP сохраняется в БД (attempts инкрементируется и не откатывается).
+    2. При 5-й неверной попытке возвращается ошибка превышения лимита и код удаляется из БД.
+    """
+    # 1. Сбрасываем счетчик рейт-лимитера для чистоты теста
+    from app.core.rate_limit import login_limiter
+
+    login_limiter.attempts.clear()
+
+    # 2. Создаем OTP код для входа
+    from app.services.otp import create_otp
+
+    await create_otp(db_session, normal_user.id, OTPType.login)
+    await db_session.commit()
+
+    # 2. Делаем 4 неверные попытки и проверяем инкремент в БД
+    for expected_attempt in range(1, 5):
+        resp = await client.post(
+            "/api/v1/auth/verify-2fa", json={"email": normal_user.email, "code": f"99999{expected_attempt}"}
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Неверный или просроченный код"
+
+        # Проверяем в БД, что attempts реально сохранился
+        otp_res = await db_session.execute(
+            select(UserOTP).where(UserOTP.user_id == normal_user.id, UserOTP.type == OTPType.login)
+        )
+        otp_entry = otp_res.scalars().first()
+        assert otp_entry is not None
+        assert otp_entry.attempts == expected_attempt
+
+    # 3. 5-я неверная попытка — код должен быть заблокирован и удален из БД
+    resp_5 = await client.post("/api/v1/auth/verify-2fa", json={"email": normal_user.email, "code": "999995"})
+    assert resp_5.status_code == 400
+    assert "Превышено максимальное число попыток" in resp_5.json()["detail"]
+
+    # Проверяем, что OTP удален из базы данных
+    otp_res_after = await db_session.execute(
+        select(UserOTP).where(UserOTP.user_id == normal_user.id, UserOTP.type == OTPType.login)
+    )
+    assert otp_res_after.scalars().first() is None

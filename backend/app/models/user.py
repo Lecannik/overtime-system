@@ -127,7 +127,7 @@ class UserOTP(Base):
     __tablename__ = "user_otps"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    code: Mapped[str] = mapped_column(String(6), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
     type: Mapped[OTPType] = mapped_column(Enum(OTPType), default=OTPType.login)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
