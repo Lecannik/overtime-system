@@ -48,6 +48,9 @@ error_screenshot/
 brain/
 check_logs.sh
 backend/check_db.py
+fetch_authentik_logs.py
+logs.txt
+*.log
 infra/project_audit*.md
 infra/database_security_options.md
 infra/gateway_architecture.md
