@@ -1,8 +1,11 @@
 from datetime import date, datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+
+# pyrefly: ignore [missing-import]
+from pydantic import BeforeValidator
 
 # pyrefly: ignore [missing-import]
 from sqlalchemy import delete as sql_delete, select
@@ -31,6 +34,25 @@ from app.schemas.overtime import (
 from app.services import overtime as overtime_service
 
 router = APIRouter(prefix="/overtimes", tags=["overtimes"])
+
+
+def _coerce_to_date(value: Any) -> Any:
+    """
+    Приводит строку формата ISO datetime (например, 2026-11-13T23:59:59) к дате.
+
+    Репозиторий сам строит границы суток с учётом локального часового пояса,
+    поэтому время во входном значении игнорируется.
+
+    :param value: Исходное значение query-параметра.
+    :return: Строка YYYY-MM-DD, если передан datetime-формат; иначе значение без изменений.
+    """
+    if isinstance(value, str) and "T" in value:
+        return value.split("T", 1)[0]
+    return value
+
+
+# Параметр-дата, терпимый к datetime-строкам от клиентов (фронтенд, TMA)
+DateParam = Annotated[date, BeforeValidator(_coerce_to_date)]
 
 
 @router.get("/last-project", response_model=Optional[ProjectResponse])
@@ -211,8 +233,8 @@ async def list_overtimes(
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
     department_id: Optional[int] = None,
-    start_date: date | None = None,
-    end_date: date | None = None,
+    start_date: DateParam | None = None,
+    end_date: DateParam | None = None,
     view: str | None = None,
     search: Optional[str] = None,
     preset: Optional[str] = Query(None, description="Смарт-пресет: 'action_required' | 'in_review'"),
@@ -245,8 +267,8 @@ async def list_company_overtimes(
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
     department_id: Optional[int] = None,
-    start_date: date | None = None,
-    end_date: date | None = None,
+    start_date: DateParam | None = None,
+    end_date: DateParam | None = None,
     search: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -295,8 +317,8 @@ async def list_legacy_singular_company_overtimes(
     status: OvertimeStatus | None = None,
     project_id: int | None = None,
     department_id: Optional[int] = None,
-    start_date: date | None = None,
-    end_date: date | None = None,
+    start_date: DateParam | None = None,
+    end_date: DateParam | None = None,
     search: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),

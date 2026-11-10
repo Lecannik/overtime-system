@@ -359,8 +359,8 @@ const DashboardPage: React.FC = () => {
     try {
       if (activeTab === 'my') {
         const data = await getMyOvertimes({
-          start_date: startDate ? `${startDate}T00:00:00` : undefined,
-          end_date: endDate ? `${endDate}T23:59:59` : undefined,
+          start_date: startDate || undefined,
+          end_date: endDate || undefined,
           status: filterStatus || undefined,
           page: currentPage,
           page_size: 10,
@@ -375,8 +375,8 @@ const DashboardPage: React.FC = () => {
           page_size: 10,
           view: 'all',
         };
-        if (startDate) params.start_date = `${startDate}T00:00:00`;
-        if (endDate) params.end_date = `${endDate}T23:59:59`;
+        if (startDate) params.start_date = startDate;
+        if (endDate) params.end_date = endDate;
         if (filterStatus) params.status = filterStatus;
         if (debouncedSearch) params.search = debouncedSearch;
         if (selectedDeptId) params.department_id = selectedDeptId;

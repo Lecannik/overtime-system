@@ -627,3 +627,15 @@ async def test_company_overtimes_endpoints(client: AsyncClient, admin_token_head
     assert "items" in data_singular
     assert "total" in data_singular
     assert isinstance(data_singular["items"], list)
+
+
+def test_coerce_to_date_accepts_datetime_and_date_strings():
+    """Фильтр по периоду принимает и YYYY-MM-DD, и ISO datetime (регрессия 422 на end_date)."""
+    from pydantic import TypeAdapter
+
+    from app.api.v1.overtime import DateParam
+
+    adapter = TypeAdapter(DateParam)
+    assert adapter.validate_python("2026-11-13T23:59:59").isoformat() == "2026-11-13"
+    assert adapter.validate_python("2026-11-13T00:00:00").isoformat() == "2026-11-13"
+    assert adapter.validate_python("2026-11-13").isoformat() == "2026-11-13"
